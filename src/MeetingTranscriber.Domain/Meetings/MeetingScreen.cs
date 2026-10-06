@@ -164,12 +164,14 @@ public sealed record MeetingScreen(OwedWork Owed, WhatTheAiLeft Left, RecordedAu
 /// What a meeting has to play, which is a fact about a file rather than about a stage.
 /// </summary>
 /// <remarks>
-/// Three and not a pair of yes-or-nos, so that no reading of it can hold two answers at once. The
+/// Four and not a pair of yes-or-nos, so that no reading of it can hold two answers at once. The
 /// middle one is why it is not simply "is there a file": a meeting with no recording under it and
 /// one whose recording the corpus records and cannot find are the same absence on screen and two
 /// entirely different things to a person. The second is a source gone — audio is never produced
 /// from anything and cannot be produced again — and saying nothing about it would hide the one
 /// state of a meeting that somebody has to act on.
+/// The last is the opposite absence: the audio is gone because a person said so, which is a fact
+/// to state and not a loss to flag.
 /// </remarks>
 public enum RecordedAudio
 {
@@ -181,4 +183,7 @@ public enum RecordedAudio
 
     /// <summary>It is there, and it plays.</summary>
     Playable = 3,
+
+    /// <summary>Somebody deleted it, and the corpus says when.</summary>
+    Removed = 4,
 }

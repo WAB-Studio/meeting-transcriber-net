@@ -77,7 +77,7 @@
         </Grid>
 
         <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
-            <StackPanel Spacing="18" MaxWidth="760" HorizontalAlignment="Left">
+            <StackPanel Spacing="18" MaxWidth="1040" HorizontalAlignment="Left">
                 <!-- What happens when a recording ends: three options, one chosen, on tarjeta. A
                      set of more than two is a radio row, and every part of how one is drawn is
                      Olivo's `Option`.

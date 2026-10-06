@@ -152,6 +152,12 @@ public static partial class UiTexts
     public static UiText WordsThatComeOutWrongHere { get; } =
         new("palabras que salen mal", "words that come out wrong");
 
+    // The two spellings a corrected word shows when it is pressed in the transcript: what the
+    // provider returned, and what the corrections made of it.
+    public static UiText TheWordBefore { get; } = new("Antes", "Before");
+
+    public static UiText TheWordAfter { get; } = new("Después", "After");
+
     // The press on that card; docs/design.md §One verb per act's own verb for this act.
     public static UiText CorrectWords { get; } = new("Corregir palabras", "Correct words");
 
@@ -163,4 +169,48 @@ public static partial class UiTexts
     public static UiText Mute { get; } = new("Silenciar", "Mute");
 
     public static UiText Unmute { get; } = new("Activar sonido", "Unmute");
+
+    // What a person can do to the meeting itself, at the foot of its screen. Short on purpose: the
+    // press is the verb and the dialogue it opens says what goes and what stays.
+    public static UiText Archive { get; } = new("Archivar", "Archive");
+
+    public static UiText Unarchive { get; } = new("Desarchivar", "Unarchive");
+
+    public static UiText DeleteTheAudio { get; } = new("Borrar audio", "Delete audio");
+
+    public static UiText DeleteTheTranscript { get; } = new("Borrar transcripción", "Delete transcript");
+
+    public static UiText DeleteTheMeeting { get; } = new("Borrar reunión", "Delete meeting");
+
+    // The act in the dialogue each of those opens: the one press that loses something.
+    public static UiText Delete { get; } = new("Borrar", "Delete");
+
+    // One sentence each, saying what goes and what stays. The transcript's says it is paid for
+    // again, because that is the only thing in these that costs money.
+    public static UiText DeletingTheAudioLoses { get; } = new(
+        "Se borra el audio. La transcripción y el resumen quedan.",
+        "The audio goes. The transcript and the summary stay.");
+
+    public static UiText DeletingTheTranscriptLoses { get; } = new(
+        "Se borran la transcripción y el resumen. Transcribir de nuevo se paga otra vez.",
+        "The transcript and the summary go. Transcribing again is paid again.");
+
+    public static UiText DeletingTheMeetingLoses { get; } = new(
+        "Se borra todo: audio, transcripción y resumen.",
+        "Everything goes: audio, transcript and summary.");
+
+    // Why a delete was refused after the press was drawn: the screen was read before the meeting
+    // started working or recording again.
+    public static UiText NotWhileWorkIsUnderWay { get; } = new(
+        "No mientras hay trabajo en curso.",
+        "Not while work is under way.");
+
+    public static UiText NotWhileItsRecordingWaits { get; } = new(
+        "No mientras su grabación espera.",
+        "Not while its recording waits.");
+
+    public static UiText ItCouldNotBeDeleted { get; } = new("No se pudo borrar.", "It could not be deleted.");
+
+    // The player's line where a recording was, once somebody deleted it.
+    public static UiText TheAudioWasDeleted { get; } = new("Audio borrado.", "Audio deleted.");
 }

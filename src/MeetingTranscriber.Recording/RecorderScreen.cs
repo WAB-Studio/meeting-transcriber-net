@@ -12,9 +12,10 @@ namespace MeetingTranscriber.Recording;
 /// <remarks>
 /// A type rather than the nullable process the engine takes, because a screen has three answers
 /// where the engine has two. <c>null</c> means the whole machine to <c>MeetingRecording.Start</c>,
-/// and it means nobody has said yet to a screen — and a screen that spelled both of them the same
-/// way would start a recording of every notification on the machine for somebody who had not
-/// answered the question at all.
+/// and it means there is no source at all to a screen, which is a screen with no microphone and so
+/// no default to start from. The whole machine is what a screen starts on, on purpose
+/// (<see cref="RecorderChoices.WithTheDefaults"/>); what stays apart is the engine's <c>null</c> and
+/// the screen's <c>Nothing</c>.
 /// </remarks>
 public sealed record RecorderSource
 {
@@ -40,8 +41,9 @@ public sealed record RecorderSource
 }
 
 /// <summary>
-/// What has been said about the meeting that has not started yet. Every one of these is a
-/// question only a person can answer, and each is <c>null</c> until they have.
+/// What has been said about the meeting that has not started yet. What will be spoken waits on a
+/// person; the microphone and what channel 0 follows start as they were last chosen, or as
+/// Windows' default microphone and the whole machine, and a person changes either.
 /// </summary>
 /// <remarks>
 /// <see cref="Spoken"/> is the one that looks like it has an obvious default and does not.
@@ -113,6 +115,75 @@ public sealed record RecorderChoices
             .FirstOrDefault();
 
         return last is not null && offered.Contains(last) ? last : null;
+    }
+
+    /// <summary>
+    /// What was chosen last time, as far as this machine still offers it (ISC-220.3).
+    /// </summary>
+    /// <remarks>
+    /// The microphone by id, compared as <see cref="AsTheMicrophonesAreNow"/> compares it, so a
+    /// launch and a later re-reading agree about one endpoint. A program by its name, case-blind,
+    /// and only when exactly one offered entry carries that name: two entries of one name cannot be
+    /// told apart from what was kept, and guessing would put another window's audio on channel 0.
+    /// Whatever is not found stays null, and <see cref="WithTheDefaults"/> answers it.
+    /// </remarks>
+    /// <param name="last">What was kept, or nothing.</param>
+    /// <param name="microphones">What this machine offers now.</param>
+    /// <param name="offered">The programs on offer now.</param>
+    public static RecorderChoices AsLastChosen(
+        LastSources? last,
+        IReadOnlyList<AudioDevice> microphones,
+        IReadOnlyList<OfferedProgram> offered)
+    {
+        ArgumentNullException.ThrowIfNull(microphones);
+        ArgumentNullException.ThrowIfNull(offered);
+
+        if (last is null)
+        {
+            return Nothing;
+        }
+
+        var microphone = last.MicrophoneId is null
+            ? null
+            : microphones.FirstOrDefault(
+                device => device.Id.Equals(last.MicrophoneId, StringComparison.OrdinalIgnoreCase));
+
+        RecorderSource? source = null;
+
+        if (last.TheWholeMachine)
+        {
+            source = RecorderSource.TheWholeMachine;
+        }
+        else if (last.ProgramName is { } name)
+        {
+            var named = offered
+                .Where(program => program.Process.Name.Equals(name, StringComparison.OrdinalIgnoreCase))
+                .ToArray();
+
+            source = named.Length == 1 ? RecorderSource.Following(named[0].Process) : null;
+        }
+
+        return new RecorderChoices { Microphone = microphone, Source = source };
+    }
+
+    /// <summary>
+    /// These choices with what nobody has answered filled from the defaults (ISC-220.4): channel 0
+    /// follows the whole machine, and the microphone is Windows' default one.
+    /// </summary>
+    /// <remarks>
+    /// Never what will be spoken, which <see cref="Spoken"/> explains. A machine with no default
+    /// microphone leaves that question waiting, drawn as wanting an answer.
+    /// </remarks>
+    /// <param name="microphones">What this machine offers now.</param>
+    public RecorderChoices WithTheDefaults(IReadOnlyList<AudioDevice> microphones)
+    {
+        ArgumentNullException.ThrowIfNull(microphones);
+
+        return this with
+        {
+            Source = Source ?? RecorderSource.TheWholeMachine,
+            Microphone = Microphone ?? microphones.FirstOrDefault(device => device.IsDefault),
+        };
     }
 
     /// <summary>

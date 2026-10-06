@@ -3,6 +3,7 @@ using System;
 using MeetingTranscriber.Infrastructure.Storage;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -10,9 +11,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace MeetingTranscriber.Infrastructure.Migrations
 {
     [DbContext(typeof(CorpusDbContext))]
-    partial class CorpusDbContextModelSnapshot : ModelSnapshot
+    [Migration("20261006150219_TranscriptTerms")]
+    partial class TranscriptTerms
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.10");
@@ -955,14 +958,6 @@ namespace MeetingTranscriber.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("TEXT")
                         .HasColumnName("id");
-
-                    b.Property<string>("ArchivedAt")
-                        .HasColumnType("TEXT")
-                        .HasColumnName("archived_at");
-
-                    b.Property<string>("AudioRemovedAt")
-                        .HasColumnType("TEXT")
-                        .HasColumnName("audio_removed_at");
 
                     b.Property<string>("Context")
                         .HasColumnType("TEXT")

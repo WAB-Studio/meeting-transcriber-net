@@ -47,6 +47,12 @@ public static partial class UiTexts
         "El micrófono elegido ya no está.",
         "The microphone you chose is gone.");
 
+    // Said once per session: the choice holds for this launch either way, and what is lost is
+    // only its being offered again next time.
+    public static UiText TheSourcesWereNotKept { get; } = new(
+        "No quedó guardado para la próxima vez.",
+        "Not kept for next time.");
+
     public static UiText TheWholeMachineCouldNotBeRecorded { get; } = new(
         "No se pudo grabar todo el audio.",
         "Recording all audio could not start.");

@@ -5,6 +5,8 @@ using MeetingTranscriber.Domain.Meetings;
 using MeetingTranscriber.Domain.Time;
 using MeetingTranscriber.Infrastructure.Artifacts;
 
+using Microsoft.EntityFrameworkCore;
+
 namespace MeetingTranscriber.Recording.Tests;
 
 /// <summary>
@@ -168,6 +170,7 @@ public sealed class WhatALaunchOwesTests
         done.Ran.ShouldBe(
             [
                 "the jobs a restart found running",
+                "the meetings somebody deleted",
                 "the meetings nobody recorded",
                 "the renders nobody asked for",
             ]);
@@ -189,6 +192,32 @@ public sealed class WhatALaunchOwesTests
         {
             CorpusFiles.Locate(corpus.Root, artifact.RelativePath).Exists.ShouldBeTrue();
         }
+    }
+
+    /// <summary>
+    /// A meeting a crash left on its way out is finished at launch, and before the sweep and the
+    /// renders read the meetings. Goes red with the chore taken out of the list.
+    /// </summary>
+    [Fact]
+    public void A_launch_finishes_a_deletion_a_crash_left()
+    {
+        using var corpus = new TemporaryCorpus();
+        Guid meeting;
+
+        using (var context = corpus.OpenMigrated())
+        {
+            meeting = RecordedMeetings.Recorded(context, SourceProfile.Multichannel, When);
+            context.Meetings.Where(row => row.Id == meeting).ExecuteUpdate(set => set
+                .SetProperty(row => row.LifecycleState, LifecycleState.Deleting)
+                .SetProperty(row => row.DeletedAt, (UtcTimestamp?)When));
+        }
+
+        var done = WhatALaunchOwes.RunIn(corpus.Root);
+
+        done.Ran.ShouldContain("the meetings somebody deleted");
+        done.Left.ShouldBeEmpty();
+        using var reopened = corpus.Open();
+        reopened.Meetings.Any(row => row.Id == meeting).ShouldBeFalse();
     }
 
     /// <summary>

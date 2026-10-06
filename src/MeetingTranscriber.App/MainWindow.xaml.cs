@@ -285,6 +285,14 @@ public sealed partial class MainWindow : Window
 
     private RecorderChoices _chosen = RecorderChoices.Nothing;
 
+    /// <summary>
+    /// Where the microphone and what channel 0 follows are kept between launches (ISC-220.3).
+    /// Written only when a person chooses, never when a default or a dropped choice fills a picker.
+    /// </summary>
+    private readonly SourcesChosenLastTime _sourcesKept = SourcesChosenLastTime.OfThisUser();
+
+    private bool _toldTheSourcesWereNotKept;
+
     public MainWindow(UiLanguage language, CorpusFolder corpus)
     {
         ArgumentNullException.ThrowIfNull(corpus);
@@ -359,6 +367,10 @@ public sealed partial class MainWindow : Window
         var microphones = Ask(AudioDevices.Microphones, UiTexts.WindowsDidNotSayWhatMicrophonesThereAre);
         _microphones = [.. microphones ?? []];
         ReadThePrograms();
+
+        // Before the pickers are drawn, which find the chosen entry by id and by whole equality.
+        _chosen = RecorderChoices.AsLastChosen(_sourcesKept.Read(), _microphones, _offered)
+            .WithTheDefaults(_microphones);
         OfferTheLastLanguageAgain();
 
         // A report line and not the status one. The status says what the screen is doing and is
@@ -1672,6 +1684,7 @@ public sealed partial class MainWindow : Window
         if (screen.State == RecorderState.Choosing)
         {
             _chosen = _chosen with { Microphone = _microphones[chosen] };
+            KeepTheMicrophone();
             Refresh();
         }
         else if (screen.Allows(RecorderPress.ChangeTheMicrophone))
@@ -1699,6 +1712,7 @@ public sealed partial class MainWindow : Window
         if (screen.State == RecorderState.Choosing)
         {
             _chosen = _chosen with { Source = _sources[chosen] };
+            KeepTheSource();
             Refresh();
         }
         else if (screen.Allows(RecorderPress.ChangeTheSource))
@@ -1739,7 +1753,7 @@ public sealed partial class MainWindow : Window
         {
             ReadThePrograms();
 
-            var chosen = _chosen.AsTheSourcesAreNow(_sources);
+            var chosen = _chosen.AsTheSourcesAreNow(_sources).WithTheDefaults(_microphones);
             var dropped = chosen != _chosen;
             _chosen = chosen;
 
@@ -1870,7 +1884,7 @@ public sealed partial class MainWindow : Window
 
         var chosen = _chosen.AsTheMicrophonesAreNow(_microphones);
         var gone = _chosen.Microphone is not null && chosen.Microphone is null;
-        _chosen = chosen;
+        _chosen = chosen.WithTheDefaults(_microphones);
 
         if (gone)
         {
@@ -2375,7 +2389,7 @@ public sealed partial class MainWindow : Window
                 is var still && still != _chosen)
             {
                 ReadThePrograms();
-                _chosen = still;
+                _chosen = still.WithTheDefaults(_microphones);
                 FillThePickers();
                 Say(UiTexts.ThatProgramIsNoLongerRunning);
                 Refresh();
@@ -2598,14 +2612,14 @@ public sealed partial class MainWindow : Window
             Meetings.BeingSavedNow(null);
 
             // What the next meeting records is offered as it was for this one (ISC-220): what will
-            // be spoken stays as it was said, the microphone is a device and stays chosen, and
-            // what channel 0 followed stays chosen when that program can still be followed — a
-            // process id is checked against what the machine plays now, and one that went with the
-            // meeting is dropped rather than carried into the next.
+            // be spoken stays as it was said, the microphone and channel 0 stay as chosen, or fall
+            // to the defaults — Windows' microphone and the whole machine — when what was chosen
+            // is gone. A process id is checked against what the machine plays now, and one that
+            // went with the meeting is dropped rather than carried into the next.
             _changingTheMicrophone = false;
             _openingAnotherProgram = false;
             ReadThePrograms();
-            _chosen = _chosen.AsTheSourcesAreNow(_sources);
+            _chosen = _chosen.AsTheSourcesAreNow(_sources).WithTheDefaults(_microphones);
 
             if (!_closed)
             {
@@ -2655,6 +2669,7 @@ public sealed partial class MainWindow : Window
             // notice's own gate all read one answer. The press is not on offer again for a program
             // channel 0 is later moved onto: that one has to be found silent in its own right.
             _chosen = _chosen with { Source = RecorderSource.TheWholeMachine };
+            KeepTheSource();
             _nothingCame = false;
             _wentAway = false;
         }
@@ -2777,6 +2792,7 @@ public sealed partial class MainWindow : Window
             });
 
             _chosen = _chosen with { Source = source };
+            KeepTheSource();
             _nothingCame = false;
             _wentAway = false;
         }
@@ -2836,6 +2852,7 @@ public sealed partial class MainWindow : Window
             await Task.Run(() => recording.RecordFrom(microphone));
 
             _chosen = _chosen with { Microphone = microphone };
+            KeepTheMicrophone();
         }
         catch (Exception refused) when (ScreenFailures.Reportable(refused))
         {
@@ -3253,6 +3270,30 @@ public sealed partial class MainWindow : Window
     /// artifact be dated to whenever they liked.
     /// </summary>
     private static UtcTimestamp Now() => UtcTimestamp.From(TimeProvider.System.GetUtcNow());
+
+    /// <summary>
+    /// Writes the one thing somebody chose, so the next launch offers it again. A write that fails is said
+    /// once per session and stops nothing: the choice holds for this one either way.
+    /// </summary>
+    private void KeepTheMicrophone() => Keep(() => _sourcesKept.KeepTheMicrophone(_chosen.Microphone!));
+
+    private void KeepTheSource() => Keep(() => _sourcesKept.KeepTheSource(_chosen.Source!));
+
+    private void Keep(Action write)
+    {
+        try
+        {
+            write();
+        }
+        catch (Exception unwritten) when (unwritten is IOException or UnauthorizedAccessException)
+        {
+            if (!_toldTheSourcesWereNotKept)
+            {
+                _toldTheSourcesWereNotKept = true;
+                Say(UiTexts.TheSourcesWereNotKept);
+            }
+        }
+    }
 
     private void Say(UiText text, params object?[] values)
     {

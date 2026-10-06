@@ -725,7 +725,9 @@ public sealed class CorpusDbContext(DbContextOptions<CorpusDbContext> options) :
             auditEvent.HasKey(entity => entity.Id);
             auditEvent.Property(entity => entity.Id).ValueGeneratedOnAdd();
             auditEvent.HasIndex(entity => entity.OccurredAt);
-            // An audit trail that disappears with what it audited is not an audit trail.
+            // The trail outlives a meeting the application takes away on its own; a meeting a
+            // person deletes takes its trail with it, and `MeetingRemoval` deletes those rows
+            // itself (ISC-229.3), because this relationship only clears the column.
             auditEvent.HasOne<Meeting>().WithMany().HasForeignKey(entity => entity.MeetingId)
                 .OnDelete(DeleteBehavior.SetNull);
         });

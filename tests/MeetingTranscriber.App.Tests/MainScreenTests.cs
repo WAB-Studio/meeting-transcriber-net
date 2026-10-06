@@ -279,6 +279,34 @@ public partial class MainScreenTests
         Method("private bool SomebodyIsUnnamedOn(").ShouldContain("!voice.SettledByTheRecording");
     }
 
+    /// <summary>
+    /// ISC-220.3: every place a person chooses the microphone or what channel 0 follows writes it
+    /// down, so the next launch offers it again. A move made during a meeting is a choice too.
+    /// </summary>
+    [Theory]
+    [InlineData("private void OnMicrophoneChosen(", "KeepTheMicrophone()")]
+    [InlineData("private void OnSourceChosen(", "KeepTheSource()")]
+    [InlineData("private async void ChangeTheSourceTo(", "KeepTheSource()")]
+    [InlineData("private async void ChangeTheMicrophoneTo(", "KeepTheMicrophone()")]
+    [InlineData("private async void OnRecordTheWholeMachine(", "KeepTheSource()")]
+    public void A_choice_somebody_makes_is_kept_where_it_is_made(string method, string keeps) =>
+        Method(method).ShouldContain(keeps, customMessage: $"{method} no longer keeps what was chosen.");
+
+    /// <summary>
+    /// ISC-220.4: a choice the machine stopped offering falls to the defaults and not to nothing,
+    /// wherever it is dropped, and a default is never written down as if somebody had chosen it.
+    /// </summary>
+    [Theory]
+    [InlineData("private void LookAtTheMicrophonesAgain(")]
+    [InlineData("private void OnSourcesOpened(")]
+    [InlineData("private async void OnRecord(")]
+    [InlineData("private async void OnStop(")]
+    public void A_dropped_choice_falls_to_the_defaults(string method)
+    {
+        Method(method).ShouldContain(".WithTheDefaults(", customMessage: $"{method} drops a choice to nothing.");
+        Method(method).ShouldNotContain("KeepThe");
+    }
+
     private static string Read(string file) => File.ReadAllText(AppSources.At(file).FullName);
 
     /// <summary>The code of the one method that opens on <paramref name="opening"/>, comments left out.</summary>

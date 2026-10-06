@@ -304,6 +304,107 @@ public class RecorderScreenTests
         Screen(RecorderState.Choosing, left).Allows(RecorderPress.Start).ShouldBeFalse();
     }
 
+    private static readonly AudioDevice AnotherMicrophone = new("{another}", "Another", IsDefault: false);
+
+    private static OfferedProgram Offered(int id, string name) => new(new AudioProcess(id, name, StartedBy: id), name);
+
+    /// <summary>ISC-220.4: with nothing kept the whole machine and Windows' microphone are offered.</summary>
+    [Fact]
+    public void With_nothing_kept_the_whole_machine_and_the_default_microphone_are_offered()
+    {
+        var chosen = RecorderChoices.AsLastChosen(null, [AnotherMicrophone, AMicrophone], [])
+            .WithTheDefaults([AnotherMicrophone, AMicrophone]);
+
+        chosen.Source.ShouldBe(RecorderSource.TheWholeMachine);
+        chosen.Microphone.ShouldBe(AMicrophone);
+    }
+
+    [Fact]
+    public void A_kept_microphone_is_offered_while_it_is_on_the_machine()
+    {
+        var chosen = RecorderChoices.AsLastChosen(
+            new LastSources("{ANOTHER}", TheWholeMachine: true, ProgramName: null),
+            [AMicrophone, AnotherMicrophone],
+            []);
+
+        chosen.Microphone.ShouldBe(AnotherMicrophone);
+    }
+
+    [Fact]
+    public void A_kept_microphone_that_is_gone_falls_to_the_default()
+    {
+        var chosen = RecorderChoices.AsLastChosen(
+                new LastSources("{unplugged}", TheWholeMachine: true, ProgramName: null), [AMicrophone], [])
+            .WithTheDefaults([AMicrophone]);
+
+        chosen.Microphone.ShouldBe(AMicrophone);
+    }
+
+    /// <summary>ISC-220.3: a program comes back while exactly one offered entry carries its name.</summary>
+    [Fact]
+    public void A_kept_program_is_offered_when_exactly_one_entry_carries_its_name()
+    {
+        var program = Offered(7, "Teams.exe");
+
+        var chosen = RecorderChoices.AsLastChosen(
+            new LastSources(null, TheWholeMachine: false, ProgramName: "teams.EXE"),
+            [],
+            [program, Offered(8, "chrome.exe")]);
+
+        chosen.Source.ShouldBe(RecorderSource.Following(program.Process));
+    }
+
+    [Fact]
+    public void A_kept_program_two_entries_carry_falls_to_the_whole_machine()
+    {
+        var chosen = RecorderChoices.AsLastChosen(
+                new LastSources(null, TheWholeMachine: false, ProgramName: "chrome.exe"),
+                [],
+                [Offered(7, "chrome.exe"), Offered(8, "chrome.exe")])
+            .WithTheDefaults([]);
+
+        chosen.Source.ShouldBe(RecorderSource.TheWholeMachine);
+    }
+
+    [Fact]
+    public void A_kept_program_that_is_not_running_falls_to_the_whole_machine()
+    {
+        var chosen = RecorderChoices.AsLastChosen(
+                new LastSources(null, TheWholeMachine: false, ProgramName: "gone.exe"), [], [Offered(8, "chrome.exe")])
+            .WithTheDefaults([]);
+
+        chosen.Source.ShouldBe(RecorderSource.TheWholeMachine);
+    }
+
+    [Fact]
+    public void The_defaults_never_answer_what_will_be_spoken()
+    {
+        RecorderChoices.Nothing.WithTheDefaults([AMicrophone]).Spoken.ShouldBeNull();
+        (Everything with { Spoken = "en" }).WithTheDefaults([AMicrophone]).Spoken.ShouldBe("en");
+    }
+
+    /// <summary>ISC-158.5's no-microphone half: a machine with none leaves that question waiting.</summary>
+    [Fact]
+    public void A_machine_with_no_microphone_leaves_that_question_waiting()
+    {
+        var chosen = RecorderChoices.Nothing.WithTheDefaults([]);
+
+        chosen.Microphone.ShouldBeNull();
+        chosen.Source.ShouldBe(RecorderSource.TheWholeMachine);
+        Screen(RecorderState.Choosing, chosen with { Spoken = "es" }).Unanswered
+            .ShouldBe([RecorderQuestion.Microphone]);
+    }
+
+    /// <summary>
+    /// A default only fills what nobody answered: what somebody chose stays, whatever Windows
+    /// calls its default now.
+    /// </summary>
+    [Fact]
+    public void A_choice_already_made_is_not_replaced_by_a_default()
+    {
+        Everything.WithTheDefaults([AnotherMicrophone, AMicrophone]).ShouldBe(Everything);
+    }
+
     [Fact]
     public void A_program_still_playing_stays_chosen()
     {

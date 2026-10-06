@@ -76,6 +76,23 @@
 
             <Style x:Key="Data" TargetType="TextBlock" BasedOn="{StaticResource DataText}" />
 
+            <!-- What a corrected word was, in a small flyout at the word: on paper with the rule round
+                 it and the corner a card has, so it reads as part of the page and not as the platform's
+                 own menu. -->
+            <Style x:Key="TheCorrectionFlyout" TargetType="FlyoutPresenter">
+                <Setter Property="Background" Value="{ThemeResource PaperBrush}" />
+                <Setter Property="BorderBrush" Value="{ThemeResource LineBrush}" />
+                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="CornerRadius" Value="{StaticResource CardCorner}" />
+                <Setter Property="Padding" Value="12" />
+            </Style>
+
+            <Style x:Key="TheCorrectionLabel" TargetType="TextBlock" BasedOn="{StaticResource DataText}">
+                <Setter Property="Foreground" Value="{ThemeResource SecondaryTextBrush}" />
+            </Style>
+
+            <Style x:Key="TheCorrectionWords" TargetType="TextBlock" BasedOn="{StaticResource TranscriptText}" />
+
             <!-- The meeting's name as text, at the sub-screen rank; secondary ink when nobody named
                  it. Two styles and not a colour set in code, so the code-behind chooses a style
                  and never a colour. -->
@@ -108,6 +125,12 @@
                  rank. *Ignorar* and *Renombrar* are the same press on every screen and only the
                  word changes; declared here because `Chrome()` reads this screen's resources. -->
             <Style x:Key="TheNeutralOne" TargetType="Button" BasedOn="{StaticResource RowButtonAtTheMargin}" />
+
+            <!-- Putting the meeting away loses nothing, so it is the neutral answer; the three
+                 deletes take the one press Olivo has for something lost. -->
+            <Style x:Key="PutAway" TargetType="Button" BasedOn="{StaticResource RowButtonAtTheMargin}" />
+
+            <Style x:Key="ItLosesSomething" TargetType="Button" BasedOn="{StaticResource RowButtonThatLosesSomething}" />
 
             <!-- The small *Corregir* that stands at the end of words somebody selected. The pill the
                  application already has, so a press that opens the corrections screen is shaped
@@ -420,12 +443,51 @@
                             Style="{StaticResource DataText}"
                             Text="{x:Bind In(loc:UiTexts.WordsThatComeOutWrongHere)}" />
 
+                        <StackPanel x:Name="TheCorrectionsHere" Spacing="4" />
+
                         <Button
                             x:Name="CorrectWordsButton"
                             HorizontalAlignment="Right"
                             Style="{StaticResource TakeTheStage}"
                             Click="OnCorrectWords"
                             Content="{x:Bind In(loc:UiTexts.CorrectWords)}" />
+                    </StackPanel>
+                </Border>
+
+                <!-- What a person can do to the meeting itself: put it away, or delete its audio, its
+                     transcript or all of it. Each delete is drawn only while the corpus would take
+                     it, which is read with the meeting, and each asks first. A column of presses and
+                     not a row: a row of four would not fit the column, and a collapsed press in a
+                     wrapping row still leaves its gap. The labels are set in code because *Archivar*
+                     becomes *Desarchivar* with the meeting's own state. -->
+                <Border x:Name="TheMeetingItself" Style="{StaticResource ReadingCard}" Visibility="Collapsed">
+                    <StackPanel Spacing="8">
+                        <Button
+                            x:Name="ArchiveButton"
+                            HorizontalAlignment="Left"
+                            Style="{StaticResource PutAway}"
+                            Click="OnArchive" />
+
+                        <Button
+                            x:Name="DeleteAudioButton"
+                            HorizontalAlignment="Left"
+                            Style="{StaticResource ItLosesSomething}"
+                            Click="OnDeleteAudio"
+                            Visibility="Collapsed" />
+
+                        <Button
+                            x:Name="DeleteTranscriptButton"
+                            HorizontalAlignment="Left"
+                            Style="{StaticResource ItLosesSomething}"
+                            Click="OnDeleteTranscript"
+                            Visibility="Collapsed" />
+
+                        <Button
+                            x:Name="DeleteMeetingButton"
+                            HorizontalAlignment="Left"
+                            Style="{StaticResource ItLosesSomething}"
+                            Click="OnDeleteMeeting"
+                            Visibility="Collapsed" />
                     </StackPanel>
                 </Border>
             </StackPanel>
@@ -503,6 +565,8 @@
                 x:Name="TheVolume"
                 Grid.Column="4"
                 Orientation="Horizontal"
+                Spacing="8"
+                Background="{ThemeResource PaperBrush}"
                 VerticalAlignment="Center"
                 PointerEntered="OnVolumeAreaEntered"
                 PointerExited="OnVolumeAreaExited">

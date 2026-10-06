@@ -212,7 +212,27 @@ public static class CorpusSearch
     /// </remarks>
     private static string Widened(CorpusDbContext context, string query)
     {
-        var term = query.Trim();
+        var wrongs = WrongSpellingsOf(context, query);
+
+        return wrongs.Count == 0
+            ? query
+            : $"({query}) OR {string.Join(" OR ", wrongs.Select(AsAPhrase))}";
+    }
+
+    /// <summary>
+    /// Every way a correction says <paramref name="term"/> got written wrong, whatever scope each
+    /// was written under: the one lookup <see cref="Widened"/> and <c>MeetingSearch</c> both ask.
+    /// </summary>
+    /// <remarks>
+    /// The term is trimmed and has one pair of surrounding double quotes taken off, and is matched
+    /// against each <c>CorrectText</c> ordinal and case-blind. Empty when no correction names it.
+    /// </remarks>
+    internal static IReadOnlyList<string> WrongSpellingsOf(CorpusDbContext context, string term)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        ArgumentNullException.ThrowIfNull(term);
+
+        term = term.Trim();
         if (term.Length >= 2 && term[0] is '"' && term[^1] is '"' && !term[1..^1].Contains('"', StringComparison.Ordinal))
         {
             term = term[1..^1].Trim();
@@ -220,10 +240,10 @@ public static class CorpusSearch
 
         if (term.Length == 0)
         {
-            return query;
+            return [];
         }
 
-        var wrongs = context.TerminologyCorrections
+        return context.TerminologyCorrections
             .AsNoTracking()
             .Select(fix => new { fix.CorrectText, fix.WrongText })
             .ToList()
@@ -232,11 +252,11 @@ public static class CorpusSearch
             .Where(wrong => wrong.Length > 0)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
-
-        return wrongs.Count == 0
-            ? query
-            : $"({query}) OR {string.Join(" OR ", wrongs.Select(wrong => $"\"{wrong.Replace("\"", "\"\"", StringComparison.Ordinal)}\""))}";
     }
+
+    /// <summary>One wrong spelling as an FTS5 phrase, with its own quotes doubled.</summary>
+    internal static string AsAPhrase(string text) =>
+        $"\"{text.Replace("\"", "\"\"", StringComparison.Ordinal)}\"";
 
     /// <summary>
     /// Whether SQLite is refusing the query's own syntax rather than the corpus underneath it.
@@ -378,6 +398,185 @@ public static class CorpusSearch
         """;
 
     /// <summary>
+    /// The nine branches joined, each selecting the same nine columns, and nothing ranked or
+    /// bounded: what <see cref="Sql"/> and <c>MeetingSearch</c> both build on.
+    /// </summary>
+    /// <param name="snippets">
+    /// Whether each branch asks the index for its excerpt. A caller that wants meetings and not
+    /// places leaves it off, and the column is an empty string, because cutting an excerpt for every
+    /// matching turn is most of what a search over a common word costs.
+    /// </param>
+    /// <remarks>
+    /// A method and not a field, for the reason <see cref="TheRunThatCounts"/> gives: it is called
+    /// after the type is initialised, so the static <c>*Source</c> fields it interpolates are always
+    /// set, whatever order they are declared in. <see cref="Sql"/> still has to stay below them.
+    /// </remarks>
+    internal static string Branches(bool snippets) => $"""
+            SELECT meeting.id AS meeting_id,
+                   meeting.started_at AS started_at,
+                   meeting.title AS title,
+                   '{TurnSource}' AS source,
+                   {Snippet(snippets, "utterances_fts", 0)} AS snippet,
+                   turn.ordinal AS ordinal,
+                   turn.start_ms AS start_ms,
+                   turn.end_ms AS end_ms,
+                   bm25(utterances_fts) AS score
+            FROM utterances_fts
+            JOIN utterances AS turn ON turn.rowid = utterances_fts.rowid
+            JOIN meetings AS meeting ON meeting.id = turn.meeting_id
+            WHERE utterances_fts MATCH @query AND meeting.lifecycle_state = @active
+
+            UNION ALL
+
+            SELECT meeting.id,
+                   meeting.started_at,
+                   meeting.title,
+                   '{SummarySource}',
+                   {Snippet(snippets, "summaries_fts", -1)},
+                   NULL,
+                   NULL,
+                   NULL,
+                   bm25(summaries_fts)
+            FROM summaries_fts
+            JOIN summaries AS summary ON summary.rowid = summaries_fts.rowid
+            JOIN meetings AS meeting ON meeting.id = summary.meeting_id
+            WHERE summaries_fts MATCH @query
+              AND meeting.lifecycle_state = @active
+              AND summary.extraction_run_id = {TheRunThatCounts("meeting.id")}
+
+            UNION ALL
+
+            SELECT meeting.id,
+                   meeting.started_at,
+                   meeting.title,
+                   '{MeetingSource}',
+                   {Snippet(snippets, "meetings_fts", -1)},
+                   NULL,
+                   NULL,
+                   NULL,
+                   bm25(meetings_fts)
+            FROM meetings_fts
+            JOIN meetings AS meeting ON meeting.rowid = meetings_fts.rowid
+            WHERE meetings_fts MATCH @query AND meeting.lifecycle_state = @active
+
+            UNION ALL
+
+            SELECT DISTINCT
+                   meeting.id,
+                   meeting.started_at,
+                   meeting.title,
+                   '{NodeSource}',
+                   {Snippet(snippets, "nodes_fts", 0)},
+                   NULL,
+                   NULL,
+                   NULL,
+                   bm25(nodes_fts)
+            FROM nodes_fts
+            JOIN nodes AS found ON found.rowid = nodes_fts.rowid
+            JOIN nodes AS under ON {Underneath("found.id")}
+            JOIN meeting_nodes AS filed ON filed.node_id = under.id
+            JOIN meetings AS meeting ON meeting.id = filed.meeting_id
+            WHERE nodes_fts MATCH @query AND meeting.lifecycle_state = @active
+
+            UNION ALL
+
+            SELECT DISTINCT
+                   meeting.id,
+                   meeting.started_at,
+                   meeting.title,
+                   '{PersonSource}',
+                   {Snippet(snippets, "people_fts", 0)},
+                   NULL,
+                   NULL,
+                   NULL,
+                   bm25(people_fts)
+            FROM people_fts
+            JOIN people AS somebody ON somebody.rowid = people_fts.rowid
+            JOIN meeting_people AS named ON named.person_id = somebody.id
+            JOIN meetings AS meeting ON meeting.id = named.meeting_id
+            WHERE people_fts MATCH @query AND meeting.lifecycle_state = @active
+
+            UNION ALL
+
+            SELECT DISTINCT
+                   meeting.id,
+                   meeting.started_at,
+                   meeting.title,
+                   '{VoiceSource}',
+                   {Snippet(snippets, "people_fts", 0)},
+                   NULL,
+                   NULL,
+                   NULL,
+                   bm25(people_fts)
+            FROM people_fts
+            JOIN people AS somebody ON somebody.rowid = people_fts.rowid
+            JOIN speaker_assignments AS voice ON voice.person_id = somebody.id
+            JOIN meetings AS meeting ON meeting.id = voice.meeting_id
+            WHERE people_fts MATCH @query
+              AND meeting.lifecycle_state = @active
+              AND EXISTS (SELECT 1 FROM utterances AS said
+                           WHERE said.meeting_id = voice.meeting_id
+                             AND said.speaker_label = voice.speaker_label)
+
+            UNION ALL
+
+            SELECT meeting.id,
+                   meeting.started_at,
+                   meeting.title,
+                   '{DecisionSource}',
+                   {Snippet(snippets, "decisions_fts", 0)},
+                   settled.utterance_ordinal,
+                   settled.start_ms,
+                   settled.end_ms,
+                   bm25(decisions_fts)
+            FROM decisions_fts
+            JOIN decisions AS settled ON settled.rowid = decisions_fts.rowid
+            JOIN meetings AS meeting ON meeting.id = settled.meeting_id
+            WHERE decisions_fts MATCH @query
+              AND meeting.lifecycle_state = @active
+              AND settled.extraction_run_id = {TheRunThatCounts("meeting.id")}
+
+            UNION ALL
+
+            SELECT meeting.id,
+                   meeting.started_at,
+                   meeting.title,
+                   '{ActionSource}',
+                   {Snippet(snippets, "action_items_fts", 0)},
+                   todo.utterance_ordinal,
+                   todo.start_ms,
+                   todo.end_ms,
+                   bm25(action_items_fts)
+            FROM action_items_fts
+            JOIN action_items AS todo ON todo.rowid = action_items_fts.rowid
+            JOIN meetings AS meeting ON meeting.id = todo.meeting_id
+            WHERE action_items_fts MATCH @query
+              AND meeting.lifecycle_state = @active
+              AND todo.extraction_run_id = {TheRunThatCounts("meeting.id")}
+
+            UNION ALL
+
+            SELECT meeting.id,
+                   meeting.started_at,
+                   meeting.title,
+                   '{QuestionSource}',
+                   {Snippet(snippets, "open_questions_fts", 0)},
+                   asked.utterance_ordinal,
+                   asked.start_ms,
+                   asked.end_ms,
+                   bm25(open_questions_fts)
+            FROM open_questions_fts
+            JOIN open_questions AS asked ON asked.rowid = open_questions_fts.rowid
+            JOIN meetings AS meeting ON meeting.id = asked.meeting_id
+            WHERE open_questions_fts MATCH @query
+              AND meeting.lifecycle_state = @active
+              AND asked.extraction_run_id = {TheRunThatCounts("meeting.id")}
+        """;
+
+    private static string Snippet(bool wanted, string index, int column) =>
+        wanted ? $"snippet({index}, {column}, '', '', '…', {SnippetTokens})" : "''";
+
+    /// <summary>
     /// Every branch and the ordering. Each joins its index back to the table it indexes and then to
     /// the meeting, so what comes back is the row as it is now rather than whatever the index
     /// happened to keep — the index holds no copy of the text, and this is where that shows.
@@ -462,165 +661,7 @@ public static class CorpusSearch
         SELECT *, ROW_NUMBER() OVER (
                       PARTITION BY source ORDER BY score, started_at DESC, ordinal, meeting_id, snippet) AS place
         FROM (
-            SELECT meeting.id AS meeting_id,
-                   meeting.started_at AS started_at,
-                   meeting.title AS title,
-                   '{TurnSource}' AS source,
-                   snippet(utterances_fts, 0, '', '', '…', {SnippetTokens}) AS snippet,
-                   turn.ordinal AS ordinal,
-                   turn.start_ms AS start_ms,
-                   turn.end_ms AS end_ms,
-                   bm25(utterances_fts) AS score
-            FROM utterances_fts
-            JOIN utterances AS turn ON turn.rowid = utterances_fts.rowid
-            JOIN meetings AS meeting ON meeting.id = turn.meeting_id
-            WHERE utterances_fts MATCH @query AND meeting.lifecycle_state = @active
-
-            UNION ALL
-
-            SELECT meeting.id,
-                   meeting.started_at,
-                   meeting.title,
-                   '{SummarySource}',
-                   snippet(summaries_fts, -1, '', '', '…', {SnippetTokens}),
-                   NULL,
-                   NULL,
-                   NULL,
-                   bm25(summaries_fts)
-            FROM summaries_fts
-            JOIN summaries AS summary ON summary.rowid = summaries_fts.rowid
-            JOIN meetings AS meeting ON meeting.id = summary.meeting_id
-            WHERE summaries_fts MATCH @query
-              AND meeting.lifecycle_state = @active
-              AND summary.extraction_run_id = {TheRunThatCounts("meeting.id")}
-
-            UNION ALL
-
-            SELECT meeting.id,
-                   meeting.started_at,
-                   meeting.title,
-                   '{MeetingSource}',
-                   snippet(meetings_fts, -1, '', '', '…', {SnippetTokens}),
-                   NULL,
-                   NULL,
-                   NULL,
-                   bm25(meetings_fts)
-            FROM meetings_fts
-            JOIN meetings AS meeting ON meeting.rowid = meetings_fts.rowid
-            WHERE meetings_fts MATCH @query AND meeting.lifecycle_state = @active
-
-            UNION ALL
-
-            SELECT DISTINCT
-                   meeting.id,
-                   meeting.started_at,
-                   meeting.title,
-                   '{NodeSource}',
-                   snippet(nodes_fts, 0, '', '', '…', {SnippetTokens}),
-                   NULL,
-                   NULL,
-                   NULL,
-                   bm25(nodes_fts)
-            FROM nodes_fts
-            JOIN nodes AS found ON found.rowid = nodes_fts.rowid
-            JOIN nodes AS under ON {Underneath("found.id")}
-            JOIN meeting_nodes AS filed ON filed.node_id = under.id
-            JOIN meetings AS meeting ON meeting.id = filed.meeting_id
-            WHERE nodes_fts MATCH @query AND meeting.lifecycle_state = @active
-
-            UNION ALL
-
-            SELECT DISTINCT
-                   meeting.id,
-                   meeting.started_at,
-                   meeting.title,
-                   '{PersonSource}',
-                   snippet(people_fts, 0, '', '', '…', {SnippetTokens}),
-                   NULL,
-                   NULL,
-                   NULL,
-                   bm25(people_fts)
-            FROM people_fts
-            JOIN people AS somebody ON somebody.rowid = people_fts.rowid
-            JOIN meeting_people AS named ON named.person_id = somebody.id
-            JOIN meetings AS meeting ON meeting.id = named.meeting_id
-            WHERE people_fts MATCH @query AND meeting.lifecycle_state = @active
-
-            UNION ALL
-
-            SELECT DISTINCT
-                   meeting.id,
-                   meeting.started_at,
-                   meeting.title,
-                   '{VoiceSource}',
-                   snippet(people_fts, 0, '', '', '…', {SnippetTokens}),
-                   NULL,
-                   NULL,
-                   NULL,
-                   bm25(people_fts)
-            FROM people_fts
-            JOIN people AS somebody ON somebody.rowid = people_fts.rowid
-            JOIN speaker_assignments AS voice ON voice.person_id = somebody.id
-            JOIN meetings AS meeting ON meeting.id = voice.meeting_id
-            WHERE people_fts MATCH @query
-              AND meeting.lifecycle_state = @active
-              AND EXISTS (SELECT 1 FROM utterances AS said
-                           WHERE said.meeting_id = voice.meeting_id
-                             AND said.speaker_label = voice.speaker_label)
-
-            UNION ALL
-
-            SELECT meeting.id,
-                   meeting.started_at,
-                   meeting.title,
-                   '{DecisionSource}',
-                   snippet(decisions_fts, 0, '', '', '…', {SnippetTokens}),
-                   settled.utterance_ordinal,
-                   settled.start_ms,
-                   settled.end_ms,
-                   bm25(decisions_fts)
-            FROM decisions_fts
-            JOIN decisions AS settled ON settled.rowid = decisions_fts.rowid
-            JOIN meetings AS meeting ON meeting.id = settled.meeting_id
-            WHERE decisions_fts MATCH @query
-              AND meeting.lifecycle_state = @active
-              AND settled.extraction_run_id = {TheRunThatCounts("meeting.id")}
-
-            UNION ALL
-
-            SELECT meeting.id,
-                   meeting.started_at,
-                   meeting.title,
-                   '{ActionSource}',
-                   snippet(action_items_fts, 0, '', '', '…', {SnippetTokens}),
-                   todo.utterance_ordinal,
-                   todo.start_ms,
-                   todo.end_ms,
-                   bm25(action_items_fts)
-            FROM action_items_fts
-            JOIN action_items AS todo ON todo.rowid = action_items_fts.rowid
-            JOIN meetings AS meeting ON meeting.id = todo.meeting_id
-            WHERE action_items_fts MATCH @query
-              AND meeting.lifecycle_state = @active
-              AND todo.extraction_run_id = {TheRunThatCounts("meeting.id")}
-
-            UNION ALL
-
-            SELECT meeting.id,
-                   meeting.started_at,
-                   meeting.title,
-                   '{QuestionSource}',
-                   snippet(open_questions_fts, 0, '', '', '…', {SnippetTokens}),
-                   asked.utterance_ordinal,
-                   asked.start_ms,
-                   asked.end_ms,
-                   bm25(open_questions_fts)
-            FROM open_questions_fts
-            JOIN open_questions AS asked ON asked.rowid = open_questions_fts.rowid
-            JOIN meetings AS meeting ON meeting.id = asked.meeting_id
-            WHERE open_questions_fts MATCH @query
-              AND meeting.lifecycle_state = @active
-              AND asked.extraction_run_id = {TheRunThatCounts("meeting.id")}
+            {Branches(true)}
         )
         )
         ORDER BY place, score, started_at DESC, source, ordinal, meeting_id, snippet

@@ -882,7 +882,7 @@ folder the meetings are kept in; the export; and Claude Code, with where it is, 
 *Funciona* included. *Después de grabar* decides what happens to a recording without being asked
 again: under *Transcribir y resumir* the summary is queued the moment the transcription is filed.
 The summariser's card says how it is paid — *Con tu plan de Claude*, because summaries run on the
-person's own plan and the card shows no figure — and holds its model, *Sonnet*, *Opus* or *Haiku*,
+person's own plan and the card shows no figure — and holds its model, *Sonnet*, *Opus*, *Haiku* or *Fable*,
 and its *Esfuerzo*, *Alto*, *Medio* or *Bajo*, each chosen once and read when a summary is sent.
 *Tú* holds the name and its *Guardar* and nothing else; the language the application is read in and
 the theme it is drawn in — *Sistema*, *Claro* or *Oscuro* — are the two pickers of *Aplicación*.
@@ -968,7 +968,11 @@ first screen of an application is not where somebody enumerates their jobs.
 
 **`MainAbierto`** · The main screen with the meetings drawer raised to the full height of the
 window. The same screen, not another one: the recording card is still above and slides out of the
-way. The list scrolls whole — no paging, and no search field until the index behind it exists.
+way. The list scrolls whole, with no paging. A magnifier beside the caret opens a search field in the
+header and raises the list: as somebody types, the list becomes the meetings that hold the words —
+first those filed under them or called them, then those whose summary says them, then those whose
+transcript does, then those with a word like the one typed — each with the word for where it matched.
+Escape, an empty field or the magnifier again gives the list back, where it was.
 
 **A meeting under way keeps a strip whenever the room below has the window** — the list raised into
 it, or a meeting being read in it — because what it is doing and the press that stops it are never

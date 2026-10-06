@@ -198,7 +198,7 @@ public class ReadingAMeetingTests
     {
         var screen = File.ReadAllText(AppSources.At(Screen).FullName);
 
-        screen.ShouldContain("MeetingRenderer.AsRead(context, meetingId)");
+        screen.ShouldContain("MeetingRenderer.AsReadMarked(context, meetingId)");
         screen.ShouldNotContain("EveryTurn");
 
         // The turns unfolded under a citation are the same corrected set, not a second read of the
@@ -207,6 +207,48 @@ public class ReadingAMeetingTests
 
         around.ShouldContain("_turns");
         around.ShouldNotContain("CorpusDatabase");
+    }
+
+    /// <summary>
+    /// The right column lists what corrected this transcript: the marks of its turns added up, never
+    /// the corrections that merely reach the meeting.
+    /// </summary>
+    [Fact]
+    public void The_words_card_lists_what_corrected_this_transcript()
+    {
+        var markup = File.ReadAllText(AppSources.At(Markup).FullName);
+        var screen = File.ReadAllText(AppSources.At(Screen).FullName);
+
+        Body(screen, "private void WordsSection(MeetingScreen screen)").ShouldContain("CorrectionMarks.Seen(");
+        screen.ShouldNotContain("CorrectionsReaching");
+        markup.ShouldMatch(@"x:Name=""WordsCard""[\s\S]*x:Name=""TheCorrectionsHere""[\s\S]*x:Name=""CorrectWordsButton""");
+    }
+
+    /// <summary>
+    /// A corrected word is a press inside the line's own text, in the transcript's ink and not the
+    /// accent, and pressing it names the two spellings. What it looks like drawn is the owner's walk.
+    /// </summary>
+    [Fact]
+    public void A_corrected_word_is_a_press_that_shows_before_and_after()
+    {
+        var markup = File.ReadAllText(AppSources.At(Markup).FullName);
+        var screen = File.ReadAllText(AppSources.At(Screen).FullName);
+
+        var words = Body(screen, "private void TheWordsOf(TextBlock said, TranscriptLine line)");
+        words.ShouldContain("new Hyperlink { UnderlineStyle = UnderlineStyle.Single, Foreground = TheInk() }");
+        words.ShouldContain("corrected.Click += (_, _) => ShowTheCorrection(said, corrected, mark);");
+        screen.ShouldContain("TheWordsOf(said, line);");
+        screen.ShouldContain("colours.TryGetValue(\"InkBrush\"");
+
+        var flyout = Body(screen, "private void ShowTheCorrection(TextBlock said, Hyperlink corrected, CorrectionMark mark)");
+        flyout.ShouldContain("corrected.ContentStart.GetCharacterRect(LogicalDirection.Forward)");
+        flyout.ShouldContain("FlyoutShowOptions");
+        Body(screen, "private StackPanel TheCorrection(CorrectionMark mark)").ShouldContain("UiTexts.TheWordBefore");
+        Body(screen, "private StackPanel TheCorrection(CorrectionMark mark)").ShouldContain("UiTexts.TheWordAfter");
+
+        // Still the one selectable block of words, so *Corregir* keeps working on it.
+        screen.ShouldContain("CorrectTheSelection.OfferOver(said,");
+        markup.ShouldContain("x:Key=\"TheCorrectionFlyout\"");
     }
 
     /// <summary>
@@ -490,6 +532,100 @@ public class ReadingAMeetingTests
         markup.ShouldContain("<FontIcon x:Name=\"VolumeGlyph\"");
         markup.ShouldContain("PointerEntered=\"OnVolumeAreaEntered\"");
         screen.ShouldMatch(@"OnVolumeAreaEntered\(.*?\)\s*\{[^}]*_pointerIsOverTheVolume = true;[^}]*ShowTheVolume\(\)");
-        screen.ShouldContain("VolumeSlider.Visibility = open ? Visibility.Visible : Visibility.Collapsed;");
+        screen.ShouldContain("open != ScreenMotion.IsShowing(VolumeSlider)");
+        screen.ShouldContain("ScreenMotion.Widen(VolumeSlider, open);");
+        screen.ShouldNotContain("VolumeSlider.Visibility =");
+    }
+
+    /// <summary>
+    /// A gap, hit-testable, so a pointer crossing from the speaker to the slider does not leave the
+    /// panel on the way (fb-130). Painted in the paper the player stands on and not as
+    /// <c>Transparent</c>, which a screen may not name (<c>OlivoTests</c>): the same look, and a
+    /// brush is what makes the gap hit-testable.
+    /// </summary>
+    [Fact]
+    public void The_slider_stands_apart_from_the_speaker()
+    {
+        var markup = File.ReadAllText(AppSources.At(Markup).FullName);
+
+        markup.ShouldMatch(@"x:Name=""TheVolume""[^>]*Spacing=""8""");
+        markup.ShouldMatch(@"x:Name=""TheVolume""[^>]*Background=""\{ThemeResource PaperBrush\}""");
+    }
+
+    /// <summary>
+    /// A delete asks first, in Olivo's own dialogue, and lets go of the recording before it asks
+    /// anything of the disk: the player holds <c>audio.wav</c> open, and Windows refuses a rename of
+    /// a file somebody has open.
+    /// </summary>
+    [Fact]
+    public void Every_delete_asks_first_and_lets_the_player_go()
+    {
+        var screen = File.ReadAllText(AppSources.At(Screen).FullName);
+
+        var delete = Body(screen, "private async void OnDelete(MeetingPart part)");
+        delete.ShouldContain("StopPlaying();");
+        delete.IndexOf("StopPlaying();", StringComparison.Ordinal)
+            .ShouldBeLessThan(delete.IndexOf("AskFirstAsync(", StringComparison.Ordinal));
+        delete.IndexOf("AskFirstAsync(", StringComparison.Ordinal)
+            .ShouldBeLessThan(delete.IndexOf("removal.Remove(", StringComparison.Ordinal));
+        delete.ShouldContain("await Task.Run(");
+
+        var asking = Body(screen, "private async Task<bool> AskFirstAsync(UiText title, UiText whatGoes)");
+        asking.ShouldContain("Application.Current.Resources[\"Notice\"]");
+        asking.ShouldContain("ShowAsync()");
+        asking.ShouldContain("UiTexts.Delete");
+        asking.ShouldContain("UiTexts.Cancel");
+    }
+
+    /// <summary>
+    /// A meeting that is gone, or put away, leaves the screen by closing it and then saying so, and
+    /// never through <c>GoBack</c>, which would write the typed title onto a row that is not there.
+    /// </summary>
+    [Fact]
+    public void Leaving_after_a_delete_closes_and_never_commits_the_name()
+    {
+        var screen = File.ReadAllText(AppSources.At(Screen).FullName);
+
+        foreach (var handler in new[]
+        {
+            Body(screen, "private async void OnDelete(MeetingPart part)"),
+            Body(screen, "private void OnArchive(object sender, RoutedEventArgs e)"),
+        })
+        {
+            handler.ShouldContain("Close();");
+            handler.IndexOf("Close();", StringComparison.Ordinal)
+                .ShouldBeLessThan(handler.IndexOf("Left?.Invoke(this, EventArgs.Empty);", StringComparison.Ordinal));
+            handler.ShouldNotContain("GoBack(");
+            handler.ShouldNotContain("CommitTheName(");
+        }
+    }
+
+    /// <summary>
+    /// A press the corpus would refuse is not drawn: what it would refuse is read with the meeting,
+    /// and each delete is visible only for nothing.
+    /// </summary>
+    [Fact]
+    public void A_press_the_corpus_would_refuse_is_not_drawn()
+    {
+        var screen = File.ReadAllText(AppSources.At(Screen).FullName);
+        var markup = File.ReadAllText(AppSources.At(Markup).FullName);
+
+        screen.ShouldContain("removal.WhyNot(meetingId, MeetingPart.Audio)");
+        screen.ShouldContain("removal.WhyNot(meetingId, MeetingPart.Transcript)");
+        screen.ShouldContain("removal.WhyNot(meetingId, MeetingPart.Whole)");
+
+        var section = Body(screen, "private void TheMeetingItselfSection()");
+        section.ShouldContain("Offer(DeleteAudioButton, may.Audio is null");
+        section.ShouldContain("Offer(DeleteTranscriptButton, may.Transcript is null");
+        section.ShouldContain("Offer(DeleteMeetingButton, may.Whole is null");
+        section.ShouldContain("UiTexts.Unarchive");
+        screen.ShouldContain("TheMeetingItselfSection();");
+
+        foreach (var name in new[] { "TheMeetingItself", "ArchiveButton", "DeleteAudioButton", "DeleteTranscriptButton", "DeleteMeetingButton" })
+        {
+            markup.ShouldContain($"x:Name=\"{name}\"");
+        }
+
+        markup.ShouldMatch(@"x:Name=""DeleteMeetingButton""[^>]*Style=""\{StaticResource ItLosesSomething\}""");
     }
 }

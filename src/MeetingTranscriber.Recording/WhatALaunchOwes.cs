@@ -1,3 +1,4 @@
+using MeetingTranscriber.Infrastructure.Meetings;
 using MeetingTranscriber.Processing.Jobs;
 using MeetingTranscriber.Processing.Rendering;
 
@@ -125,7 +126,7 @@ public static class WhatALaunchOwes
     /// </summary>
     /// <remarks>
     /// <para>
-    /// All three names are report strings and none reaches a screen, so they are written here
+    /// All four names are report strings and none reaches a screen, so they are written here
     /// rather than in the catalogue a person reads. If a launch report is ever said out loud, that
     /// is the decision <see cref="OwedRenders"/> and <see cref="MeetingsNobodyRecorded"/> already
     /// record as owed, and it needs words in the catalogue rather than these.
@@ -146,6 +147,16 @@ public static class WhatALaunchOwes
     /// fixes rather than a new defect.
     /// </para>
     /// <para>
+    /// <b>The meetings somebody deleted.</b> Second, after the restart's jobs and before the sweep and
+    /// the renders. A deletion a crash cut short leaves a meeting on its way out, a folder with
+    /// nobody's row or a file renamed aside, and every chore behind this one reads the meetings: the
+    /// sweep walks folders and the renders read rows and the files under them. Finishing the
+    /// deletions first means neither meets a meeting that is half gone. It is bounded by what a
+    /// crash left, which is nothing on almost every launch, so it costs the sweep nothing to wait.
+    /// <see cref="MeetingRemoval.FinishIn"/> says how it tells a deletion that committed from one
+    /// that did not.
+    /// </para>
+    /// <para>
     /// <b>The renders.</b> Here, and not on the meetings screen opening. The response arriving is
     /// what puts a meeting in this state, and launch is where the application learns of one that
     /// arrived while it was closed. <c>JobRunner</c> files what it sends through <c>MeetingIntake</c>,
@@ -160,6 +171,9 @@ public static class WhatALaunchOwes
         new LaunchChore(
             "the jobs a restart found running",
             root => JobsARestartFound.In(root).Left),
+        new LaunchChore(
+            "the meetings somebody deleted",
+            root => MeetingRemoval.FinishIn(root)),
         new LaunchChore(
             "the meetings nobody recorded",
             root => MeetingsNobodyRecorded.SweepIn(root).Left),
@@ -191,15 +205,15 @@ public static class WhatALaunchOwes
     /// <para>
     /// A chore that threw does not stop the ones behind it, and its message lands in
     /// <see cref="LaunchDone.Left"/> under its name instead. Said honestly: no chore in
-    /// <see cref="InOrder"/> can reach this <c>catch</c>, because all three absorb everything but
+    /// <see cref="InOrder"/> can reach this <c>catch</c>, because all four absorb everything but
     /// running out of memory past their argument checks — so what it is for is a defect in one of
-    /// them and, mostly, a fourth chore that does not exist yet and does not have to argue the
-    /// boundary for itself. That is inherited machinery, not a defence against anything the three
+    /// them and, mostly, a fifth chore that does not exist yet and does not have to argue the
+    /// boundary for itself. That is inherited machinery, not a defence against anything the four
     /// real chores do today.
     /// </para>
     /// <para>
     /// Running out of memory is the exception that leaves, which is the same closed exclusion all
-    /// three existing chores state for themselves: attempting the rest of a launch under the pressure
+    /// four existing chores state for themselves: attempting the rest of a launch under the pressure
     /// that just refused one is building the next attempt out of the same exhaustion. What that
     /// buys is precisely the chores behind it not being attempted — it is not a way of ending the
     /// application, because the one caller discards the task and nobody observes what escapes.

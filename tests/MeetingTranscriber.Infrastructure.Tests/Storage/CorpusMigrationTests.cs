@@ -125,6 +125,20 @@ public class CorpusMigrationTests
         tables.ShouldNotContain("__EFMigrationsHistory");
     }
 
+    /// <summary>
+    /// The view of the transcript index that search reads its words from. Not on the list above,
+    /// because it is a view of one of them and holds nothing of its own.
+    /// </summary>
+    [Fact]
+    public void The_transcript_terms_are_there()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+
+        Sql.Strings(context, "SELECT name FROM sqlite_master WHERE type = 'table';")
+            .ShouldContain("utterances_fts_terms");
+    }
+
     [Fact]
     public void Search_and_its_triggers_are_there_even_though_the_model_cannot_see_them()
     {

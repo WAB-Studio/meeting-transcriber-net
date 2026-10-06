@@ -136,6 +136,89 @@ public class TerminologyTests
         Terminology.Apply("sin nada que corregir", []).ShouldBe("sin nada que corregir");
     }
 
+    /// <summary>
+    /// Each mark is a span of the corrected text, so what it covers there is what the correction
+    /// wrote, and what it says was there before is what the stored turn held.
+    /// </summary>
+    [Fact]
+    public void Every_word_a_correction_changed_is_marked_where_it_stands()
+    {
+        var read = Terminology.ApplyMarked(
+            "hablamos de quati y de ml hoy",
+            [Correct("quati", "Coati"), Correct("ml", "machine learning")]);
+
+        read.Text.ShouldBe("hablamos de Coati y de machine learning hoy");
+        read.Marks.Count.ShouldBe(2);
+        read.Marks.ShouldAllBe(mark => read.Text.Substring(mark.Start, mark.Length) == mark.After);
+        read.Marks.Select(mark => mark.Before).ShouldBe(["quati", "ml"]);
+    }
+
+    /// <summary>
+    /// Longest first, so "coati" is replaced before "ml" and it is the replacement earlier in the
+    /// line, changing the length, that has to carry the mark it did not make.
+    /// </summary>
+    [Fact]
+    public void A_mark_moves_when_an_earlier_replacement_changes_the_length()
+    {
+        var read = Terminology.ApplyMarked(
+            "ml y coati",
+            [Correct("ml", "machine learning"), Correct("coati", "Coati")]);
+
+        read.Text.ShouldBe("machine learning y Coati");
+        var coati = read.Marks.Single(mark => mark.After == "Coati");
+        read.Text.Substring(coati.Start, coati.Length).ShouldBe("Coati");
+        read.Marks.Count.ShouldBe(2);
+    }
+
+    [Fact]
+    public void A_correction_inside_one_already_made_is_one_mark()
+    {
+        var read = Terminology.ApplyMarked(
+            "migramos a quati cloud",
+            [Correct("quati cloud", "Coati Cloud"), Correct("cloud", "Nube", TerminologyMatchMode.IgnoreCase)]);
+
+        read.Text.ShouldBe("migramos a Coati Nube");
+        var mark = read.Marks.ShouldHaveSingleItem();
+        mark.Before.ShouldBe("quati cloud");
+        read.Text.Substring(mark.Start, mark.Length).ShouldBe("Coati Nube");
+    }
+
+    [Fact]
+    public void A_correction_across_a_marks_edge_is_one_mark_over_both()
+    {
+        var read = Terminology.ApplyMarked(
+            "usamos quati cloud en casa",
+            [Correct("quati cloud", "Coati Cloud"), Correct("Cloud en", "Nube")]);
+
+        read.Text.ShouldBe("usamos Coati Nube casa");
+        var mark = read.Marks.ShouldHaveSingleItem();
+        mark.Before.ShouldBe("quati cloud en");
+        read.Text.Substring(mark.Start, mark.Length).ShouldBe("Coati Nube");
+    }
+
+    [Fact]
+    public void A_replacement_that_changes_nothing_leaves_no_mark()
+    {
+        Terminology.ApplyMarked("la sesión", [Correct("sesión", "sesión")]).Marks.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void Apply_reads_what_ApplyMarked_reads()
+    {
+        var corrections = new[]
+        {
+            Correct("quati", "Coati"),
+            Correct("quati cloud", "Coati Cloud"),
+            Correct("ml", "machine learning"),
+            Correct("cloud", "Nube", TerminologyMatchMode.IgnoreCase),
+        };
+
+        foreach (var text in new[] { "migramos a quati cloud con ml", "html y ml", "nada", "quati" })
+        {
+            Terminology.Apply(text, corrections).ShouldBe(Terminology.ApplyMarked(text, corrections).Text);
+        }
+    }
+
     private static TerminologyCorrection Correct(
         string wrong,
         string right,

@@ -90,6 +90,8 @@ public class UiTextsTests
         //
         // The pill that offers somebody already there is `{0} · {1}`: the person's name and the
         // organization are the corpus's and the separator is a mark and not a word.
+        //
+        // The summary models are the maker's names.
         string[] sameEitherWayOnPurpose =
         [
             nameof(UiTexts.EnglishName),
@@ -98,6 +100,10 @@ public class UiTextsTests
             nameof(UiTexts.No),
             nameof(UiTexts.SomebodyAndWhereTheyBelong),
             nameof(UiTexts.SpanishName),
+            nameof(UiTexts.SummaryModelFable),
+            nameof(UiTexts.SummaryModelHaiku),
+            nameof(UiTexts.SummaryModelOpus),
+            nameof(UiTexts.SummaryModelSonnet),
             nameof(UiTexts.TheApplicationsName),
             nameof(UiTexts.TheEngineThatSummarises),
             nameof(UiTexts.TheEngineThatTranscribes),

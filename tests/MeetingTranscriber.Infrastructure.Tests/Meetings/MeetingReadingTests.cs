@@ -6,6 +6,8 @@ using MeetingTranscriber.Domain.Time;
 using MeetingTranscriber.Infrastructure.Artifacts;
 using MeetingTranscriber.Infrastructure.Meetings;
 
+using Microsoft.EntityFrameworkCore;
+
 namespace MeetingTranscriber.Infrastructure.Tests.Meetings;
 
 /// <summary>
@@ -74,6 +76,27 @@ public class MeetingReadingTests
         // is, because a recording the corpus records and cannot find is a source gone.
         read.Screen.MayBePlayedBack.ShouldBeFalse();
         read.Screen.TheRecording.ShouldBe(RecordedAudio.NotWhereTheCorpusSaysItIs);
+        read.Audio.ShouldBeNull();
+    }
+
+    [Fact]
+    public void A_meeting_whose_audio_was_deleted_says_so()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meeting = MeetingRows.Recorded(context, Recorded, ["turn 0"]);
+        var asked = new MeetingReading(context, Clock);
+
+        // Nobody recorded any: the same absence on the disk, and not the same thing to say.
+        asked.Of(meeting).Screen.TheRecording.ShouldBe(RecordedAudio.NoneYet);
+
+        context.Meetings.Where(row => row.Id == meeting)
+            .ExecuteUpdate(set => set.SetProperty(row => row.AudioRemovedAt, (UtcTimestamp?)Recorded));
+
+        var read = asked.Of(meeting);
+
+        read.Screen.TheRecording.ShouldBe(RecordedAudio.Removed);
+        read.Screen.MayBePlayedBack.ShouldBeFalse();
         read.Audio.ShouldBeNull();
     }
 

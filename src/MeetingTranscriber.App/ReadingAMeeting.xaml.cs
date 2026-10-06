@@ -2,6 +2,7 @@ using MeetingTranscriber.Audio;
 using MeetingTranscriber.Domain.Jobs;
 using MeetingTranscriber.Domain.Knowledge;
 using MeetingTranscriber.Domain.Meetings;
+using MeetingTranscriber.Domain.Time;
 using MeetingTranscriber.Infrastructure.Meetings;
 using MeetingTranscriber.Infrastructure.Storage;
 using MeetingTranscriber.Presentation;
@@ -12,7 +13,9 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
+using Microsoft.UI.Xaml.Documents;
 using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Shapes;
 
 using Windows.System;
@@ -121,6 +124,16 @@ public sealed partial class ReadingAMeeting : UserControl
     private WhoIsWho? _voices;
 
     /// <summary>
+    /// What the corpus would refuse of each deletion, read with the meeting in the same context and
+    /// kept beside <see cref="_read"/>: a refusal is nothing, and a press is drawn only for nothing.
+    /// </summary>
+    private WhatMayGo? _removable;
+
+    /// <summary>The answer <see cref="MeetingRemoval.WhyNot"/> gave for each part of the meeting.</summary>
+    private sealed record WhatMayGo(
+        RemovalRefusal? Audio, RemovalRefusal? Transcript, RemovalRefusal? Whole);
+
+    /// <summary>
     /// The recording being played, held open for as long as this screen is showing the meeting it
     /// belongs to. Null when there is no audio, or when the machine would not play it.
     /// </summary>
@@ -143,12 +156,16 @@ public sealed partial class ReadingAMeeting : UserControl
     /// <summary>
     /// Every turn of the meeting as the rendered files say it, read with it, or nothing while there
     /// is no transcription. What the transcript's lines and the turns unfolded under a citation are
-    /// both made of, so the two cannot say different words.
+    /// both made of, so the two cannot say different words. Each carries where a correction changed
+    /// its words, which is what the list of corrections in the right column adds up.
     /// </summary>
-    private IReadOnlyList<Turn>? _turns;
+    private IReadOnlyList<MarkedTurn>? _turns;
 
-    /// <summary>One line of the transcript: who said it, the minute, and the words.</summary>
-    private sealed record TranscriptLine(string Who, Duration At, string Text);
+    /// <summary>
+    /// One line of the transcript: who said it, the minute, the words, and the spans of them that a
+    /// correction changed.
+    /// </summary>
+    private sealed record TranscriptLine(string Who, Duration At, string Text, IReadOnlyList<CorrectionMark> Marks);
 
     /// <summary>
     /// What a repeater builds each line with, handed the screen's own method: the line is built
@@ -312,6 +329,7 @@ public sealed partial class ReadingAMeeting : UserControl
         _read = null;
         _filing = null;
         _voices = null;
+        _removable = null;
         _turns = null;
         _status.Nothing();
 
@@ -339,12 +357,18 @@ public sealed partial class ReadingAMeeting : UserControl
                 _filing = new MeetingClassifying(context, TimeProvider.System).Filing(meetingId);
                 _voices = new MeetingVoices(context, TimeProvider.System).Heard(meetingId);
 
+                var removal = new MeetingRemoval(context, UtcTimestamp.From(DateTimeOffset.UtcNow));
+                _removable = new WhatMayGo(
+                    removal.WhyNot(meetingId, MeetingPart.Audio),
+                    removal.WhyNot(meetingId, MeetingPart.Transcript),
+                    removal.WhyNot(meetingId, MeetingPart.Whole));
+
                 // The corrected words and not the stored ones: what the rendered files carry, read
                 // now, so a correction made a moment ago is on this screen without waiting for the
                 // files to be written again. Only once there is a transcription to read.
                 if (_read.Screen.ThereIsATranscription)
                 {
-                    _turns = MeetingRenderer.AsRead(context, meetingId);
+                    _turns = MeetingRenderer.AsReadMarked(context, meetingId);
                 }
             }
             catch (MeetingStageException gone)
@@ -378,8 +402,10 @@ public sealed partial class ReadingAMeeting : UserControl
         _read = null;
         _filing = null;
         _voices = null;
+        _removable = null;
         _turns = null;
         _status.Nothing();
+        TheMeetingItself.Visibility = Visibility.Collapsed;
         _nameAsRead = string.Empty;
         NameBox.Text = string.Empty;
         TitleText.Text = string.Empty;
@@ -453,6 +479,7 @@ public sealed partial class ReadingAMeeting : UserControl
             ClassifyButton.IsEnabled = false;
             WhoSpokeCard.Visibility = Visibility.Collapsed;
             WordsCard.Visibility = Visibility.Collapsed;
+            TheMeetingItself.Visibility = Visibility.Collapsed;
 
             if (theRecordingToo)
             {
@@ -489,6 +516,7 @@ public sealed partial class ReadingAMeeting : UserControl
         WhatItWasAbout(read.Screen);
         WhoSpokeSection();
         WordsSection(read.Screen);
+        TheMeetingItselfSection();
 
         if (theRecordingToo)
         {
@@ -789,13 +817,73 @@ public sealed partial class ReadingAMeeting : UserControl
         }
     }
 
+    // The sign before how many times a correction landed: a multiplication sign, which is not a
+    // word a person reads in either language.
+    private const string Times = "×";
+
     /// <summary>
-    /// The way to correct the words that came out wrong. Collapsed until the meeting has a
-    /// transcription, for the reason <see cref="WhoSpokeSection"/> is: before that there are no
-    /// words to be wrong.
+    /// The way to correct the words that came out wrong, and what has been corrected in this
+    /// transcript. Collapsed until the meeting has a transcription, for the reason
+    /// <see cref="WhoSpokeSection"/> is: before that there are no words to be wrong.
     /// </summary>
-    private void WordsSection(MeetingScreen screen) =>
+    /// <remarks>
+    /// The list is the marks of every turn, added up (<see cref="CorrectionMarks.Seen"/>), so it is
+    /// what changed a word of this meeting and never a correction that merely reaches it. It is
+    /// built here in code: the arrow is a glyph and the count is a number, neither of which is a
+    /// word that needs a catalogue entry.
+    /// </remarks>
+    private void WordsSection(MeetingScreen screen)
+    {
         WordsCard.Visibility = screen.ThereIsATranscription ? Visibility.Visible : Visibility.Collapsed;
+
+        TheCorrectionsHere.Children.Clear();
+        foreach (var seen in CorrectionMarks.Seen(_turns ?? []))
+        {
+            var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
+            row.Children.Add(new TextBlock { Text = seen.Before, Style = Chrome("Said") });
+            row.Children.Add(new FontIcon
+            {
+                Glyph = "\uE72A",
+                FontSize = (double)Application.Current.Resources["BodySize"],
+                VerticalAlignment = VerticalAlignment.Center,
+            });
+            row.Children.Add(new TextBlock { Text = seen.After, Style = Chrome("Said") });
+
+            if (seen.Times > 1)
+            {
+                row.Children.Add(new TextBlock { Text = Times + seen.Times, Style = Chrome("Data") });
+            }
+
+            TheCorrectionsHere.Children.Add(row);
+        }
+    }
+
+    /// <summary>
+    /// What a person can do to the meeting itself. Each delete is drawn only while the corpus would
+    /// take it, so the screen never offers a press it would refuse; the refusal is read with the
+    /// meeting and asked again inside the write.
+    /// </summary>
+    private void TheMeetingItselfSection()
+    {
+        if (_read is not { } read || _removable is not { } may)
+        {
+            TheMeetingItself.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        TheMeetingItself.Visibility = Visibility.Visible;
+        ArchiveButton.Content = In(read.Meeting.ArchivedAt is null ? UiTexts.Archive : UiTexts.Unarchive);
+
+        Offer(DeleteAudioButton, may.Audio is null, UiTexts.DeleteTheAudio);
+        Offer(DeleteTranscriptButton, may.Transcript is null, UiTexts.DeleteTheTranscript);
+        Offer(DeleteMeetingButton, may.Whole is null, UiTexts.DeleteTheMeeting);
+    }
+
+    private void Offer(Button press, bool offered, UiText says)
+    {
+        press.Visibility = offered ? Visibility.Visible : Visibility.Collapsed;
+        press.Content = In(says);
+    }
 
     /// <summary>
     /// What a screen with no player says instead, or nothing when there is one.
@@ -811,6 +899,7 @@ public sealed partial class ReadingAMeeting : UserControl
     {
         RecordedAudio.NoneYet => UiTexts.ThereIsNoRecordingUnderThisMeetingYet,
         RecordedAudio.NotWhereTheCorpusSaysItIs => UiTexts.TheRecordingFileIsMissing,
+        RecordedAudio.Removed => UiTexts.TheAudioWasDeleted,
         RecordedAudio.Playable => null,
         _ => throw new InvalidOperationException($"This screen has no text for a recording that is '{recording}'."),
     };
@@ -987,6 +1076,7 @@ public sealed partial class ReadingAMeeting : UserControl
         return
         [
             .. turns
+                .Select(marked => marked.Turn)
                 .Where(turn => turn.Ordinal >= first && turn.Ordinal <= last)
                 .Select(turn => Spoken(
                     VoiceWords.ReadsAs(voices.ForLabel(turn.SpeakerLabel)!, _language), turn.Start, turn.Text)),
@@ -1037,8 +1127,11 @@ public sealed partial class ReadingAMeeting : UserControl
         }
 
         TheTranscriptLines.ItemsSource = new List<TranscriptLine>(
-            turns.Select(turn => new TranscriptLine(
-                VoiceWords.ReadsAs(voices.ForLabel(turn.SpeakerLabel)!, _language), turn.Start, turn.Text)));
+            turns.Select(marked => new TranscriptLine(
+                VoiceWords.ReadsAs(voices.ForLabel(marked.Turn.SpeakerLabel)!, _language),
+                marked.Turn.Start,
+                marked.Turn.Text,
+                marked.Marks)));
 
         TheTranscriptCard.Visibility = Visibility.Visible;
     }
@@ -1071,13 +1164,121 @@ public sealed partial class ReadingAMeeting : UserControl
         heading.Children.Add(who);
         heading.Children.Add(minute);
 
-        var said = new TextBlock { Text = line.Text, Style = Chrome("Spoken") };
+        var said = new TextBlock { Style = Chrome("Spoken") };
+        TheWordsOf(said, line);
         CorrectTheSelection.OfferOver(said, Chrome("TheSelectionsPress"), In(UiTexts.CorrectThisWord), AskToCorrect);
 
         var turn = new StackPanel { Spacing = 2 };
         turn.Children.Add(heading);
         turn.Children.Add(said);
         return turn;
+    }
+
+    /// <summary>
+    /// The words of a line, with a press over each span a correction changed: underlined, in the
+    /// transcript's own ink, and showing what the stored words were when pressed.
+    /// </summary>
+    /// <remarks>
+    /// Inlines of the one <see cref="TextBlock"/> and never a second element per span, so the line
+    /// stays one selectable run of words for <em>Corregir</em>. The ink is set here as well as in
+    /// the screen's resources, because a <see cref="Hyperlink"/> is a text element and whether the
+    /// resource overrides reach one built in code is not something this screen can read off. The
+    /// brush is looked up for the theme the screen is drawn in, and set again when that changes.
+    /// </remarks>
+    private void TheWordsOf(TextBlock said, TranscriptLine line)
+    {
+        var at = 0;
+        foreach (var mark in line.Marks.OrderBy(mark => mark.Start))
+        {
+            if (mark.Length == 0 || mark.Start < at)
+            {
+                continue;
+            }
+
+            if (mark.Start > at)
+            {
+                said.Inlines.Add(new Run { Text = line.Text[at..mark.Start] });
+            }
+
+            var corrected = new Hyperlink { UnderlineStyle = UnderlineStyle.Single, Foreground = TheInk() };
+            corrected.Inlines.Add(new Run { Text = line.Text.Substring(mark.Start, mark.Length) });
+            corrected.Click += (_, _) => ShowTheCorrection(said, corrected, mark);
+            said.Inlines.Add(corrected);
+            at = mark.Start + mark.Length;
+        }
+
+        if (at < line.Text.Length || said.Inlines.Count == 0)
+        {
+            said.Inlines.Add(new Run { Text = line.Text[at..] });
+        }
+
+        if (line.Marks.Count > 0)
+        {
+            said.ActualThemeChanged += (_, _) =>
+            {
+                foreach (var corrected in said.Inlines.OfType<Hyperlink>())
+                {
+                    corrected.Foreground = TheInk();
+                }
+            };
+        }
+    }
+
+    /// <summary>The transcript's ink in the theme this screen is drawn in.</summary>
+    private Brush TheInk()
+    {
+        var theme = Root.ActualTheme == ElementTheme.Dark ? "Dark" : "Default";
+
+        foreach (var merged in Application.Current.Resources.MergedDictionaries)
+        {
+            if (merged.ThemeDictionaries.TryGetValue(theme, out var themed)
+                && themed is ResourceDictionary colours
+                && colours.TryGetValue("InkBrush", out var ink))
+            {
+                return (Brush)ink;
+            }
+        }
+
+        throw new InvalidOperationException("The application's resources hold no InkBrush for the theme it is drawn in.");
+    }
+
+    /// <summary>
+    /// What the stored words were and what they read now, as a small flyout at the word that was
+    /// pressed. A press and not a hover, which is how the owner preferred it.
+    /// </summary>
+    private void ShowTheCorrection(TextBlock said, Hyperlink corrected, CorrectionMark mark)
+    {
+        var inside = TheCorrection(mark);
+
+        // A flyout is hosted outside the content a window sets its theme on, so it is told the
+        // theme the words are drawn in, as the *Corregir* press is.
+        inside.RequestedTheme = said.ActualTheme;
+
+        var flyout = new Flyout
+        {
+            Content = inside,
+            FlyoutPresenterStyle = Chrome("TheCorrectionFlyout"),
+            Placement = FlyoutPlacementMode.Bottom,
+        };
+
+        var at = corrected.ContentStart.GetCharacterRect(LogicalDirection.Forward);
+        flyout.ShowAt(said, new FlyoutShowOptions { Position = new Windows.Foundation.Point(at.X, at.Y + at.Height) });
+    }
+
+    /// <summary>What the flyout holds: <em>Antes</em> and the stored words, then <em>Después</em> and what they read now.</summary>
+    private StackPanel TheCorrection(CorrectionMark mark)
+    {
+        var inside = new StackPanel { Spacing = 8 };
+
+        foreach (var (label, words) in new[] { (UiTexts.TheWordBefore, mark.Before), (UiTexts.TheWordAfter, mark.After) })
+        {
+            var part = new StackPanel { Spacing = 2 };
+            part.Children.Add(new TextBlock { Text = In(label), Style = Chrome("TheCorrectionLabel") });
+            part.Children.Add(new TextBlock { Text = words, Style = Chrome("TheCorrectionWords") });
+            inside.Children.Add(part);
+        }
+
+        return inside;
     }
 
     // ── What is under way ─────────────────────────────────────────────────────────────────────
@@ -1336,10 +1537,10 @@ public sealed partial class ReadingAMeeting : UserControl
     /// What every press on this screen that writes and then redraws shares: the message a refusal
     /// left is carried across the redraw, because <see cref="Draw"/> clears it on the way in.
     /// </summary>
-    private void AfterWriting()
+    private void AfterWriting(bool theRecordingToo = false)
     {
         var said = _status.Line;
-        Draw(theRecordingToo: false);
+        Draw(theRecordingToo);
         _status.KeepsWhatWasSaid(said);
 
         if (_status.IsSaying)
@@ -1663,7 +1864,12 @@ public sealed partial class ReadingAMeeting : UserControl
             || HasTheKeyboard(VolumeSlider)
             || HasTheKeyboard(VolumeButton);
 
-        VolumeSlider.Visibility = open ? Visibility.Visible : Visibility.Collapsed;
+        // Only a change of mind starts a move: this runs on every value change, and one that
+        // restarted the slider's travel would hold it at its start while somebody drags.
+        if (open != ScreenMotion.IsShowing(VolumeSlider))
+        {
+            ScreenMotion.Widen(VolumeSlider, open);
+        }
     }
 
     // A click leaves pointer focus on the glyph, which is not the keyboard being there and must not
@@ -1747,6 +1953,208 @@ public sealed partial class ReadingAMeeting : UserControl
         _playing?.Dispose();
         _playing = null;
         Marks.Children.Clear();
+    }
+
+    private void OnDeleteAudio(object sender, RoutedEventArgs e) => OnDelete(MeetingPart.Audio);
+
+    private void OnDeleteTranscript(object sender, RoutedEventArgs e) => OnDelete(MeetingPart.Transcript);
+
+    private void OnDeleteMeeting(object sender, RoutedEventArgs e) => OnDelete(MeetingPart.Whole);
+
+    /// <summary>
+    /// Somebody asked to delete part of the meeting, or all of it. Asks first, and only then asks the
+    /// corpus, which asks itself again inside the write.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The player is let go of before anything is asked of the disk: it holds <c>audio.wav</c> open
+    /// while it plays, and Windows would refuse the rename. Deleting the transcript leaves the audio
+    /// alone, so it leaves the player alone too.
+    /// </para>
+    /// <para>
+    /// The corpus is asked off the UI thread, because the disk work of deleting a meeting is not
+    /// bounded by anything this screen owns. Whatever it refuses is said on the status line and never
+    /// thrown: this is an <c>async void</c>, where a throw has nobody to be caught by.
+    /// </para>
+    /// <para>
+    /// A meeting that is gone leaves the way <see cref="GoBack"/> does — <see cref="Close"/> and then
+    /// <see cref="Left"/> — and not through it: <see cref="GoBack"/> commits the name first, and that
+    /// would write a title onto a row that is no longer there.
+    /// </para>
+    /// </remarks>
+    private async void OnDelete(MeetingPart part)
+    {
+        if (_meeting is not { } meeting || Corpus().Folder is not { } folder)
+        {
+            return;
+        }
+
+        if (part is MeetingPart.Audio or MeetingPart.Whole)
+        {
+            StopPlaying();
+        }
+
+        var (title, loses) = part switch
+        {
+            MeetingPart.Audio => (UiTexts.DeleteTheAudio, UiTexts.DeletingTheAudioLoses),
+            MeetingPart.Transcript => (UiTexts.DeleteTheTranscript, UiTexts.DeletingTheTranscriptLoses),
+            MeetingPart.Whole => (UiTexts.DeleteTheMeeting, UiTexts.DeletingTheMeetingLoses),
+            _ => throw new InvalidOperationException($"This screen has no deletion for '{part}'."),
+        };
+
+        var gone = false;
+
+        try
+        {
+            if (!await AskFirstAsync(title, loses))
+            {
+                // Nothing was lost, but the player was let go of, and a redraw is what puts it back.
+                AfterWriting(theRecordingToo: part is not MeetingPart.Transcript);
+                return;
+            }
+
+            var refused = await Task.Run(() =>
+            {
+                using var context = CorpusDatabase.Open(folder);
+                var removal = new MeetingRemoval(context, UtcTimestamp.From(DateTimeOffset.UtcNow));
+
+                if (removal.WhyNot(meeting, part) is { } why)
+                {
+                    return why;
+                }
+
+                removal.Remove(meeting, part);
+                return (RemovalRefusal?)null;
+            });
+
+            gone = refused is null && part is MeetingPart.Whole;
+
+            if (refused is { } because)
+            {
+                _status.Says(WhyItWasRefused(because));
+            }
+        }
+        catch (MeetingStageException stale)
+        {
+            _status.Says(UiTexts.ThatIsNoLongerHowItWas, stale.Message);
+        }
+        catch (Exception disk) when (disk is IOException or UnauthorizedAccessException)
+        {
+            // The disk would not give the file up: a file somebody has open. Nothing changed.
+            _status.Says(UiTexts.ItCouldNotBeDeleted);
+        }
+        catch (Exception failed) when (ScreenFailures.Reportable(failed))
+        {
+            _status.Says(UiTexts.ItCouldNotBeDeleted);
+        }
+
+        // Another meeting was opened while the corpus was being asked: nothing here is its.
+        if (_meeting != meeting)
+        {
+            return;
+        }
+
+        if (gone)
+        {
+            Close();
+            Left?.Invoke(this, EventArgs.Empty);
+            return;
+        }
+
+        AfterWriting(theRecordingToo: part is not MeetingPart.Transcript);
+    }
+
+    /// <summary>
+    /// The one question a deletion asks: what goes and what stays, and the press that loses it. The
+    /// dialogue is Olivo's <c>Notice</c>, with no default button.
+    /// </summary>
+    private async Task<bool> AskFirstAsync(UiText title, UiText whatGoes)
+    {
+        var dialogue = new ContentDialog
+        {
+            Style = (Style)Application.Current.Resources["Notice"],
+            Title = In(title),
+            Content = new TextBlock
+            {
+                Text = In(whatGoes),
+                Style = (Style)Application.Current.Resources["BodyText"],
+                TextWrapping = TextWrapping.Wrap,
+            },
+            PrimaryButtonText = In(UiTexts.Delete),
+            CloseButtonText = In(UiTexts.Cancel),
+            XamlRoot = XamlRoot,
+        };
+
+        // A dialogue is hosted apart from the content a theme was put on, so it is told the one this
+        // window is drawn in: what a person chose, or what Windows settled.
+        if (XamlRoot?.Content is FrameworkElement root)
+        {
+            dialogue.RequestedTheme = root.ActualTheme;
+        }
+
+        return await dialogue.ShowAsync() == ContentDialogResult.Primary;
+    }
+
+    /// <summary>
+    /// The last arm stops rather than substituting, for the reason <see cref="WhyItWillNotPlay"/>
+    /// gives: a refusal added to <see cref="RemovalRefusal"/> and not given a sentence here would be
+    /// said as another one.
+    /// </summary>
+    private static UiText WhyItWasRefused(RemovalRefusal why) => why switch
+    {
+        RemovalRefusal.WorkIsUnderWay => UiTexts.NotWhileWorkIsUnderWay,
+        RemovalRefusal.ARecordingOfItIsWaiting => UiTexts.NotWhileItsRecordingWaits,
+        RemovalRefusal.NothingToRemove or RemovalRefusal.TheOtherHalfIsGone => UiTexts.ThatIsNoLongerHowItWas,
+        _ => throw new InvalidOperationException($"This screen has no sentence for a refusal that is '{why}'."),
+    };
+
+    /// <summary>
+    /// Somebody put the meeting away, or put it back. Putting away is the one thing that costs
+    /// nothing, so it does not ask, and it leaves the screen the way a deleted meeting does.
+    /// </summary>
+    private void OnArchive(object sender, RoutedEventArgs e)
+    {
+        if (_meeting is not { } meeting || Corpus().Folder is not { } folder || _read is not { } read)
+        {
+            return;
+        }
+
+        var archiving = read.Meeting.ArchivedAt is null;
+        var done = false;
+
+        try
+        {
+            using var context = CorpusDatabase.Open(folder);
+            var removal = new MeetingRemoval(context, UtcTimestamp.From(DateTimeOffset.UtcNow));
+
+            if (archiving)
+            {
+                removal.Archive(meeting);
+            }
+            else
+            {
+                removal.PutBack(meeting);
+            }
+
+            done = true;
+        }
+        catch (MeetingStageException stale)
+        {
+            _status.Says(UiTexts.ThatIsNoLongerHowItWas, stale.Message);
+        }
+        catch (Exception refused) when (ScreenFailures.Reportable(refused))
+        {
+            _status.Says(UiTexts.ThatDidNotGoThrough, refused.Message);
+        }
+
+        if (done && archiving)
+        {
+            Close();
+            Left?.Invoke(this, EventArgs.Empty);
+            return;
+        }
+
+        AfterWriting();
     }
 
     /// <summary>Leaves the screen, which is the window's app bar's to ask.</summary>

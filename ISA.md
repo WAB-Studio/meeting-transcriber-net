@@ -1,6 +1,6 @@
 ﻿---
 phase: climbing
-progress: 211/338
+progress: 225/338
 updated: 2026-10-06
 ---
 
@@ -234,8 +234,8 @@ Board: 3 · Grabador WinUI
 - [ ] ISC-220: Before a meeting starts, what it will be spoken in, its microphone and what channel 0 follows are each offered as last chosen where that choice still holds, and the two sources by default where it does not.
 - [ ] ISC-220.1: What will be spoken is offered as what the most recently recorded meeting was set to be spoken in, also after the application is opened again.
 - [ ] ISC-220.2: After a meeting stops, what channel 0 follows is offered again as it was for that meeting, while what it followed can still be followed.
-- [ ] ISC-220.3: When the application is opened again, the microphone and what channel 0 follows are offered as they were last chosen, while that microphone is on the machine and that program is offered under a name no other program offered shares.
-- [ ] ISC-220.4: With nothing chosen before, or with what was chosen no longer there, channel 0 is offered following the whole machine and the microphone is the one Windows uses by default.
+- [x] ISC-220.3: When the application is opened again, the microphone and what channel 0 follows are offered as they were last chosen, while that microphone is on the machine and that program is offered under a name no other program offered shares.
+- [x] ISC-220.4: With nothing chosen before, or with what was chosen no longer there, channel 0 is offered following the whole machine and the microphone is the one Windows uses by default.
 - [x] ISC-165: A meeting's name is the person's to set, at any time after it was recorded.
 - [x] ISC-165.1: Anti: a meeting nobody has named never reads under a name the application invented for it.
 - [x] ISC-166: Who is using the application is asked once and is what the microphone's own voice resolves to from then on.
@@ -279,15 +279,15 @@ Board: 3 · Grabador WinUI
 - [ ] ISC-213: A word a transcript got wrong is corrected from where somebody reads it — a meeting's transcript or a speaker's quotation — by selecting it, never by typing how it came out and never from the corrections screen alone.
 - [ ] ISC-214: The programs a meeting can follow are offered one per application that shows a window or plays sound, never one per process and never two for one application.
 - [x] ISC-225: The window is moved by dragging the bar at its top, anywhere on it but its presses.
-- [ ] ISC-227: A meeting's screen lists every correction that changed a word of its transcript, each as the words before and after.
-- [ ] ISC-228: In a meeting's transcript every word a correction changed is marked where it stands, and pressing it shows the words as transcribed and as corrected.
-- [ ] ISC-229: A meeting's audio, its transcript, or the whole meeting is deleted by the person, from the meeting, after saying yes to what goes.
-- [ ] ISC-229.1: Deleting a meeting's audio leaves its transcript, its summary, its names and its filing as they were, and the meeting says its audio was deleted.
-- [ ] ISC-229.2: Deleting a meeting's transcript takes every paid response it came from, every file rendered from them and every summary, leaves the audio and what people said about the meeting, and the meeting is offered for transcription again.
-- [ ] ISC-229.3: Deleting a whole meeting leaves no row and no file of it in the corpus.
-- [ ] ISC-229.4: Anti: nothing is deleted from a meeting with work queued, running or stopped on a person, nor from one being recorded or saved.
-- [ ] ISC-229.5: Anti: a deletion the machine died inside is finished at the next launch, and never leaves a meeting reading as whole while its files are gone.
-- [ ] ISC-230: An archived meeting is out of the meetings list and nothing of it is lost: search finds it, it opens whole, and putting it back returns it to the list.
+- [x] ISC-227: A meeting's screen lists every correction that changed a word of its transcript, each as the words before and after.
+- [x] ISC-228: In a meeting's transcript every word a correction changed is marked where it stands, and pressing it shows the words as transcribed and as corrected.
+- [x] ISC-229: A meeting's audio, its transcript, or the whole meeting is deleted by the person, from the meeting, after saying yes to what goes.
+- [x] ISC-229.1: Deleting a meeting's audio leaves its transcript, its summary, its names and its filing as they were, and the meeting says its audio was deleted.
+- [x] ISC-229.2: Deleting a meeting's transcript takes every paid response it came from, every file rendered from them and every summary, leaves the audio and what people said about the meeting, and the meeting is offered for transcription again.
+- [x] ISC-229.3: Deleting a whole meeting leaves no row and no file of it in the corpus.
+- [x] ISC-229.4: Anti: nothing is deleted from a meeting with work queued, running or stopped on a person, nor from one being recorded or saved.
+- [x] ISC-229.5: Anti: a deletion the machine died inside is finished at the next launch, and never leaves a meeting reading as whole while its files are gone.
+- [x] ISC-230: An archived meeting is out of the meetings list and nothing of it is lost: search finds it, it opens whole, and putting it back returns it to the list.
 
 ### F5 · Deepgram BYOK
 Why: a recording becomes a transcript on the user's own key, and the user is charged exactly
@@ -352,7 +352,7 @@ rather than re-derived at every question, and the corpus answers the same way wh
 run has been over it.
 Board: 6 · Conocimiento local
 - [x] ISC-92: Search costs what an index costs and not what a scan costs, however many meetings there are.
-- [ ] ISC-92.1: Finding meetings with a word like the one typed reads the transcript index's own list of words, never every turn of every meeting.
+- [x] ISC-92.1: Finding meetings with a word like the one typed reads the transcript index's own list of words, never every turn of every meeting.
 - [x] ISC-93: Everything search promises to find is found.
 - [x] ISC-94: A hit carries the meeting, its date, its title, an elided snippet and where on the timeline it was said.
 - [x] ISC-95: Anti: a meeting on its way out is never something search offers.
@@ -381,8 +381,8 @@ Board: 6 · Conocimiento local
 - [x] ISC-198: Anti: offering who a person being added already is needs no model — every candidate is found with none installed.
 - [x] ISC-199: A term searched for also finds the meetings where it came out the way a correction elsewhere says it gets written wrong, though nobody corrected those meetings.
 - [ ] ISC-226: A meeting is found from the main screen by any word typed, the meetings ranked by where the word is: what it is filed under, called or noted as first, then its summary, then its transcript, then meetings holding a word like it.
-- [ ] ISC-226.1: A search from the main screen returns each meeting once, under the first of those four places it reaches, and the four in that order.
-- [ ] ISC-226.2: Anti: nothing typed into the main screen's search is refused as a search the index cannot run.
+- [x] ISC-226.1: A search from the main screen returns each meeting once, under the first of those four places it reaches, and the four in that order.
+- [x] ISC-226.2: Anti: nothing typed into the main screen's search is refused as a search the index cannot run.
 
 ### F8 · Distribution and backup
 Why: the application installs, upgrades and comes back from a lost disk, because the corpus
@@ -827,7 +827,9 @@ Board: 7 · Distribución y backup
 - ISC-114.4 — `CorpusLocationTests.A_folder_that_is_not_there_never_becomes_a_second_empty_corpus`, `.Somewhere_the_application_would_put_a_corpus_says_whether_one_is_there_yet` and `.A_folder_the_next_start_would_refuse_cannot_be_recorded_as_where_the_corpus_is` green 2026-08-18, the second deleting a real corpus out from under the fallback and red that day with the fallback claiming a corpus unconditionally
 - ISC-139.2 — `RecorderScreenTests.The_whole_machine_cannot_be_taken_before_the_recording_has_offered_it`, `.The_whole_machine_is_takeable_once_the_recording_has_offered_it`, `.The_whole_machine_is_taken_once_and_is_not_on_offer_afterwards`, `.A_meeting_already_recording_the_whole_machine_is_never_offered_it`, `.The_whole_machine_is_not_takeable_before_a_meeting_is_running` and `.The_whole_machine_is_never_taken_while_the_meeting_is_paused` (`tests/MeetingTranscriber.Recording.Tests`) green 2026-10-06, re-run under the narrowed words. The window itself, which needs a UI thread and a packaged host, is not reached
 - ISC-158.4 — `RecorderLanguageTests.A_meeting_is_not_recorded_until_what_will_be_spoken_in_it_has_been_said` and `.Nothing_a_recording_reaches_knows_what_language_the_application_is_read_in` (`tests/MeetingTranscriber.Recording.Tests`) green 2026-08-19, the second walking every assembly this side of the application reaches and finding no catalogue of what a person reads; the argument is `MeetingRecordings.Open`'s own
-- ISC-158.5 — `RecorderScreenTests.Recording_cannot_start_with_one_of_the_three_unanswered`, `.A_screen_opens_with_nothing_said_and_nothing_to_press` and `.Recording_starts_once_all_three_have_been_answered` (`tests/MeetingTranscriber.Recording.Tests`) re-run green 2026-10-06 against these words, which let defaults answer the two sources. No default answers yet, so what ran is still each question left open; a machine with no microphone is not reached.
+- ISC-158.5 — `RecorderScreenTests.Recording_cannot_start_with_one_of_the_three_unanswered`, `.A_screen_opens_with_nothing_said_and_nothing_to_press` and `.Recording_starts_once_all_three_have_been_answered` (`tests/MeetingTranscriber.Recording.Tests`) re-run green 2026-10-06 against these words, which let defaults answer the two sources, and `.A_machine_with_no_microphone_leaves_that_question_waiting` (same project) green 2026-10-06: with no microphone the default fills channel 0 only and the microphone is still the one question left.
+- ISC-220.3 — `SourcesChosenLastTimeTests`, `RecorderScreenTests.A_kept_microphone_is_offered_while_it_is_on_the_machine`, `.A_kept_program_is_offered_when_exactly_one_entry_carries_its_name` and `.A_kept_program_two_entries_carry_falls_to_the_whole_machine` (`tests/MeetingTranscriber.Recording.Tests`), and `MainScreenTests.A_choice_somebody_makes_is_kept_where_it_is_made` (`tests/MeetingTranscriber.App.Tests`) green 2026-10-06, the file read back through a second instance. Not reached: the window itself opening on what was kept, which needs a UI thread and a packaged host.
+- ISC-220.4 — `RecorderScreenTests.With_nothing_kept_the_whole_machine_and_the_default_microphone_are_offered`, `.A_kept_microphone_that_is_gone_falls_to_the_default` and `.A_kept_program_that_is_not_running_falls_to_the_whole_machine` (`tests/MeetingTranscriber.Recording.Tests`) and `MainScreenTests.A_dropped_choice_falls_to_the_defaults` (`tests/MeetingTranscriber.App.Tests`) green 2026-10-06. Not reached: the window drawing the defaults in its pickers.
 - ISC-82 — `MeetingStageTests.A_meeting_with_no_audio_yet_is_never_offered_for_transcription`, `.A_transcription_whose_job_landed_is_not_offered_again_because_its_file_is_missing` and `.Nothing_the_application_offers_is_work_it_could_do_for_nothing` (`tests/MeetingTranscriber.Domain.Tests`), `MeetingWorkTests` (`tests/MeetingTranscriber.Infrastructure.Tests`) and `MeetingCardTextTests` (`tests/MeetingTranscriber.App.Tests`) green 2026-08-19 — the answer, the answer read off a corpus, and the screen having a word for every answer there is. Red 2026-08-19 with the bottom rung's condition replaced by an unconditional `Recorded`, 2 of the 21 failing, and again with one stage's arm deleted from the tables `MeetingCardTextTests` reads out of source, naming the stage that had lost it. What no probe reaches is the WinUI tree, which needs a UI thread and a packaged host; what is held instead is that the answer is right and that the screen has words for all of it
 - ISC-147 — `MeetingWorkTests.A_stage_declined_can_be_taken_later`, `.Declining_a_stage_leaves_the_meeting_where_it_was_with_the_same_action`, `.A_stage_asked_for_and_not_yet_run_can_be_taken_back` (`tests/MeetingTranscriber.Infrastructure.Tests`) and `MeetingStageTests.A_declined_stage_stays_where_it_was_and_keeps_its_action` green 2026-08-19; red that day with a declined stage made untakeable, 1 of 21 domain tests and 3 of 14 corpus tests failing
 - ISC-148 — `MeetingWorkTests.What_a_meeting_is_waiting_for_is_the_same_after_the_application_is_reopened` (`tests/MeetingTranscriber.Infrastructure.Tests`) green 2026-08-19 over three meetings — one untouched, one turned down, one asked for — read back through a connection that never saw the one that answered. Red that day with the answer a person gave never reaching a row: it failed on the turned-down meeting's standing, and 5 others failed with it. What is argued rather than probed is that a second connection is a second run of the application: everything read is on disk and nothing is held between calls
@@ -919,3 +921,15 @@ Board: 7 · Distribución y backup
 - ISC-223.5 — `CorpusMoveTests.Removing_the_old_copy_needs_the_new_one_whole` and `.Removing_the_old_copy_leaves_nothing_behind` (`tests/MeetingTranscriber.Infrastructure.Tests`) green 2026-10-06.
 - ISC-223 — held by its five leaves, `ISC-223.1` to `ISC-223.5`, green 2026-10-06.
 - ISC-225 — walked by the owner 2026-10-06 on the installed build of `30a64d5` (PR #384), reported in their words as "Ya arrastra bien"; `CaptionStripTests` (`tests/MeetingTranscriber.Presentation.Tests`) green 2026-10-06. Not reached: which stretches of the bar were tried, its presses still pressing, any scale but that machine's.
+- ISC-227 — `TerminologyTests.Every_word_a_correction_changed_is_marked_where_it_stands`, `.A_mark_moves_when_an_earlier_replacement_changes_the_length`, `.A_correction_inside_one_already_made_is_one_mark`, `.A_correction_across_a_marks_edge_is_one_mark_over_both`, `MeetingRendererTests.A_correction_that_reaches_the_meeting_and_changes_nothing_is_not_seen` (`tests/MeetingTranscriber.Processing.Tests`) and `ReadingAMeetingTests.The_words_card_lists_what_corrected_this_transcript` (`tests/MeetingTranscriber.App.Tests`) green 2026-10-06. Not reached: the list drawn on screen; the owner's walk.
+- ISC-228 — `TerminologyTests.Apply_reads_what_ApplyMarked_reads` (`tests/MeetingTranscriber.Processing.Tests`) and `ReadingAMeetingTests.A_corrected_word_is_a_press_that_shows_before_and_after` (`tests/MeetingTranscriber.App.Tests`) green 2026-10-06. Not reached: the underline and flyout drawn and pressed, and their ink; the owner's walk.
+- ISC-92.1 — `MeetingSearchTests.The_fourth_band_reads_the_terms_and_not_the_turns` and `.A_word_like_the_one_typed_finds_the_fourth_band` (`tests/MeetingTranscriber.Infrastructure.Tests`) green 2026-10-06. Not reached: a corpus large enough to time it.
+- ISC-226.1 — `MeetingSearchTests.Meetings_come_back_in_the_four_bands_in_order` and `.A_meeting_comes_back_once_under_the_best_band_it_reaches` (`tests/MeetingTranscriber.Infrastructure.Tests`) green 2026-10-06. Not reached: the drawer drawing them, which is a walk.
+- ISC-226.2 — `MeetingSearchTests.What_is_typed_is_never_refused` and `.Typed_text_with_no_word_in_it_finds_nothing_and_says_nothing` (`tests/MeetingTranscriber.Infrastructure.Tests`) green 2026-10-06. Not reached: the field itself.
+- ISC-229 — `ReadingAMeetingTests.Every_delete_asks_first_and_lets_the_player_go`, `.Leaving_after_a_delete_closes_and_never_commits_the_name` and `.A_press_the_corpus_would_refuse_is_not_drawn` (`tests/MeetingTranscriber.App.Tests`) green 2026-10-06. Not reached: the dialogue and presses drawn; the owner's walk.
+- ISC-229.1 — `MeetingRemovalTests.Deleting_the_audio_leaves_everything_else` (`tests/MeetingTranscriber.Infrastructure.Tests`) and `MeetingReadingTests.A_meeting_whose_audio_was_deleted_says_so` green 2026-10-06.
+- ISC-229.2 — `MeetingRemovalTests.Deleting_the_transcript_takes_every_version_the_summary_and_the_jobs` and `.Deleting_the_transcript_keeps_what_people_said_about_the_meeting` (`tests/MeetingTranscriber.Infrastructure.Tests`) green 2026-10-06.
+- ISC-229.3 — `MeetingRemovalTests.Deleting_the_meeting_leaves_no_row_and_no_folder` (`tests/MeetingTranscriber.Infrastructure.Tests`) green 2026-10-06.
+- ISC-229.4 — `MeetingRemovalTests.Nothing_is_deleted_while_work_is_queued_running_or_stopped_on_a_person`, `.Nothing_is_deleted_while_its_spool_folder_stands` and `.A_file_held_open_leaves_the_meeting_exactly_as_it_was` (`tests/MeetingTranscriber.Infrastructure.Tests`) green 2026-10-06.
+- ISC-229.5 — `MeetingRemovalTests.A_deletion_a_crash_left_is_finished_at_launch`, `.A_refused_response_set_aside_is_decided_by_its_transcription_run` (`tests/MeetingTranscriber.Infrastructure.Tests`) and `WhatALaunchOwesTests.A_launch_finishes_a_deletion_a_crash_left` (`tests/MeetingTranscriber.Recording.Tests`) green 2026-10-06.
+- ISC-230 — `MeetingRemovalTests.An_archived_meeting_is_off_the_list_and_back_on_it_when_put_back`, `.An_archived_meeting_with_a_charge_stopped_on_a_person_stays_listed` and `.An_archived_meeting_is_still_found_and_every_reader_but_the_list_still_counts_it` (`tests/MeetingTranscriber.Infrastructure.Tests`) green 2026-10-06. Not reached: the screen leaving and the way back drawn; the owner's walk.
