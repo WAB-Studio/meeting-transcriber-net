@@ -1176,10 +1176,10 @@ public sealed partial class MeetingsDrawer : UserControl
 
         // The one line on this list not read out of the corpus. A meeting being saved has no audio
         // filed yet, which is exactly what a recording that never finished looks like from here —
-        // so the corpus cannot tell the two apart, and left to it the list would say "no audio
-        // yet: it is being recorded, or its recording never finished" about the meeting somebody
-        // stopped four seconds ago. Only the line changes: a meeting at that stage has no action
-        // and no standing either way, so there is nothing else on the card for this to decide.
+        // so the corpus cannot tell the two apart, and left to it the list would say "no audio"
+        // about the meeting somebody stopped four seconds ago. Only the line changes: a meeting at
+        // that stage has no action and no standing either way, so there is nothing else on the
+        // card for this to decide.
         //
         // Almost always this meeting is drawn as its own waiting recording instead — its blocks
         // are in the spool while the save reads them, so it is on the list above and reads the
@@ -1189,23 +1189,16 @@ public sealed partial class MeetingsDrawer : UserControl
         {
             Text = In(entry.Meeting.Id == _beingSaved
                 ? UiTexts.ThisOneIsBeingSaved
-                : MeetingWords.Reached(entry.Owed.Stage)),
-            Style = Chrome("MeetingLine"),
-        });
-
-        if (MeetingWords.Standing(entry.Owed.Standing) is { } standing)
-        {
-            lines.Children.Add(new TextBlock
-            {
-                Text = In(standing),
-                Style = entry.Owed.Standing switch
+                : MeetingWords.Status(entry.Owed.Status)),
+            Style = entry.Meeting.Id == _beingSaved
+                ? Chrome("MeetingLine")
+                : entry.Owed.Status switch
                 {
-                    StageStanding.Running => Chrome("MeetingRunning"),
-                    _ when entry.Owed.WaitsOnSomebody => Chrome("MeetingStoppedOnAPerson"),
+                    MeetingStatus.Transcribing or MeetingStatus.Summarising => Chrome("MeetingRunning"),
+                    MeetingStatus.Stopped => Chrome("MeetingStoppedOnAPerson"),
                     _ => Chrome("MeetingLine"),
                 },
-            });
-        }
+        });
 
         if (entry.Owed.Failed is { } failed)
         {

@@ -777,7 +777,8 @@ public sealed partial class Configuracion : UserControl
             $"Keeping a Deepgram key refused as '{refusal}', which only asking for one can say."),
     };
 
-    private void OnBack(object sender, RoutedEventArgs e) => Left?.Invoke(this, EventArgs.Empty);
+    /// <summary>Leaves the screen, which is the window's app bar's to ask.</summary>
+    public void GoBack() => Left?.Invoke(this, EventArgs.Empty);
 
     /// <summary>
     /// Somebody asked to change where the corpus is kept, which is only offered over a refused

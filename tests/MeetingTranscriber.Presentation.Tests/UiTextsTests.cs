@@ -83,11 +83,8 @@ public class UiTextsTests
         //
         // The export's tick for the recording is `Audio` in both: the word is the same one.
         //
-        // The settings screen added three. `TheEngineThatSummarises` is the maker's answer a fifth
-        // time — Anthropic called that model Claude. The two costs are not words at all:
-        // `docs/design.md` §The artboards says an amount goes as `[costo]` until a run produces a
-        // real number, so what is in them is a placeholder standing where a figure will be, and
-        // `min` is the unit the figure is per.
+        // The settings screen added `TheEngineThatSummarises`, the maker's answer a fifth time —
+        // Anthropic called that model Claude.
         //
         // `ItIsNot`: a press answering a question with the one word both languages spell alike.
         //
@@ -107,8 +104,6 @@ public class UiTextsTests
             nameof(UiTexts.TheEngineThatSummarises),
             nameof(UiTexts.TheEngineThatTranscribes),
             nameof(UiTexts.TheShapeDaily),
-            nameof(UiTexts.WhatAMinuteCosts),
-            nameof(UiTexts.WhatItCosts),
         ];
 
         var sameEitherWay = Catalogue

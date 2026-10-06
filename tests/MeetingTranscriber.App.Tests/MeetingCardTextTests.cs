@@ -6,14 +6,14 @@ namespace MeetingTranscriber.App.Tests;
 
 /// <summary>
 /// ISC-82's half that lives on the screen, and the same rule over a recording nobody got to stop:
-/// a meeting's card names every stage a meeting can be at, every standing that stage can be in,
+/// a meeting's card names every status a meeting can be in,
 /// every standing such a recording can be in and every reason one gives for not becoming a meeting,
 /// and substitutes for none of them.
 /// </summary>
 /// <remarks>
 /// <para>
-/// The rule itself is `MeetingStageTests` and `MeetingWorkTests`, which run. What no probe of
-/// theirs can reach is whether the window has a word for what they answer, and a stage with no
+/// The rule itself is `MeetingStatusTests`, `MeetingStageTests` and `MeetingWorkTests`, which run. What no probe of
+/// theirs can reach is whether the window has a word for what they answer, and a status with no
 /// word is a meeting that says the wrong thing about itself — one with no audio reading as one
 /// ready to be paid for.
 /// </para>
@@ -31,8 +31,8 @@ public class MeetingCardTextTests
     /// </summary>
     private static readonly string Words = Path.Combine("MeetingTranscriber.App", "MeetingWords.cs");
 
-    private static readonly string StagesDeclaredIn =
-        Path.Combine("MeetingTranscriber.Domain", "Meetings", "MeetingStage.cs");
+    private static readonly string StatusesDeclaredIn =
+        Path.Combine("MeetingTranscriber.Domain", "Meetings", "MeetingStatus.cs");
 
     /// <summary>
     /// Where a recording's reason for not being a meeting is declared, and where the count of
@@ -51,8 +51,7 @@ public class MeetingCardTextTests
     /// </remarks>
     private static readonly Dictionary<string, Func<EnumTable>> Held = new(StringComparer.Ordinal)
     {
-        ["MeetingStage"] = Stages,
-        ["StageStanding"] = Standings,
+        ["MeetingStatus"] = Statuses,
         ["WaitingStanding"] = Waitings,
         ["WhyNotAMeeting"] = Reasons,
         ["JobFailure"] = Failures,
@@ -84,7 +83,7 @@ public class MeetingCardTextTests
     /// </remarks>
     [Theory]
     [MemberData(nameof(Tables))]
-    public void Every_stage_and_every_standing_has_a_word_on_the_card(string enumeration) =>
+    public void Every_status_and_every_standing_has_a_word_on_the_card(string enumeration) =>
         Held[enumeration]().ShouldNameItsWholeEnum(enumeration);
 
     [Fact]
@@ -229,10 +228,8 @@ public class MeetingCardTextTests
         }
     }
 
-    private static EnumTable Stages() => EnumTable.Read(Words, "stage", "MeetingStage", StagesDeclaredIn);
-
-    private static EnumTable Standings() =>
-        EnumTable.Read(Words, "standing", "StageStanding", StagesDeclaredIn);
+    private static EnumTable Statuses() =>
+        EnumTable.Read(Words, "status", "MeetingStatus", StatusesDeclaredIn);
 
     /// <summary>
     /// The waiting recordings' table. It answers two things at once — the sentence and the

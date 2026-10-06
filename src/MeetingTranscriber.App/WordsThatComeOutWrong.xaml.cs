@@ -80,6 +80,21 @@ public sealed partial class WordsThatComeOutWrong : UserControl
 
     private bool _saving;
 
+    /// <summary>
+    /// The one place <see cref="_saving"/> changes, so <see cref="MayGoBackChanged"/> is raised
+    /// wherever it does and the app bar never draws its back press against a stale answer.
+    /// </summary>
+    private void Saving(bool value)
+    {
+        if (_saving == value)
+        {
+            return;
+        }
+
+        _saving = value;
+        MayGoBackChanged?.Invoke(this, EventArgs.Empty);
+    }
+
     /// <summary>True while this screen is setting its own controls, so that is not read as somebody typing.</summary>
     private bool _drawing;
 
@@ -174,7 +189,7 @@ public sealed partial class WordsThatComeOutWrong : UserControl
         _suspects = [];
         _ticked.Clear();
         _status.Nothing();
-        _saving = false;
+        Saving(false);
 
         ClearTheField();
     }
@@ -593,10 +608,6 @@ public sealed partial class WordsThatComeOutWrong : UserControl
             && WordsScreen.MayBeSaved(TypedField.Text, saving);
         TypedField.IsEnabled = !_saving;
         ScopeBox.IsEnabled = !_saving;
-
-        // A save outlives the press that started it, and leaving would read the meeting again
-        // before the transcripts the save is still rendering have changed.
-        BackButton.IsEnabled = !_saving;
     }
 
     /// <summary>
@@ -629,7 +640,7 @@ public sealed partial class WordsThatComeOutWrong : UserControl
         var generation = _generation;
         var scope = ChosenScope();
 
-        _saving = true;
+        Saving(true);
         _status.Nothing();
         RefreshSave();
 
@@ -666,7 +677,7 @@ public sealed partial class WordsThatComeOutWrong : UserControl
             return;
         }
 
-        _saving = false;
+        Saving(false);
 
         if (!saved)
         {
@@ -802,9 +813,28 @@ public sealed partial class WordsThatComeOutWrong : UserControl
         await SearchAsync();
     }
 
-    /// <summary>Back leaves without writing anything; whatever was saved is already in the corpus.</summary>
-    private void OnLeave(object sender, RoutedEventArgs e)
+    /// <summary>
+    /// Whether the way back is open: not while a save renders, because leaving would read the
+    /// meeting again before the transcripts the save is still rendering have changed. The
+    /// window's app bar draws its back press dead on it.
+    /// </summary>
+    public bool MayGoBack => !_saving;
+
+    /// <summary>Raised where <see cref="MayGoBack"/> changes value.</summary>
+    public event EventHandler? MayGoBackChanged;
+
+    /// <summary>
+    /// Leaves without writing anything; whatever was saved is already in the corpus. Refused
+    /// while a save renders, here rather than on whichever press asked: the app bar's button and
+    /// Alt+Left reach the same door.
+    /// </summary>
+    public void GoBack()
     {
+        if (_saving)
+        {
+            return;
+        }
+
         Close();
         Left?.Invoke(this, EventArgs.Empty);
     }

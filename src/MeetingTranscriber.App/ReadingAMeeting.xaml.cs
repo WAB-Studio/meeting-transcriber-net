@@ -385,7 +385,7 @@ public sealed partial class ReadingAMeeting : UserControl
         NameBox.IsEnabled = read.Screen.TheNameMayBeTyped;
 
         WhenText.Text = ScreenNumbers.When(read.Meeting);
-        StageText.Text = In(MeetingWords.Reached(read.Screen.Stage));
+        StageText.Text = In(MeetingWords.Status(read.Screen.Owed.Status));
 
         WhoWroteIt(read.Screen);
         SummariesSection(read.Screen);
@@ -1291,7 +1291,8 @@ public sealed partial class ReadingAMeeting : UserControl
         Marks.Children.Clear();
     }
 
-    private void OnBack(object sender, RoutedEventArgs e)
+    /// <summary>Leaves the screen, which is the window's app bar's to ask.</summary>
+    public void GoBack()
     {
         // The name first, and this screen stays where it is when the corpus would not take it.
         // Pressing back with a title typed is somebody who meant to keep it — and leaving over a
@@ -1308,7 +1309,7 @@ public sealed partial class ReadingAMeeting : UserControl
 
     /// <summary>Somebody asked to file this meeting under what it was about.</summary>
     /// <remarks>
-    /// The name first, for the reason <see cref="OnBack"/> gives, and then the recording is stopped
+    /// The name first, for the reason <see cref="GoBack"/> gives, and then the recording is stopped
     /// where it is: the screen that files this meeting takes the window, and a player left running
     /// behind a collapsed one is sound coming out of an application that appears to be doing
     /// nothing else. It is paused and not closed, because coming back is a redraw.

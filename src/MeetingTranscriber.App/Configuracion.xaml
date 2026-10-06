@@ -40,23 +40,13 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <!-- The header, in the shape the meeting screen's is. The way back does not name where back
-             is, and that is the one place this differs from its siblings: the meeting screen is
-             reached from the list and returns to it, and this one is reached from wherever the
-             window happened to be. -->
+        <!-- The header, in the shape the meeting screen's is. Left through `GoBack`, which the
+             window's app bar calls. -->
         <Grid Grid.Row="0" ColumnSpacing="12">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
-
-            <Button
-                x:Name="BackButton"
-                Grid.Column="0"
-                VerticalAlignment="Center"
-                Style="{StaticResource ButtonAtTheMargin}"
-                Click="OnBack"
-                Content="{x:Bind In(loc:UiTexts.BackFromSettings)}" />
 
             <TextBlock
                 Grid.Column="1"
@@ -100,7 +90,7 @@
 
                 <!-- The two engines, side by side, each on its own card because they are charged
                      separately: if one of the two fails the other is already done and is not paid
-                     for again, which is the sentence at the foot of this screen.
+                     for again.
 
                      Written out and not built from a list, which is the one thing about this block
                      worth arguing. `docs/design.md` says a model on this machine is one more row in
@@ -124,14 +114,6 @@
                                 <TextBlock
                                     Text="{x:Bind In(loc:UiTexts.TheEngineThatTranscribes)}"
                                     Style="{StaticResource BodyText}" />
-
-                                <!-- The data rank, in a quieter ink: until a run produces a number
-                                     this is `docs/design.md`'s placeholder standing where a figure
-                                     will go, and a placeholder is not a sentence. -->
-                                <TextBlock
-                                    Text="{x:Bind In(loc:UiTexts.WhatAMinuteCosts)}"
-                                    Style="{StaticResource DataText}"
-                                    Foreground="{ThemeResource SecondaryTextBrush}" />
                             </StackPanel>
                         </StackPanel>
                     </Border>
@@ -146,10 +128,6 @@
                                 <TextBlock
                                     Text="{x:Bind In(loc:UiTexts.TheEngineThatSummarises)}"
                                     Style="{StaticResource BodyText}" />
-                                <TextBlock
-                                    Text="{x:Bind In(loc:UiTexts.WhatItCosts)}"
-                                    Style="{StaticResource DataText}"
-                                    Foreground="{ThemeResource SecondaryTextBrush}" />
                             </StackPanel>
                         </StackPanel>
                     </Border>
@@ -421,12 +399,6 @@
                         AutomationProperties.Name="{x:Bind In(loc:UiTexts.ChangeWhereClaudeCodeIs)}"
                         Content="{x:Bind In(loc:UiTexts.Change)}" />
                 </Grid>
-
-                <TextBlock
-                    Text="{x:Bind In(loc:UiTexts.EachIsPaidForSeparately)}"
-                    Style="{StaticResource BodyText}"
-                    Foreground="{ThemeResource TertiaryTextBrush}"
-                    TextWrapping="Wrap" />
             </StackPanel>
         </ScrollViewer>
 

@@ -5,8 +5,7 @@ using MeetingTranscriber.Presentation;
 namespace MeetingTranscriber.App;
 
 /// <summary>
-/// What a screen says about how far a meeting has got, where that stands, and what it would do to
-/// it next.
+/// What a screen says about where a meeting is, and what it would do to it next.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -25,29 +24,22 @@ namespace MeetingTranscriber.App;
 /// </remarks>
 internal static class MeetingWords
 {
-    /// <summary>What a screen says about the stage a meeting has got to.</summary>
-    public static UiText Reached(MeetingStage stage) => stage switch
-    {
-        MeetingStage.Recording => UiTexts.NoAudioYet,
-        MeetingStage.Recorded => UiTexts.Recorded,
-        MeetingStage.Transcribed => UiTexts.Transcribed,
-        MeetingStage.Summarised => UiTexts.Summarised,
-        _ => throw new InvalidOperationException($"No screen has text for meeting stage '{stage}'."),
-    };
-
     /// <summary>
-    /// What a screen says about where that stage stands, or nothing when the stage has no action
-    /// for anything to be standing over.
+    /// What a screen says about where a meeting is: one word, decided by
+    /// <see cref="OwedWork.Status"/> and only spoken here.
     /// </summary>
-    public static UiText? Standing(StageStanding standing) => standing switch
+    public static UiText Status(MeetingStatus status) => status switch
     {
-        StageStanding.Offered => UiTexts.WaitingToBeTold,
-        StageStanding.Underway => UiTexts.AlreadyInTheQueue,
-        StageStanding.StoppedOnAPerson => UiTexts.StoppedWaitingForAPerson,
-        StageStanding.Declined => UiTexts.IgnoredForNow,
-        StageStanding.NothingToDo => null,
-        StageStanding.Running => UiTexts.AlreadySent,
-        _ => throw new InvalidOperationException($"No screen has text for stage standing '{standing}'."),
+        MeetingStatus.NoAudio => UiTexts.NoAudio,
+        MeetingStatus.Recorded => UiTexts.Recorded,
+        MeetingStatus.Queued => UiTexts.Queued,
+        MeetingStatus.Transcribing => UiTexts.Transcribing,
+        MeetingStatus.Transcribed => UiTexts.Transcribed,
+        MeetingStatus.Summarising => UiTexts.Summarising,
+        MeetingStatus.Summarised => UiTexts.Summarised,
+        MeetingStatus.Ignored => UiTexts.Ignored,
+        MeetingStatus.Stopped => UiTexts.StoppedForAPerson,
+        _ => throw new InvalidOperationException($"No screen has text for meeting status '{status}'."),
     };
 
     /// <summary>

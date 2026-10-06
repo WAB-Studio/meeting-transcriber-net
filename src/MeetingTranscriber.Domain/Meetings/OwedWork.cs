@@ -43,6 +43,39 @@ public sealed record OwedWork(Guid MeetingId, MeetingStage Stage, StageStanding 
     /// </remarks>
     public JobKind? Next => Stage.Offers();
 
+    /// <summary>
+    /// The one word a screen says about this meeting, read off the stage and where it stands in
+    /// a precedence: a stop on a person first, whatever the stage, because a charge that may have
+    /// happened is the one thing no other word may cover; then no audio; then what is running,
+    /// which is a transcription or a summary by the kind the stage would run; then what is
+    /// queued, then what was turned down; then the stage itself.
+    /// </summary>
+    /// <remarks>
+    /// Read off <see cref="Standing"/>, so "under way" has one answer: <see cref="MeetingStatus.Queued"/>,
+    /// <see cref="MeetingStatus.Transcribing"/> and <see cref="MeetingStatus.Summarising"/> are exactly
+    /// <see cref="StageStanding.Underway"/> and <see cref="StageStanding.Running"/>. A pair no meeting
+    /// reaches, such as a summarised meeting still waiting to be told something, throws rather than
+    /// reading as one of the others.
+    /// </remarks>
+    public MeetingStatus Status => (Stage, Standing) switch
+    {
+        (_, StageStanding.StoppedOnAPerson) => MeetingStatus.Stopped,
+        (MeetingStage.Recording, _) => MeetingStatus.NoAudio,
+        (_, StageStanding.Running) => (Next ?? Stage.OffersAgain()) switch
+        {
+            JobKind.Transcribe => MeetingStatus.Transcribing,
+            JobKind.Extract => MeetingStatus.Summarising,
+            _ => throw new InvalidOperationException($"Nothing runs at stage '{Stage}'."),
+        },
+        (_, StageStanding.Underway) => MeetingStatus.Queued,
+        (_, StageStanding.Declined) => MeetingStatus.Ignored,
+        (MeetingStage.Recorded, StageStanding.Offered) => MeetingStatus.Recorded,
+        (MeetingStage.Transcribed, StageStanding.Offered) => MeetingStatus.Transcribed,
+        (MeetingStage.Summarised, StageStanding.NothingToDo) => MeetingStatus.Summarised,
+        _ => throw new InvalidOperationException(
+            $"A meeting at stage '{Stage}' standing '{Standing}' has no status."),
+    };
+
     /// <summary>True when the stage's action can be asked for.</summary>
     public bool MayBeTaken => Standing.MayBeTaken();
 

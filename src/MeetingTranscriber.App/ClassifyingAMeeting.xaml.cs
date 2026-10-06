@@ -1619,7 +1619,8 @@ public sealed partial class ClassifyingAMeeting : UserControl
         Filed?.Invoke(this, meeting);
     }
 
-    private void OnBack(object sender, RoutedEventArgs e)
+    /// <summary>Leaves the screen, which is the window's app bar's to ask.</summary>
+    public void GoBack()
     {
         // Nothing is written on the way out, and nothing was written on the way in: a draft
         // abandoned leaves the meeting exactly as it was found.

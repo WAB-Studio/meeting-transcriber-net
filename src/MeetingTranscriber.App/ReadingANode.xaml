@@ -87,13 +87,6 @@
              where the meeting screen's own status line sits too — LiveRegionTests sweeps every
              screen for a line that travels off it or starts inside something collapsed. -->
         <StackPanel Grid.Row="0" Spacing="10">
-            <Button
-                x:Name="BackButton"
-                HorizontalAlignment="Left"
-                Style="{StaticResource ButtonAtTheMargin}"
-                Click="OnBack"
-                Content="{x:Bind In(loc:UiTexts.BackToTheMeeting)}" />
-
             <!-- The path down the tree, built in the code-behind: every node but the last is the
                  press that reads that node's own story, and the last is shown rather than
                  pressed — you are already reading it. -->

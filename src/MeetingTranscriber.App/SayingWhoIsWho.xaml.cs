@@ -688,10 +688,14 @@ public sealed partial class SayingWhoIsWho : UserControl
         Named?.Invoke(this, meeting);
     }
 
-    /// <summary>Back and Cancelar both leave without writing anything.</summary>
-    private void OnLeave(object sender, RoutedEventArgs e)
+    /// <summary>
+    /// Leaves without writing anything: the app bar's back and *Cancelar* both come here.
+    /// </summary>
+    public void GoBack()
     {
         Close();
         Left?.Invoke(this, EventArgs.Empty);
     }
+
+    private void OnLeave(object sender, RoutedEventArgs e) => GoBack();
 }

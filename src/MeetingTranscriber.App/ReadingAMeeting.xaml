@@ -122,22 +122,13 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <!-- The header. A sub-screen: it is reached from one place and returns to it, and the way
-             back says where back is rather than saying "back". -->
+        <!-- The header. A sub-screen: it is reached from one place and returns to it, through
+             `GoBack`, which the window's app bar calls. -->
         <Grid Grid.Row="0" ColumnSpacing="12">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
-
-            <Button
-                x:Name="BackButton"
-                Grid.Column="0"
-                VerticalAlignment="Top"
-                Margin="0,24,0,0"
-                Style="{StaticResource ButtonAtTheMargin}"
-                Click="OnBack"
-                Content="{x:Bind In(loc:UiTexts.BackToTheMeetings)}" />
 
             <StackPanel Grid.Column="1" Spacing="2">
                 <!-- The name, and it is a field rather than a line of text because a meeting's
