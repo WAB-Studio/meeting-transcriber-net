@@ -173,6 +173,46 @@ public class MeetingRendererTests
     }
 
     [Fact]
+    public void A_meeting_read_marked_says_the_words_AsRead_says()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meeting = Recorded(context, corpus.Root);
+        MeetingRenderer.Render(context, meeting, When);
+        var word = context.Utterances.First(turn => turn.MeetingId == meeting).Text.Split(' ')[0];
+        new HumanLayer(context, TimeProvider.System).Correct(word, "CORREGIDO");
+
+        var marked = MeetingRenderer.AsReadMarked(context, meeting);
+
+        marked.Select(turn => turn.Turn).ShouldBe(MeetingRenderer.AsRead(context, meeting));
+        marked.SelectMany(turn => turn.Marks).ShouldNotBeEmpty();
+    }
+
+    /// <summary>
+    /// The list on the screen is what corrected this transcript. A correction whose scope reaches the
+    /// meeting and whose wrong text is nowhere in it is in <c>CorrectionsReaching</c> and is not
+    /// there.
+    /// </summary>
+    [Fact]
+    public void A_correction_that_reaches_the_meeting_and_changes_nothing_is_not_seen()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meeting = Recorded(context, corpus.Root);
+        MeetingRenderer.Render(context, meeting, When);
+        var word = context.Utterances.First(turn => turn.MeetingId == meeting).Text.Split(' ')[0];
+        var human = new HumanLayer(context, TimeProvider.System);
+        human.Correct(word, "CORREGIDO");
+        human.Correct("palabraqueningunodijo", "OTRA");
+
+        MeetingRenderer.CorrectionsReaching(context, meeting).Count.ShouldBe(2);
+        var seen = CorrectionMarks.Seen(MeetingRenderer.AsReadMarked(context, meeting));
+
+        seen.ShouldNotBeEmpty();
+        seen.ShouldAllBe(row => row.After == "CORREGIDO");
+    }
+
+    [Fact]
     public void What_a_screen_reads_is_every_turn_in_order()
     {
         using var corpus = new TemporaryCorpus();

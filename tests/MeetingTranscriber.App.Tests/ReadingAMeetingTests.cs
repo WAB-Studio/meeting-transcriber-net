@@ -198,7 +198,7 @@ public class ReadingAMeetingTests
     {
         var screen = File.ReadAllText(AppSources.At(Screen).FullName);
 
-        screen.ShouldContain("MeetingRenderer.AsRead(context, meetingId)");
+        screen.ShouldContain("MeetingRenderer.AsReadMarked(context, meetingId)");
         screen.ShouldNotContain("EveryTurn");
 
         // The turns unfolded under a citation are the same corrected set, not a second read of the
@@ -207,6 +207,21 @@ public class ReadingAMeetingTests
 
         around.ShouldContain("_turns");
         around.ShouldNotContain("CorpusDatabase");
+    }
+
+    /// <summary>
+    /// The right column lists what corrected this transcript: the marks of its turns added up, never
+    /// the corrections that merely reach the meeting.
+    /// </summary>
+    [Fact]
+    public void The_words_card_lists_what_corrected_this_transcript()
+    {
+        var markup = File.ReadAllText(AppSources.At(Markup).FullName);
+        var screen = File.ReadAllText(AppSources.At(Screen).FullName);
+
+        Body(screen, "private void WordsSection(MeetingScreen screen)").ShouldContain("CorrectionMarks.Seen(");
+        screen.ShouldNotContain("CorrectionsReaching");
+        markup.ShouldMatch(@"x:Name=""WordsCard""[\s\S]*x:Name=""TheCorrectionsHere""[\s\S]*x:Name=""CorrectWordsButton""");
     }
 
     /// <summary>

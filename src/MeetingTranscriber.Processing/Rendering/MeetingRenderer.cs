@@ -98,12 +98,22 @@ public static class MeetingRenderer
     /// <remarks>
     /// What the screen that shows the transcript reads, so that the screen and <c>transcript.md</c>
     /// say the same words once the files are rendered again: the corrections are read now, and the
-    /// file carries the ones there were when it was last rendered. It asks <see cref="Header"/> for the corrections and the node depths and
-    /// works out neither itself, which keeps the one place that decides which corrections reach a
-    /// meeting the one place. Labels are unchanged, and so is every stored row: nothing is written.
+    /// file carries the ones there were when it was last rendered. It is the turns of
+    /// <see cref="AsReadMarked"/>, which asks <see cref="Header"/> for the corrections and the node
+    /// depths and works out neither itself, which keeps the one place that decides which corrections
+    /// reach a meeting the one place. Labels are unchanged, and so is every stored row: nothing is
+    /// written.
     /// </remarks>
     /// <exception cref="MeetingStageException">The corpus holds no such meeting.</exception>
-    public static IReadOnlyList<Turn> AsRead(CorpusDbContext context, Guid meetingId)
+    public static IReadOnlyList<Turn> AsRead(CorpusDbContext context, Guid meetingId) =>
+        [.. AsReadMarked(context, meetingId).Select(marked => marked.Turn)];
+
+    /// <summary>
+    /// <see cref="AsRead"/> with, for each turn, the spans of its words that a correction changed and
+    /// what the stored words were there.
+    /// </summary>
+    /// <exception cref="MeetingStageException">The corpus holds no such meeting.</exception>
+    public static IReadOnlyList<MarkedTurn> AsReadMarked(CorpusDbContext context, Guid meetingId)
     {
         ArgumentNullException.ThrowIfNull(context);
 
@@ -118,16 +128,23 @@ public static class MeetingRenderer
                 .Where(turn => turn.MeetingId == meetingId)
                 .OrderBy(turn => turn.Ordinal)
                 .ToList()
-                .Select(turn => new Turn(
-                    turn.Ordinal,
-                    turn.Start,
-                    turn.End,
-                    turn.Channel,
-                    turn.SpeakerLabel,
-                    Terminology.Apply(turn.Text, header.Corrections, header.NodeDepths),
-                    turn.Confidence)),
+                .Select(turn =>
+                {
+                    var read = Terminology.ApplyMarked(turn.Text, header.Corrections, header.NodeDepths);
+                    return new MarkedTurn(
+                        new Turn(
+                            turn.Ordinal,
+                            turn.Start,
+                            turn.End,
+                            turn.Channel,
+                            turn.SpeakerLabel,
+                            read.Text,
+                            turn.Confidence),
+                        read.Marks);
+                }),
         ];
     }
+
 
     /// <summary>The one artifact of that kind the write came back with.</summary>
     /// <remarks>

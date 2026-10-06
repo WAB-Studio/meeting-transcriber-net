@@ -143,9 +143,10 @@ public sealed partial class ReadingAMeeting : UserControl
     /// <summary>
     /// Every turn of the meeting as the rendered files say it, read with it, or nothing while there
     /// is no transcription. What the transcript's lines and the turns unfolded under a citation are
-    /// both made of, so the two cannot say different words.
+    /// both made of, so the two cannot say different words. Each carries where a correction changed
+    /// its words, which is what the list of corrections in the right column adds up.
     /// </summary>
-    private IReadOnlyList<Turn>? _turns;
+    private IReadOnlyList<MarkedTurn>? _turns;
 
     /// <summary>One line of the transcript: who said it, the minute, and the words.</summary>
     private sealed record TranscriptLine(string Who, Duration At, string Text);
@@ -344,7 +345,7 @@ public sealed partial class ReadingAMeeting : UserControl
                 // files to be written again. Only once there is a transcription to read.
                 if (_read.Screen.ThereIsATranscription)
                 {
-                    _turns = MeetingRenderer.AsRead(context, meetingId);
+                    _turns = MeetingRenderer.AsReadMarked(context, meetingId);
                 }
             }
             catch (MeetingStageException gone)
@@ -790,12 +791,41 @@ public sealed partial class ReadingAMeeting : UserControl
     }
 
     /// <summary>
-    /// The way to correct the words that came out wrong. Collapsed until the meeting has a
-    /// transcription, for the reason <see cref="WhoSpokeSection"/> is: before that there are no
-    /// words to be wrong.
+    /// The way to correct the words that came out wrong, and what has been corrected in this
+    /// transcript. Collapsed until the meeting has a transcription, for the reason
+    /// <see cref="WhoSpokeSection"/> is: before that there are no words to be wrong.
     /// </summary>
-    private void WordsSection(MeetingScreen screen) =>
+    /// <remarks>
+    /// The list is the marks of every turn, added up (<see cref="CorrectionMarks.Seen"/>), so it is
+    /// what changed a word of this meeting and never a correction that merely reaches it. It is
+    /// built here in code: the arrow is a glyph and the count is a number, neither of which is a
+    /// word that needs a catalogue entry.
+    /// </remarks>
+    private void WordsSection(MeetingScreen screen)
+    {
         WordsCard.Visibility = screen.ThereIsATranscription ? Visibility.Visible : Visibility.Collapsed;
+
+        TheCorrectionsHere.Children.Clear();
+        foreach (var seen in CorrectionMarks.Seen(_turns ?? []))
+        {
+            var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
+            row.Children.Add(new TextBlock { Text = seen.Before, Style = Chrome("Said") });
+            row.Children.Add(new FontIcon
+            {
+                Glyph = "\uE72A",
+                FontSize = (double)Application.Current.Resources["BodySize"],
+                VerticalAlignment = VerticalAlignment.Center,
+            });
+            row.Children.Add(new TextBlock { Text = seen.After, Style = Chrome("Said") });
+
+            if (seen.Times > 1)
+            {
+                row.Children.Add(new TextBlock { Text = $"×{seen.Times}", Style = Chrome("Data") });
+            }
+
+            TheCorrectionsHere.Children.Add(row);
+        }
+    }
 
     /// <summary>
     /// What a screen with no player says instead, or nothing when there is one.
@@ -987,6 +1017,7 @@ public sealed partial class ReadingAMeeting : UserControl
         return
         [
             .. turns
+                .Select(marked => marked.Turn)
                 .Where(turn => turn.Ordinal >= first && turn.Ordinal <= last)
                 .Select(turn => Spoken(
                     VoiceWords.ReadsAs(voices.ForLabel(turn.SpeakerLabel)!, _language), turn.Start, turn.Text)),
@@ -1037,8 +1068,10 @@ public sealed partial class ReadingAMeeting : UserControl
         }
 
         TheTranscriptLines.ItemsSource = new List<TranscriptLine>(
-            turns.Select(turn => new TranscriptLine(
-                VoiceWords.ReadsAs(voices.ForLabel(turn.SpeakerLabel)!, _language), turn.Start, turn.Text)));
+            turns.Select(marked => new TranscriptLine(
+                VoiceWords.ReadsAs(voices.ForLabel(marked.Turn.SpeakerLabel)!, _language),
+                marked.Turn.Start,
+                marked.Turn.Text)));
 
         TheTranscriptCard.Visibility = Visibility.Visible;
     }

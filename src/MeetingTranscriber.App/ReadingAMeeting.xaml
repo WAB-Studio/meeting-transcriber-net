@@ -420,6 +420,8 @@
                             Style="{StaticResource DataText}"
                             Text="{x:Bind In(loc:UiTexts.WordsThatComeOutWrongHere)}" />
 
+                        <StackPanel x:Name="TheCorrectionsHere" Spacing="4" />
+
                         <Button
                             x:Name="CorrectWordsButton"
                             HorizontalAlignment="Right"

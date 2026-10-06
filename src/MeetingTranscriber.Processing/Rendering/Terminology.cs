@@ -44,6 +44,24 @@ public static class Terminology
     public static string Apply(
         string text,
         IEnumerable<TerminologyCorrection> corrections,
+        IReadOnlyDictionary<Guid, int>? nodeDepths = null) =>
+        ApplyMarked(text, corrections, nodeDepths).Text;
+
+    /// <summary>
+    /// <see cref="Apply"/> and where it landed: the corrected text and, for each span a correction
+    /// changed, what the stored words were there and what they read now.
+    /// </summary>
+    /// <remarks>
+    /// The one computation behind both the words and their underline, so the two cannot disagree:
+    /// <see cref="Apply"/> is this method's text, with the same order and the same whole-word rule.
+    /// Each correction is applied to the output of the ones before it, so a mark made by one is
+    /// moved by a later replacement that changes the length of something earlier in the line,
+    /// updated by one inside it, and merged with one that straddles its edge, with the stored words
+    /// under the whole union as its <c>Before</c>. A replacement that changes nothing leaves no mark.
+    /// </remarks>
+    public static MarkedText ApplyMarked(
+        string text,
+        IEnumerable<TerminologyCorrection> corrections,
         IReadOnlyDictionary<Guid, int>? nodeDepths = null)
     {
         ArgumentNullException.ThrowIfNull(text);
@@ -58,12 +76,13 @@ public static class Terminology
             .ThenBy(correction => correction.WrongText, StringComparer.Ordinal)
             .ThenBy(correction => correction.Id);
 
+        IReadOnlyList<CorrectionMark> marks = [];
         foreach (var correction in ordered)
         {
-            text = Replace(text, correction.WrongText, correction.CorrectText, correction.MatchMode);
+            (text, marks) = Replace(text, marks, correction.WrongText, correction.CorrectText, correction.MatchMode);
         }
 
-        return text;
+        return new MarkedText(text, marks);
     }
 
     /// <summary>
@@ -127,17 +146,25 @@ public static class Terminology
     }
 
     /// <summary>
-    /// Every whole-word occurrence, replaced left to right. Written out rather than as a regular
-    /// expression because the alias is a person's text: it can hold a dot, a dash or a bracket, and
-    /// one that has to be escaped before it is safe is one that will not be, eventually.
+    /// Every whole-word occurrence, replaced left to right, with the marks carried through it.
+    /// Written out rather than as a regular expression because the alias is a person's text: it can
+    /// hold a dot, a dash or a bracket, and one that has to be escaped before it is safe is one
+    /// that will not be, eventually.
     /// </summary>
-    private static string Replace(string text, string wrong, string right, TerminologyMatchMode mode)
+    private static (string Text, IReadOnlyList<CorrectionMark> Marks) Replace(
+        string text,
+        IReadOnlyList<CorrectionMark> marks,
+        string wrong,
+        string right,
+        TerminologyMatchMode mode)
     {
         var comparison = mode is TerminologyMatchMode.IgnoreCase
             ? StringComparison.OrdinalIgnoreCase
             : StringComparison.Ordinal;
 
-        var built = new StringBuilder(text.Length);
+        // What this correction changes, where it stands in the text as it is now. A match that
+        // already reads as the right text changes nothing and is left out, so it makes no mark.
+        var changes = new List<(int Start, int End)>();
         var read = 0;
         while (read < text.Length)
         {
@@ -147,21 +174,95 @@ public static class Terminology
                 break;
             }
 
-            built.Append(text, read, found - read);
-            if (IsWholeWord(text, found, wrong.Length))
+            if (IsWholeWord(text, found, wrong.Length)
+                && !string.Equals(text.Substring(found, wrong.Length), right, StringComparison.Ordinal))
             {
-                built.Append(right);
-            }
-            else
-            {
-                built.Append(text, found, wrong.Length);
+                changes.Add((found, found + wrong.Length));
             }
 
             read = found + wrong.Length;
         }
 
-        built.Append(text, read, text.Length - read);
-        return built.ToString();
+        if (changes.Count == 0)
+        {
+            return (text, marks);
+        }
+
+        // The replacements and the marks already standing, in the order of the line. A cluster is a
+        // run of them that overlap one another: marks alone are only carried to where they now are,
+        // and a cluster holding a replacement becomes the one mark spanning all of it.
+        var items = changes
+            .Select(change => (change.Start, change.End, Mark: (CorrectionMark?)null))
+            .Concat(marks.Select(mark => (mark.Start, End: mark.Start + mark.Length, Mark: (CorrectionMark?)mark)))
+            .OrderBy(item => item.Start)
+            .ThenBy(item => item.Mark is null ? 1 : 0)
+            .ToList();
+
+        var built = new StringBuilder(text.Length);
+        var made = new List<CorrectionMark>();
+        var copied = 0;
+        var index = 0;
+        while (index < items.Count)
+        {
+            var first = items[index];
+            var from = first.Start;
+            var to = first.End;
+            var cluster = new List<(int Start, int End, CorrectionMark? Mark)> { first };
+            index++;
+
+            while (index < items.Count && items[index].Start < to)
+            {
+                cluster.Add(items[index]);
+                to = Math.Max(to, items[index].End);
+                index++;
+            }
+
+            built.Append(text, copied, from - copied);
+            var start = built.Length;
+
+            if (cluster.All(item => item.Mark is not null))
+            {
+                built.Append(text, from, to - from);
+                made.Add(cluster[0].Mark! with { Start = start });
+                copied = to;
+                continue;
+            }
+
+            // The replacements of this cluster, written over its span.
+            var at = from;
+            foreach (var change in cluster.Where(item => item.Mark is null))
+            {
+                built.Append(text, at, change.Start - at);
+                built.Append(right);
+                at = change.End;
+            }
+
+            built.Append(text, at, to - at);
+
+            // The stored words under the span: a mark's own where one stands, and what the text
+            // says in between, which no correction has touched.
+            var before = new StringBuilder();
+            var seen = from;
+            foreach (var item in cluster.Where(item => item.Mark is not null))
+            {
+                before.Append(text, seen, item.Start - seen);
+                before.Append(item.Mark!.Before);
+                seen = item.End;
+            }
+
+            before.Append(text, seen, to - seen);
+
+            var after = built.ToString(start, built.Length - start);
+            if (!string.Equals(before.ToString(), after, StringComparison.Ordinal))
+            {
+                made.Add(new CorrectionMark(start, after.Length, before.ToString(), after));
+            }
+
+            copied = to;
+        }
+
+        built.Append(text, copied, text.Length - copied);
+        return (built.ToString(), made);
     }
 
     /// <summary>
