@@ -9,7 +9,7 @@ public static partial class UiTexts
     // The name field. A meeting's name is the person's to set at any time after it was recorded,
     // and this is the one place the application offers to set it — so the field says what it is
     // for rather than sitting there as an unlabelled box holding a title.
-    public static UiText TheMeetingsName { get; } = new("Nombre de la reunión", "The meeting's name");
+    public static UiText TheMeetingsName { get; } = new("Título", "Title");
 
     // The three sections, which are fixed and are the tables the corpus already has. The AI does
     // not choose them, or the corpus stops being able to answer "every decision in August".
@@ -20,16 +20,20 @@ public static partial class UiTexts
     public static UiText WhatWasLeftUnresolved { get; } =
         new("Qué quedó sin resolver", "What was left unresolved");
 
-    // Who wrote this. Said and not left to be worked out from which buttons are on screen: a
-    // summary is a machine's words under a meeting's own name, and whose words they are belongs
-    // beside them.
-    public static UiText TranscribedBy { get; } = new(
-        "La transcribió {0}, el {1}.",
-        "{0} transcribed it, on {1}.");
+    // The heading over the whole transcript, which stands under what the AI left (or alone when it
+    // left nothing). docs/design.md §Reunion.
+    public static UiText TheTranscript { get; } = new("Transcripción", "Transcript");
 
-    public static UiText SummarisedBy { get; } = new(
-        "El resumen lo armó {0}, el {1}.",
-        "{0} put the summary together, on {1}.");
+    // The press on that heading, and the item on a line's right-click menu: the one verb for
+    // correcting a word from where it is read (docs/design.md §One verb per act). It is not
+    // *Corregir palabras*, which opens the screen of every word that keeps coming out wrong.
+    public static UiText CorrectThisWord { get; } = new("Corregir", "Correct");
+
+    // The cell of the table on the meeting's right when the meeting arrived already made and
+    // carries no record of what made it. The row names its entry (`Transcribed`, `Summarised`) and
+    // this says what is not known, rather than leaving the cell blank — which under a row that says
+    // it was done is the screen contradicting itself.
+    public static UiText NotRecorded { get; } = new("No consta", "Not recorded");
 
     // The data-rank label above the rows of a meeting's summaries, and the automation name of their
     // panel (docs/design.md, The flow). Read by ReadingAMeeting.
@@ -37,46 +41,27 @@ public static partial class UiTexts
         "resúmenes de esta reunión",
         "this meeting's summaries");
 
-    public static UiText NobodyHasTranscribedThisYet { get; } = new(
-        "Todavía no la transcribió nadie.",
-        "Nobody has transcribed it yet.");
-
-    public static UiText NobodyHasSummarisedThisYet { get; } = new(
-        "Todavía no hay resumen.",
-        "There is no summary yet.");
-
-    // A meeting that arrived here already transcribed or already summarised carries what was made
-    // and no record of what made it. Said out loud rather than read as nobody having done it,
-    // which under a heading that says it was done is the screen contradicting itself.
-    public static UiText TheCorpusDoesNotSayWhoTranscribedIt { get; } = new(
-        "El corpus no dice quién la transcribió.",
-        "The corpus does not say what transcribed it.");
-
-    public static UiText TheCorpusDoesNotSayWhoSummarisedIt { get; } = new(
-        "El corpus no dice quién armó el resumen.",
-        "The corpus does not say what put the summary together.");
-
     // Why the meeting has no summary: the last attempt was refused. One sentence naming the
     // condition, from ExtractionCondition, filled into one of these two depending on whether the
     // refusal is about one statement or about the document as a whole.
     public static UiText SummaryNotAccepted { get; } = new(
-        "No hay resumen: el último que llegó no se aceptó. {0}",
-        "There is no summary: the last one that came back was not accepted. {0}");
+        "Resumen rechazado. {0}",
+        "Summary refused. {0}");
 
     public static UiText SummaryNotAcceptedOn { get; } = new(
-        "No hay resumen: el último que llegó no se aceptó. {0} Sobre «{1}».",
-        "There is no summary: the last one that came back was not accepted. {0} On “{1}”.");
+        "Resumen rechazado. {0} Sobre «{1}».",
+        "Summary refused. {0} On “{1}”.");
 
     // The same refusal over a meeting that already has a summary, so it cannot open with "there is
     // no summary". Said in place of the sentence that only says the summary asked for again
     // failed, never beside it; asking again is already on the screen whenever these show.
     public static UiText TheLastSummaryWasNotAccepted { get; } = new(
-        "El último que llegó no se aceptó. {0}",
-        "The last one that came back was not accepted. {0}");
+        "El último se rechazó. {0}",
+        "The last one was refused. {0}");
 
     public static UiText TheLastSummaryWasNotAcceptedOn { get; } = new(
-        "El último que llegó no se aceptó. {0} Sobre «{1}».",
-        "The last one that came back was not accepted. {0} On “{1}”.");
+        "El último se rechazó. {0} Sobre «{1}».",
+        "The last one was refused. {0} On “{1}”.");
 
     public static UiText RefusedNotTheSchema { get; } = new(
         "Lo que devolvió no tiene la forma de un resumen.",
@@ -125,22 +110,22 @@ public static partial class UiTexts
     public static UiText WhereThisWasSaid { get; } = new("Dónde se dijo esto", "Where this was said");
 
     // The two absences a screen with no player has to tell apart. The audio is a source: it was
-    // never produced from anything and cannot be produced again, so a meeting the corpus has a row
-    // for and no file under is something to look at rather than something still to come.
+    // never produced from anything and cannot be produced again, so a meeting recorded whose file
+    // is gone is something to look at rather than something still to come.
     public static UiText ThereIsNoRecordingUnderThisMeetingYet { get; } = new(
-        "Todavía no hay una grabación bajo esta reunión.",
-        "There is no recording under this meeting yet.");
+        "Todavía no hay grabación.",
+        "There is no recording yet.");
 
-    public static UiText TheRecordingIsNotWhereTheCorpusSaysItIs { get; } = new(
-        "El corpus dice que esta reunión tiene audio, y el archivo no está donde debería.",
-        "The corpus says this meeting has audio, and the file is not where it should be.");
+    public static UiText TheRecordingFileIsMissing { get; } = new(
+        "Falta el archivo de audio.",
+        "The audio file is missing.");
 
     // Said where the player would be. A machine with nothing to play through, or a recording whose
     // file has gone, is not something this screen can do anything about — so it says what happened
     // and leaves the rest of the meeting readable.
     public static UiText ThisMeetingWillNotPlay { get; } = new(
-        "No se pudo reproducir esta reunión: {0}",
-        "This meeting would not play: {0}");
+        "No se pudo reproducir: {0}",
+        "Would not play: {0}");
 
     // The act, on the meeting's own screen. It is the verb docs/design.md §One verb per act gives
     // for filing a meeting under what it was about, and it is that verb everywhere.
@@ -155,7 +140,9 @@ public static partial class UiTexts
     // a gap.
     public static UiText ItIsFiledUnderNothing { get; } = new("Sin clasificar", "Unclassified");
 
-    public static UiText SayWhoIsWho { get; } = new("Decir quién es quién", "Say who is who");
+    // The press on the meeting's card of voices: docs/design.md §One verb per act's own verb for
+    // putting names on them, in the imperative the rest of the screen is.
+    public static UiText SayWhoIsWho { get; } = new("Nombrar voces", "Name voices");
 
     // The label over who spoke, on the meeting screen's card. Mono at the data rank, like
     // *sobre qué fue* and *lo que se dijo de esto* beside it on their own screens.

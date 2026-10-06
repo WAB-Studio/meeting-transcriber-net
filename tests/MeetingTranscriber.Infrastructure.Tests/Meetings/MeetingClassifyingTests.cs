@@ -156,6 +156,31 @@ public class MeetingClassifyingTests
     }
 
     /// <summary>
+    /// The places a correction can hold in are every node on every path the meeting is filed
+    /// under, root first and each once.
+    /// </summary>
+    [Fact]
+    public void The_places_a_meeting_can_be_corrected_in_run_root_first_each_once()
+    {
+        using var corpus = new TemporaryCorpus();
+        var stories = Fill(corpus);
+
+        using var reading = corpus.Open();
+        var places = new MeetingClassifying(reading, TimeProvider.System)
+            .Places(stories.MeetingId(Stories.Support));
+
+        places.Select(place => string.Join(" > ", place.Path)).ShouldBe(
+        [
+            "TechSed",
+            "TechSed > Soporte",
+            "TechSed > Soporte > ticket #4312",
+            "Orchard",
+        ]);
+
+        places.Select(place => place.Node).Distinct().Count().ShouldBe(places.Count);
+    }
+
+    /// <summary>
     /// <see cref="MeetingClassifying.PathTo(Guid)"/>, read by a node's own id rather than by a
     /// meeting's filing — the story screen's read and not the filing screen's.
     /// </summary>

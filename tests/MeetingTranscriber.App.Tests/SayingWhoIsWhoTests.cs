@@ -416,6 +416,42 @@ public class SayingWhoIsWhoTests
     }
 
     /// <summary>
+    /// The name standing on a voice is corrected from a press beside its picker, and the picker's own
+    /// list offers only naming somebody new: correcting a name is an act on the one chosen, not one
+    /// more person to choose.
+    /// </summary>
+    [Fact]
+    public void A_name_is_corrected_from_a_press_beside_the_picker_and_never_from_inside_it()
+    {
+        var source = File.ReadAllText(AppSources.At(Screen).FullName);
+
+        Body(source, "private ComboBox APicker(").ShouldNotContain("UiTexts.CorrectThisName");
+
+        var beside = Body(source, "private FrameworkElement APickerAndItsCorrection(");
+
+        beside.ShouldContain("UiTexts.CorrectThisName");
+        beside.ShouldContain("AskWhoTheyAre(read, voice, them)");
+
+        File.ReadAllText(AppSources.At(Markup).FullName).ShouldContain("x:Key=\"CorrectTheirName\"");
+    }
+
+    /// <summary>
+    /// A voice's quotation is selectable and offers the dialogue that corrects the word selected in
+    /// it, which is where a wrong word is seen.
+    /// </summary>
+    [Fact]
+    public void A_voice_s_quotation_is_selectable_and_offers_to_correct_a_word()
+    {
+        var source = File.ReadAllText(AppSources.At(Screen).FullName);
+
+        File.ReadAllText(AppSources.At(Markup).FullName)
+            .ShouldContain("<Setter Property=\"IsTextSelectionEnabled\" Value=\"True\" />");
+
+        source.ShouldContain("CorrectingAWord.OfferedOver(");
+        Body(source, "private async Task CorrectAWordAsync(").ShouldContain("AskingHowAWordGoes.AskAsync(");
+    }
+
+    /// <summary>
     /// One method's body, anchored on the closing brace at its own indentation.
     /// <c>ClassifyingAMeetingTests</c>' own helper, for the reason given there.
     /// </summary>

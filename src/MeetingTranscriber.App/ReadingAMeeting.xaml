@@ -63,6 +63,14 @@
                 <Setter Property="Foreground" Value="{ThemeResource SecondaryTextBrush}" />
             </Style>
 
+            <!-- One turn of the transcript, at the transcript rank in full ink: it is what was said
+                 and the thing being read, where `Quoted` is what a claim rests on and is quieter
+                 than the claim. It is selectable, and the selection is what *Corregir* takes. -->
+            <Style x:Key="Spoken" TargetType="TextBlock" BasedOn="{StaticResource TranscriptText}">
+                <Setter Property="TextWrapping" Value="Wrap" />
+                <Setter Property="IsTextSelectionEnabled" Value="True" />
+            </Style>
+
             <Style x:Key="Data" TargetType="TextBlock" BasedOn="{StaticResource DataText}" />
 
             <!-- One thing this meeting was filed under: the whole path down the tree, as one chip.
@@ -173,17 +181,112 @@
                  the act that would fill it, and a screen saying "there is no summary yet" beside
                  a button reading *Summarise* is the same fact twice. -->
             <ScrollViewer Grid.Column="0">
-                <StackPanel x:Name="TheSections" Spacing="12" />
+                <StackPanel Spacing="12">
+                    <StackPanel x:Name="TheSections" Spacing="12" />
+
+                    <!-- The whole transcript, under what the AI left or alone when it left nothing.
+                         Collapsed until the meeting is transcribed. One line per turn, built by the
+                         code-behind as a line comes into view: a repeater and never a panel holding
+                         an element per turn, so an hour of talk costs no more than five minutes of
+                         it. Its scroller is the one around this column. -->
+                    <Border x:Name="TheTranscriptCard" Style="{StaticResource ReadingCard}" Visibility="Collapsed">
+                        <Grid RowSpacing="12">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+
+                            <Grid Grid.Row="0" ColumnSpacing="10">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+
+                                <TextBlock
+                                    Grid.Column="0"
+                                    VerticalAlignment="Center"
+                                    Style="{StaticResource SectionTitle}"
+                                    Text="{x:Bind In(loc:UiTexts.TheTranscript)}" />
+
+                                <!-- Only while words are selected on a line, and carrying them: the
+                                     same act the line's right-click offers, for a pointer that has
+                                     nothing to right-click with. -->
+                                <Button
+                                    x:Name="CorrectAWordButton"
+                                    AllowFocusOnInteraction="False"
+                                    Grid.Column="1"
+                                    Style="{StaticResource TakeTheStage}"
+                                    Click="OnCorrectTheSelection"
+                                    Content="{x:Bind In(loc:UiTexts.CorrectThisWord)}"
+                                    Visibility="Collapsed" />
+                            </Grid>
+
+                            <ItemsRepeater x:Name="TheTranscriptLines" Grid.Row="1">
+                                <ItemsRepeater.Layout>
+                                    <StackLayout Spacing="10" />
+                                </ItemsRepeater.Layout>
+                            </ItemsRepeater>
+                        </Grid>
+                    </Border>
+                </StackPanel>
             </ScrollViewer>
 
-            <StackPanel Grid.Column="1" Spacing="12">
+            <!-- Scrolls apart from the left, so a short window cuts nothing off: with the card of
+                 words below the others it was the press that fell out of reach. -->
+            <ScrollViewer Grid.Column="1">
+            <StackPanel Spacing="12">
                 <Border Style="{StaticResource ReadingCard}">
                     <StackPanel Spacing="8">
-                        <!-- Who wrote this. A summary is a machine's words under a meeting's own
-                             name, so whose words they are is said here rather than left to be
-                             worked out from which buttons are on screen. -->
-                        <TextBlock x:Name="TranscribedText" Style="{StaticResource BodyText}" TextWrapping="Wrap" />
-                        <TextBlock x:Name="SummarisedText" Style="{StaticResource BodyText}" TextWrapping="Wrap" />
+                        <!-- Who made what, and when: a compact table, a row per stage that has
+                             happened. Whose words a summary is stays said, because a summary is a
+                             machine's words under a meeting's own name; it is said in the fewest
+                             words that carry it. Collapsed whole when nothing has happened yet, and
+                             the list's own word above says that. -->
+                        <Grid x:Name="WhoMadeWhat" ColumnSpacing="12" RowSpacing="4" Visibility="Collapsed">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+
+                            <TextBlock
+                                x:Name="TranscribedLabel"
+                                Grid.Row="0"
+                                Grid.Column="0"
+                                Style="{StaticResource DataText}"
+                                Text="{x:Bind In(loc:UiTexts.Transcribed)}" />
+                            <TextBlock
+                                x:Name="TranscribedText"
+                                Grid.Row="0"
+                                Grid.Column="1"
+                                Style="{StaticResource DataText}"
+                                TextWrapping="Wrap" />
+
+                            <TextBlock
+                                x:Name="SummarisedLabel"
+                                Grid.Row="1"
+                                Grid.Column="0"
+                                Style="{StaticResource DataText}"
+                                Text="{x:Bind In(loc:UiTexts.Summarised)}" />
+                            <TextBlock
+                                x:Name="SummarisedText"
+                                Grid.Row="1"
+                                Grid.Column="1"
+                                Style="{StaticResource DataText}"
+                                TextWrapping="Wrap" />
+                        </Grid>
+
+                        <!-- What a summary came to when it was refused or failed: the one place on
+                             this card that carries a sentence, because it is the one place
+                             something failed. -->
+                        <TextBlock
+                            x:Name="SummaryFailedText"
+                            Style="{StaticResource BodyText}"
+                            TextWrapping="Wrap"
+                            Visibility="Collapsed" />
 
                         <!-- Every summary the meeting was given, one radio row each, newest accepted
                              first, the checked one being the summary on screen. Drawn only when
@@ -274,6 +377,7 @@
                     </StackPanel>
                 </Border>
             </StackPanel>
+            </ScrollViewer>
         </Grid>
 
         <!-- The player. On screen at every stage that has audio under it, which is every stage but
@@ -345,5 +449,9 @@
             Foreground="{ThemeResource PeakBrush}"
             TextWrapping="Wrap"
             Visibility="Collapsed" />
+
+        <!-- The dialogue that corrects one word where it is read: the third `docs/design.md`
+             §Notices allows, shared with the screen that names voices. -->
+        <local:CorrectingAWord x:Name="AskingHowAWordGoes" />
     </Grid>
 </UserControl>

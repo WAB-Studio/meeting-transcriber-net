@@ -39,9 +39,9 @@ public static partial class UiTexts
         "somebody always spoke over this voice");
 
     // Said over the whole screen, in place of every voice's clip, for a meeting with no audio to
-    // play a stretch of: a voice is still named by what it said, and this is the one sentence
-    // saying why no card on this screen offers to play anything.
+    // play a stretch of: a voice is still named by what it said, and this is the one line saying
+    // why no card on this screen offers to play anything.
     public static UiText ThisMeetingHasNoAudioToListenTo { get; } = new(
-        "Esta reunión no tiene audio para escuchar: las voces se nombran por lo que dijeron.",
-        "This meeting has no audio to listen to: the voices are named by what they said.");
+        "No hay audio para escuchar.",
+        "There is no audio to listen to.");
 }

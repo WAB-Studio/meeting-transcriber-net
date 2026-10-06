@@ -189,6 +189,37 @@ public sealed class MeetingClassifying(CorpusDbContext context, TimeProvider clo
     }
 
     /// <summary>
+    /// Every node on every path the meeting is filed under, root first and each once, with its
+    /// path down to it: the places a correction made for this meeting can hold in.
+    /// </summary>
+    /// <remarks>
+    /// Filed under <em>WAB Studio › Proyecto X</em> it can be corrected in Proyecto X or in all of
+    /// WAB Studio, which is the scope the renderer's upward walk reads. Both screens that offer that
+    /// choice read it here, so they cannot offer different scopes for one meeting; the order is
+    /// <see cref="Filing"/>'s, and the path of a node is the same whichever filing reached it first.
+    /// </remarks>
+    public IReadOnlyList<(Guid Node, IReadOnlyList<string> Path)> Places(Guid meetingId)
+    {
+        var places = new List<(Guid Node, IReadOnlyList<string> Path)>();
+        var seen = new HashSet<Guid>();
+
+        foreach (var (_, path) in Filing(meetingId))
+        {
+            for (var at = 0; at < path.Nodes.Count; at++)
+            {
+                var node = path.Nodes[at];
+
+                if (seen.Add(node.Id))
+                {
+                    places.Add((node.Id, [.. path.Nodes.Take(at + 1).Select(step => step.Name)]));
+                }
+            }
+        }
+
+        return places;
+    }
+
+    /// <summary>
     /// One node with everything above it, root first — the path the screen about that node draws.
     /// </summary>
     /// <remarks>

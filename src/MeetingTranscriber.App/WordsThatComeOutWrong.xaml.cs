@@ -207,13 +207,10 @@ public sealed partial class WordsThatComeOutWrong : UserControl
     /// <summary>Everything the corpus says about this meeting that the screen draws, read once.</summary>
     private sealed record Held(
         Meeting Meeting,
-        IReadOnlyList<Place> Places,
+        IReadOnlyList<(Guid Node, IReadOnlyList<string> Path)> Places,
         IReadOnlyDictionary<Guid, string[]> Paths,
         UnpromptedWords Unprompted,
         IReadOnlyList<WordCorrected> Corrected);
-
-    /// <summary>One node the meeting is filed under or above, with its path root first.</summary>
-    private sealed record Place(Guid Node, string[] Path);
 
     /// <summary>Reads the meeting's places, its suspects and the corrections made, off the UI thread.</summary>
     private async Task ReadAsync(Guid meetingId, int generation)
@@ -268,25 +265,10 @@ public sealed partial class WordsThatComeOutWrong : UserControl
 
         var classifying = new MeetingClassifying(context, TimeProvider.System);
 
-        // Every node on every path the meeting is filed under, root first and each once: filed
-        // under WAB Studio › Proyecto X it can be corrected in Proyecto X or in all of WAB Studio,
-        // which is the scope the renderer's upward walk reads.
-        var paths = new Dictionary<Guid, string[]>();
-        var places = new List<Place>();
-        foreach (var (_, path) in classifying.Filing(meetingId))
-        {
-            for (var at = 0; at < path.Nodes.Count; at++)
-            {
-                var node = path.Nodes[at];
-                if (paths.ContainsKey(node.Id))
-                {
-                    continue;
-                }
-
-                paths[node.Id] = [.. path.Nodes.Take(at + 1).Select(step => step.Name)];
-                places.Add(new Place(node.Id, paths[node.Id]));
-            }
-        }
+        // The places a correction can hold in, from the one read the dialogue on the meeting's own
+        // screen offers too, so the two cannot offer different scopes for one meeting.
+        var places = classifying.Places(meetingId);
+        var paths = places.ToDictionary(place => place.Node, place => place.Path.ToArray());
 
         // A correction for one meeting is an edit to one transcript, which this screen does not
         // write and so does not list as a fix of words that keep coming out wrong.
@@ -431,7 +413,7 @@ public sealed partial class WordsThatComeOutWrong : UserControl
         ScopeBox.Items.Add(In(UiTexts.InEveryMeeting));
         foreach (var place in places)
         {
-            ScopeBox.Items.Add(UiTexts.OnlyIn.In(_language, ScreenNumbers.Inside(place.Path)));
+            ScopeBox.Items.Add(UiTexts.OnlyIn.In(_language, ScreenNumbers.Inside([.. place.Path])));
         }
 
         ScopeBox.SelectedIndex = chosen >= 0 && chosen < ScopeBox.Items.Count ? chosen : 0;
