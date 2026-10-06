@@ -182,7 +182,7 @@
             <StackPanel Grid.Column="1" Spacing="1">
                 <TextBlock
                     Style="{StaticResource SubScreenTitleText}"
-                    Text="{x:Bind In(loc:UiTexts.WhatThisMeetingWasAbout)}" />
+                    Text="{x:Bind In(loc:UiTexts.Classify)}" />
 
                 <!-- Which meeting this is: its name and when it was, which are the machine's own
                      numbers and read the same in either language. -->
@@ -198,6 +198,7 @@
             <!-- The fourteen, in the order `MeetingShape` declares them, which is §5.3's own row
                  order. Built in code because which of them exist is an answer and not a layout. -->
             <local:WrappingRow x:Name="TheShapes" HorizontalGap="8" VerticalGap="8" />
+
 
             <!-- Putting a classification by, under a name typed here, and the two presses a chip
                  lit from those put by adds: correcting its name, and throwing it away. The name

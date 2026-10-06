@@ -571,6 +571,24 @@ public class ClassifyingAMeetingTests
         Body(source, "private void CorrectTheKeptName(").ShouldContain("InTheCorpus(");
     }
 
+    /// <summary>The screen is titled with the words of the press that opens it.</summary>
+    [Fact]
+    public void The_screen_is_called_what_its_press_says()
+    {
+        var markup = File.ReadAllText(AppSources.At(Markup).FullName);
+
+        markup.ShouldContain(
+            "loc:UiTexts.Classify)",
+            customMessage: "the title is not the words of the press that opens the screen, UiTexts.Classify.");
+
+        markup.ShouldNotContain("WhatThisMeetingWasAbout", customMessage: "the old question is back as the title.");
+
+        File.ReadAllText(AppSources.At(Path.Combine("MeetingTranscriber.Presentation", "UiTexts.Classifying.cs")).FullName)
+            .ShouldNotContain(
+                "WhatThisMeetingWasAbout",
+                customMessage: "the words of the old title are still in the catalogue.");
+    }
+
     /// <summary>
     /// A pill opens under a pointer. Its first press was read as the one that had just dismissed its
     /// list, because "never dismissed" was <c>long.MinValue</c> and the elapsed time against it
