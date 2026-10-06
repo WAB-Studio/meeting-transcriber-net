@@ -73,8 +73,13 @@ public static class RenamingSomebody
                 .Distinct()
                 .ToArray();
 
+            // Only meetings that have turns. A person may delete a meeting's transcript and keep the
+            // names they gave its voices, and a render of a meeting with no response fails: the
+            // rename would then report a meeting it could not render, for a transcript that is not
+            // there to say the old name. The next transcription renders it with the new one.
             ordered = context.Meetings
-                .Where(meeting => namedOn.Contains(meeting.Id))
+                .Where(meeting => namedOn.Contains(meeting.Id)
+                    && context.Utterances.Any(turn => turn.MeetingId == meeting.Id))
                 .OrderBy(meeting => meeting.StartedAt)
                 .ThenBy(meeting => meeting.Id)
                 .Select(meeting => meeting.Id)

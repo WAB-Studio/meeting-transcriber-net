@@ -551,4 +551,81 @@ public class ReadingAMeetingTests
         markup.ShouldMatch(@"x:Name=""TheVolume""[^>]*Spacing=""8""");
         markup.ShouldMatch(@"x:Name=""TheVolume""[^>]*Background=""\{ThemeResource PaperBrush\}""");
     }
+
+    /// <summary>
+    /// A delete asks first, in Olivo's own dialogue, and lets go of the recording before it asks
+    /// anything of the disk: the player holds <c>audio.wav</c> open, and Windows refuses a rename of
+    /// a file somebody has open.
+    /// </summary>
+    [Fact]
+    public void Every_delete_asks_first_and_lets_the_player_go()
+    {
+        var screen = File.ReadAllText(AppSources.At(Screen).FullName);
+
+        var delete = Body(screen, "private async void OnDelete(MeetingPart part)");
+        delete.ShouldContain("StopPlaying();");
+        delete.IndexOf("StopPlaying();", StringComparison.Ordinal)
+            .ShouldBeLessThan(delete.IndexOf("AskFirstAsync(", StringComparison.Ordinal));
+        delete.IndexOf("AskFirstAsync(", StringComparison.Ordinal)
+            .ShouldBeLessThan(delete.IndexOf("removal.Remove(", StringComparison.Ordinal));
+        delete.ShouldContain("await Task.Run(");
+
+        var asking = Body(screen, "private async Task<bool> AskFirstAsync(UiText title, UiText whatGoes)");
+        asking.ShouldContain("Application.Current.Resources[\"Notice\"]");
+        asking.ShouldContain("ShowAsync()");
+        asking.ShouldContain("UiTexts.Delete");
+        asking.ShouldContain("UiTexts.Cancel");
+    }
+
+    /// <summary>
+    /// A meeting that is gone, or put away, leaves the screen by closing it and then saying so, and
+    /// never through <c>GoBack</c>, which would write the typed title onto a row that is not there.
+    /// </summary>
+    [Fact]
+    public void Leaving_after_a_delete_closes_and_never_commits_the_name()
+    {
+        var screen = File.ReadAllText(AppSources.At(Screen).FullName);
+
+        foreach (var handler in new[]
+        {
+            Body(screen, "private async void OnDelete(MeetingPart part)"),
+            Body(screen, "private void OnArchive(object sender, RoutedEventArgs e)"),
+        })
+        {
+            handler.ShouldContain("Close();");
+            handler.IndexOf("Close();", StringComparison.Ordinal)
+                .ShouldBeLessThan(handler.IndexOf("Left?.Invoke(this, EventArgs.Empty);", StringComparison.Ordinal));
+            handler.ShouldNotContain("GoBack(");
+            handler.ShouldNotContain("CommitTheName(");
+        }
+    }
+
+    /// <summary>
+    /// A press the corpus would refuse is not drawn: what it would refuse is read with the meeting,
+    /// and each delete is visible only for nothing.
+    /// </summary>
+    [Fact]
+    public void A_press_the_corpus_would_refuse_is_not_drawn()
+    {
+        var screen = File.ReadAllText(AppSources.At(Screen).FullName);
+        var markup = File.ReadAllText(AppSources.At(Markup).FullName);
+
+        screen.ShouldContain("removal.WhyNot(meetingId, MeetingPart.Audio)");
+        screen.ShouldContain("removal.WhyNot(meetingId, MeetingPart.Transcript)");
+        screen.ShouldContain("removal.WhyNot(meetingId, MeetingPart.Whole)");
+
+        var section = Body(screen, "private void TheMeetingItselfSection()");
+        section.ShouldContain("Offer(DeleteAudioButton, may.Audio is null");
+        section.ShouldContain("Offer(DeleteTranscriptButton, may.Transcript is null");
+        section.ShouldContain("Offer(DeleteMeetingButton, may.Whole is null");
+        section.ShouldContain("UiTexts.Unarchive");
+        screen.ShouldContain("TheMeetingItselfSection();");
+
+        foreach (var name in new[] { "TheMeetingItself", "ArchiveButton", "DeleteAudioButton", "DeleteTranscriptButton", "DeleteMeetingButton" })
+        {
+            markup.ShouldContain($"x:Name=\"{name}\"");
+        }
+
+        markup.ShouldMatch(@"x:Name=""DeleteMeetingButton""[^>]*Style=""\{StaticResource ItLosesSomething\}""");
+    }
 }

@@ -1,6 +1,6 @@
 ﻿---
 phase: climbing
-progress: 218/338
+progress: 225/338
 updated: 2026-10-06
 ---
 
@@ -281,13 +281,13 @@ Board: 3 · Grabador WinUI
 - [x] ISC-225: The window is moved by dragging the bar at its top, anywhere on it but its presses.
 - [x] ISC-227: A meeting's screen lists every correction that changed a word of its transcript, each as the words before and after.
 - [x] ISC-228: In a meeting's transcript every word a correction changed is marked where it stands, and pressing it shows the words as transcribed and as corrected.
-- [ ] ISC-229: A meeting's audio, its transcript, or the whole meeting is deleted by the person, from the meeting, after saying yes to what goes.
-- [ ] ISC-229.1: Deleting a meeting's audio leaves its transcript, its summary, its names and its filing as they were, and the meeting says its audio was deleted.
-- [ ] ISC-229.2: Deleting a meeting's transcript takes every paid response it came from, every file rendered from them and every summary, leaves the audio and what people said about the meeting, and the meeting is offered for transcription again.
-- [ ] ISC-229.3: Deleting a whole meeting leaves no row and no file of it in the corpus.
-- [ ] ISC-229.4: Anti: nothing is deleted from a meeting with work queued, running or stopped on a person, nor from one being recorded or saved.
-- [ ] ISC-229.5: Anti: a deletion the machine died inside is finished at the next launch, and never leaves a meeting reading as whole while its files are gone.
-- [ ] ISC-230: An archived meeting is out of the meetings list and nothing of it is lost: search finds it, it opens whole, and putting it back returns it to the list.
+- [x] ISC-229: A meeting's audio, its transcript, or the whole meeting is deleted by the person, from the meeting, after saying yes to what goes.
+- [x] ISC-229.1: Deleting a meeting's audio leaves its transcript, its summary, its names and its filing as they were, and the meeting says its audio was deleted.
+- [x] ISC-229.2: Deleting a meeting's transcript takes every paid response it came from, every file rendered from them and every summary, leaves the audio and what people said about the meeting, and the meeting is offered for transcription again.
+- [x] ISC-229.3: Deleting a whole meeting leaves no row and no file of it in the corpus.
+- [x] ISC-229.4: Anti: nothing is deleted from a meeting with work queued, running or stopped on a person, nor from one being recorded or saved.
+- [x] ISC-229.5: Anti: a deletion the machine died inside is finished at the next launch, and never leaves a meeting reading as whole while its files are gone.
+- [x] ISC-230: An archived meeting is out of the meetings list and nothing of it is lost: search finds it, it opens whole, and putting it back returns it to the list.
 
 ### F5 · Deepgram BYOK
 Why: a recording becomes a transcript on the user's own key, and the user is charged exactly
@@ -926,3 +926,10 @@ Board: 7 · Distribución y backup
 - ISC-92.1 — `MeetingSearchTests.The_fourth_band_reads_the_terms_and_not_the_turns` and `.A_word_like_the_one_typed_finds_the_fourth_band` (`tests/MeetingTranscriber.Infrastructure.Tests`) green 2026-10-06. Not reached: a corpus large enough to time it.
 - ISC-226.1 — `MeetingSearchTests.Meetings_come_back_in_the_four_bands_in_order` and `.A_meeting_comes_back_once_under_the_best_band_it_reaches` (`tests/MeetingTranscriber.Infrastructure.Tests`) green 2026-10-06. Not reached: the drawer drawing them, which is a walk.
 - ISC-226.2 — `MeetingSearchTests.What_is_typed_is_never_refused` and `.Typed_text_with_no_word_in_it_finds_nothing_and_says_nothing` (`tests/MeetingTranscriber.Infrastructure.Tests`) green 2026-10-06. Not reached: the field itself.
+- ISC-229 — `ReadingAMeetingTests.Every_delete_asks_first_and_lets_the_player_go`, `.Leaving_after_a_delete_closes_and_never_commits_the_name` and `.A_press_the_corpus_would_refuse_is_not_drawn` (`tests/MeetingTranscriber.App.Tests`) green 2026-10-06. Not reached: the dialogue and presses drawn; the owner's walk.
+- ISC-229.1 — `MeetingRemovalTests.Deleting_the_audio_leaves_everything_else` (`tests/MeetingTranscriber.Infrastructure.Tests`) and `MeetingReadingTests.A_meeting_whose_audio_was_deleted_says_so` green 2026-10-06.
+- ISC-229.2 — `MeetingRemovalTests.Deleting_the_transcript_takes_every_version_the_summary_and_the_jobs` and `.Deleting_the_transcript_keeps_what_people_said_about_the_meeting` (`tests/MeetingTranscriber.Infrastructure.Tests`) green 2026-10-06.
+- ISC-229.3 — `MeetingRemovalTests.Deleting_the_meeting_leaves_no_row_and_no_folder` (`tests/MeetingTranscriber.Infrastructure.Tests`) green 2026-10-06.
+- ISC-229.4 — `MeetingRemovalTests.Nothing_is_deleted_while_work_is_queued_running_or_stopped_on_a_person`, `.Nothing_is_deleted_while_its_spool_folder_stands` and `.A_file_held_open_leaves_the_meeting_exactly_as_it_was` (`tests/MeetingTranscriber.Infrastructure.Tests`) green 2026-10-06.
+- ISC-229.5 — `MeetingRemovalTests.A_deletion_a_crash_left_is_finished_at_launch`, `.A_refused_response_set_aside_is_decided_by_its_transcription_run` (`tests/MeetingTranscriber.Infrastructure.Tests`) and `WhatALaunchOwesTests.A_launch_finishes_a_deletion_a_crash_left` (`tests/MeetingTranscriber.Recording.Tests`) green 2026-10-06.
+- ISC-230 — `MeetingRemovalTests.An_archived_meeting_is_off_the_list_and_back_on_it_when_put_back`, `.An_archived_meeting_with_a_charge_stopped_on_a_person_stays_listed` and `.An_archived_meeting_is_still_found_and_every_reader_but_the_list_still_counts_it` (`tests/MeetingTranscriber.Infrastructure.Tests`) green 2026-10-06. Not reached: the screen leaving and the way back drawn; the owner's walk.

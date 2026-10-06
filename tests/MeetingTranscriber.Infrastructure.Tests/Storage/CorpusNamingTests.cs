@@ -170,6 +170,8 @@ public partial class CorpusNamingTests
                 "created_at",
                 "updated_at",
                 "deleted_at",
+                "archived_at",
+                "audio_removed_at",
             ],
             ignoreOrder: true);
     }

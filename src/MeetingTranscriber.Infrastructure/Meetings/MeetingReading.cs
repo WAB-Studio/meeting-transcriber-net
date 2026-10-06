@@ -326,7 +326,12 @@ public sealed class MeetingReading(CorpusDbContext context, TimeProvider clock)
 
         if (filed is null)
         {
-            recorded = RecordedAudio.NoneYet;
+            // Somebody deleting the audio is a different absence from nobody having recorded any,
+            // and the meeting is what says which: the artifact row went with the file.
+            recorded = context.Meetings.AsNoTracking()
+                .Any(row => row.Id == meetingId && row.AudioRemovedAt != null)
+                ? RecordedAudio.Removed
+                : RecordedAudio.NoneYet;
             return null;
         }
 

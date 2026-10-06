@@ -1224,6 +1224,11 @@ public sealed partial class UnfinishedRecordingsTests : IDisposable
             (Path.Combine("MeetingTranscriber.Infrastructure", "Storage", "CorpusMove.cs"),
                 [DirectoryDelete, DirectoryMove]),
 
+            // A meeting somebody chose to delete, renamed out of `meetings/` and then erased; never a
+            // folder under `spool/`, which it refuses to delete under.
+            (Path.Combine("MeetingTranscriber.Infrastructure", "Meetings", "MeetingRemoval.cs"),
+                [DirectoryDelete, DirectoryMove]),
+
             // A Claude Code run's own scratch workspace, deleted once the process that used it has
             // exited, killed or not. It lives under `%TEMP%\meeting-transcriber-summaries\`, never
             // under `spool/`, and holds nothing but the one run's own prompt files.

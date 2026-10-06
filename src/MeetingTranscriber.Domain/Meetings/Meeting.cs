@@ -34,4 +34,20 @@ public class Meeting
     public UtcTimestamp UpdatedAt { get; set; }
 
     public UtcTimestamp? DeletedAt { get; set; }
+
+    /// <summary>
+    /// When a person put this meeting away, or nothing while it is out. It records a person's act,
+    /// so it is a source: nothing derives it and nothing can put it back. It is not a lifecycle
+    /// state, because every reader that asks for <see cref="LifecycleState.Active"/> would then
+    /// silently drop the meeting — an export included, which is how somebody moves to another
+    /// machine. Only the meetings list leaves an archived meeting out.
+    /// </summary>
+    public UtcTimestamp? ArchivedAt { get; set; }
+
+    /// <summary>
+    /// When a person deleted this meeting's audio, or nothing while the audio was never deleted.
+    /// It records a person's act, and it is what lets the screen say the recording was deleted
+    /// instead of saying nobody has recorded one.
+    /// </summary>
+    public UtcTimestamp? AudioRemovedAt { get; set; }
 }

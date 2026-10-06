@@ -126,6 +126,12 @@
                  word changes; declared here because `Chrome()` reads this screen's resources. -->
             <Style x:Key="TheNeutralOne" TargetType="Button" BasedOn="{StaticResource RowButtonAtTheMargin}" />
 
+            <!-- Putting the meeting away loses nothing, so it is the neutral answer; the three
+                 deletes take the one press Olivo has for something lost. -->
+            <Style x:Key="PutAway" TargetType="Button" BasedOn="{StaticResource RowButtonAtTheMargin}" />
+
+            <Style x:Key="ItLosesSomething" TargetType="Button" BasedOn="{StaticResource RowButtonThatLosesSomething}" />
+
             <!-- The small *Corregir* that stands at the end of words somebody selected. The pill the
                  application already has, so a press that opens the corrections screen is shaped
                  like the others that open something. -->
@@ -445,6 +451,43 @@
                             Style="{StaticResource TakeTheStage}"
                             Click="OnCorrectWords"
                             Content="{x:Bind In(loc:UiTexts.CorrectWords)}" />
+                    </StackPanel>
+                </Border>
+
+                <!-- What a person can do to the meeting itself: put it away, or delete its audio, its
+                     transcript or all of it. Each delete is drawn only while the corpus would take
+                     it, which is read with the meeting, and each asks first. A column of presses and
+                     not a row: a row of four would not fit the column, and a collapsed press in a
+                     wrapping row still leaves its gap. The labels are set in code because *Archivar*
+                     becomes *Desarchivar* with the meeting's own state. -->
+                <Border x:Name="TheMeetingItself" Style="{StaticResource ReadingCard}" Visibility="Collapsed">
+                    <StackPanel Spacing="8">
+                        <Button
+                            x:Name="ArchiveButton"
+                            HorizontalAlignment="Left"
+                            Style="{StaticResource PutAway}"
+                            Click="OnArchive" />
+
+                        <Button
+                            x:Name="DeleteAudioButton"
+                            HorizontalAlignment="Left"
+                            Style="{StaticResource ItLosesSomething}"
+                            Click="OnDeleteAudio"
+                            Visibility="Collapsed" />
+
+                        <Button
+                            x:Name="DeleteTranscriptButton"
+                            HorizontalAlignment="Left"
+                            Style="{StaticResource ItLosesSomething}"
+                            Click="OnDeleteTranscript"
+                            Visibility="Collapsed" />
+
+                        <Button
+                            x:Name="DeleteMeetingButton"
+                            HorizontalAlignment="Left"
+                            Style="{StaticResource ItLosesSomething}"
+                            Click="OnDeleteMeeting"
+                            Visibility="Collapsed" />
                     </StackPanel>
                 </Border>
             </StackPanel>

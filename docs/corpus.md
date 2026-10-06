@@ -35,6 +35,10 @@ spool/<meeting_id>/
   saving.mark            neither    held while a finish is writing the meeting down, and empty
 spool/.removing-<meeting_id>/
   <meeting_id>/          neither    a recording somebody threw away, between the move and the delete
+meetings/.removing-<meeting_id>/
+                         neither    a meeting somebody deleted, between the rename and the erase
+meetings/<meeting_id>/<file>.removing
+                         neither    a file somebody deleted, between the rename and the erase
 ```
 
 **The three marks are neither, and that is not a mistake in the table.** All three hold no bytes and
@@ -49,7 +53,7 @@ making; a crash lets it go with the process. Like the spool's marks it holds no 
 that restored it would restore nothing, and it is outside the two folders `check` walks.
 
 **`deepgram.refused.<run>.json` is a paid response the corpus would not file, and nothing
-deletes it.** The runner writes a response into a `.partial` and files it through `MeetingIntake`,
+deletes it but a person deleting that meeting's transcript or the meeting.** The runner writes a response into a `.partial` and files it through `MeetingIntake`,
 where a meeting's first comes in the way `import-response` files it, and every later one comes in
 beside it. When that door refuses a response that arrived whole — it does not read, its channels
 disagree with how the meeting was recorded, or another response was filed onto the meeting while
@@ -64,7 +68,8 @@ meeting's next version, finishing the run that bought it and sending nothing.
 is `deepgram.json`; each one after it is `deepgram.v<n>.json`, filed beside every version before
 it. The meeting is read from the highest version it has, never from the newest row: a response put
 back onto a corpus that lost it moves `ConfirmedAt`, and the name is what stays true. No response
-is ever replaced, so a backup carries every version and a deletion may touch none of them.
+is ever replaced, so a backup carries every version. A deletion touches them only when somebody
+deletes the meeting's transcript or the meeting, and then every version goes.
 `ResponseVersions`, in `src/MeetingTranscriber.Domain/Artifacts/`, is where the rule lives.
 
 **`audio.wav` is a source under `meetings/` and a derivative under `spool/`, and that is not a
@@ -258,7 +263,8 @@ likely to be added, so this is a larger surface than it was when it was two.
 Everything else is a source, and the part that matters most is the **human layer**: `nodes`,
 `meeting_nodes`, `templates`, `template_nodes`, `template_people`, `people`, `affiliations`,
 `meeting_people`, `speaker_assignments`, `terminology_corrections`, `action_item_progress`, and the
-titles, context notes and classifications on `meetings`, and the `words-said-right` row of
+titles, context notes and classifications on `meetings`, and when a person archived one or
+deleted its audio (`meetings.archived_at`, `meetings.audio_removed_at`), and the `words-said-right` row of
 `settings`, and the `chosen_at` somebody puts on an `extraction_runs` row by putting that summary
 back. None of it is inferable from any artifact, so a backup that copies
 only the files loses it.
@@ -287,6 +293,69 @@ is gone, and a table whose whole point is holding an unrepeatable fact is the on
 left to a catch-all. One column on them is a person's and not a record: `extraction_runs.chosen_at`,
 which says when somebody put that summary back as the one its meeting shows. `HumanLayer` writes it
 like the rest of that layer, and nothing produces it again.
+
+## Deleting and archiving
+
+A person may delete a meeting's audio, its transcript, or the meeting, and may put one away. It is
+the one way a paid artifact leaves a corpus, so it is a person's press and never the application's
+own, and the screen asks first. `MeetingRemoval`, in `src/MeetingTranscriber.Infrastructure/Meetings/`,
+is where the rules live.
+
+**What each takes.**
+
+- **The audio**: the `audio` artifact and `audio.wav`. `meetings.audio_removed_at` records when, so
+  the meeting says its audio was deleted and not that nothing was ever recorded.
+- **The transcript**: every `deepgram` response, every version, and every refused response in the
+  folder; `transcript.md`, `utterances.jsonl`, and every extraction and summary, their files and
+  their rows; the `utterances`, `turn_sources`, `summaries`, `decisions`, `action_items`,
+  `open_questions`, `extraction_runs` (and what hangs off one: its refusals, the progress somebody
+  recorded on its actions, which summary was put back), `transcription_runs` and **every
+  `processing_jobs` row of the meeting**. The jobs go because a succeeded transcription job is what
+  makes a meeting read as transcribed. Afterwards the meeting reads as recorded, and transcribing it
+  again is a new charge.
+- **The meeting**: the row and everything that hangs off it, its `audit_events` (which the schema
+  only sets to null, so they are deleted explicitly), and its folder.
+
+Deleting the transcript keeps everything a person said about the meeting: its title, its note, its
+filing, the people on it, its corrections and the names given to its voices. A name given to a voice
+is read by nothing until the meeting is transcribed again, and the render that files that
+transcription drops the labels it does not carry. The audio is offered only while the meeting has a
+transcript and the transcript only while it has audio: deleting the second one is deleting the
+meeting.
+
+**What refuses it.** Any job of the meeting that is queued, running, waiting to retry or stopped on a
+person (a charge that may already have happened is not something a deletion may hide), and
+`spool/<meeting_id>/` standing, which covers a meeting being recorded or saved and a recording a
+finish left there waiting on a decision. The refusal is read inside the write transaction, which
+holds the corpus's one write lock.
+
+**The order, so a machine that dies leaves nothing reading as whole.**
+
+- The meeting: the row is set to `deleting`, with `deleted_at`, in the same transaction that checks
+  the refusals, and every reader stops offering it from that commit. Then the folder is renamed to
+  `meetings/.removing-<meeting_id>`, then the row and its audit rows are deleted, then the renamed
+  folder is erased. A disk that refuses the rename puts the row back.
+- The audio or the transcript: in one transaction opened first, each file is renamed to
+  `<name>.removing` (every one renamed so far goes back if any is refused, so a file somebody holds
+  open leaves the meeting as it was), the rows are deleted, the transaction commits, and only then
+  are the renamed files erased.
+
+**What a launch finishes** (`MeetingRemoval.FinishIn`, the second of `WhatALaunchOwes`' chores): a
+`deleting` row is taken the rest of the way; a `meetings/.removing-<meeting_id>` folder with no row
+is erased; a `<name>.removing` file whose artifact row still exists is renamed back, because the
+deletion never committed, and one whose row is gone is erased. A refused response has no artifact
+row, ever, so its file is told by its `transcription_runs` row, which the same transaction deletes:
+present means it never committed. A `.removing` name it cannot place is left and named in the
+chore's report. `check` reports a `.removing` file or folder until then, which is correct: nothing
+else deletes one.
+
+**Archiving is a column, and not a state.** `meetings.archived_at` records that a person put the
+meeting away, so it joins the human layer's sources. A fourth `lifecycle_state` would be dropped by
+every reader that asks for the active meetings — export, rebuild, renders, corrections, search —
+and an export is how somebody moves to another machine. Only the meetings list leaves an archived
+meeting out, and it keeps one while any of its jobs is stopped on a person. Search finds archived
+meetings, node stories show them, and the MCP server and an export carry them; the way back is to
+find it and press *Desarchivar*.
 
 ## Where the rule is enforced
 

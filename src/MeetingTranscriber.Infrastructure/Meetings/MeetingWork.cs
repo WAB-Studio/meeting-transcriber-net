@@ -110,9 +110,12 @@ public sealed class MeetingWork(CorpusDbContext context, TimeProvider clock)
     /// that over every state a job can be in and over a kind the stage does not offer.
     /// </para>
     /// <para>
-    /// One thing whoever builds deletion inherits: `processing_jobs.meeting_id` cascades, so
-    /// deleting the row takes the awaiting job with it and this list falls quiet again. Either the
-    /// job outlives the meeting, or a meeting with an unsettled charge is not deletable yet.
+    /// Archiving is the other way a meeting leaves this list, and it follows the same rule: an
+    /// archived meeting is left out unless something on it is stopped on a person, because hiding
+    /// it would make putting it away the thing that hid the charge. Deletion goes the other way
+    /// round and refuses a meeting with any job unsettled, so no charge is ever deleted with its
+    /// meeting. An archived meeting is still an active one — every other reader finds it — and
+    /// only this list leaves it out.
     /// </para>
     /// <para>
     /// Three queries rather than one per meeting. The rows are small and the counts are a corpus's
@@ -128,7 +131,8 @@ public sealed class MeetingWork(CorpusDbContext context, TimeProvider clock)
 
         var meetings = context.Meetings
             .AsNoTracking()
-            .Where(meeting => meeting.LifecycleState == LifecycleState.Active
+            .Where(meeting => (meeting.LifecycleState == LifecycleState.Active
+                    && meeting.ArchivedAt == null)
                 || mightBeStopped.Contains(meeting.Id))
             .OrderByDescending(meeting => meeting.StartedAt)
 
@@ -150,7 +154,8 @@ public sealed class MeetingWork(CorpusDbContext context, TimeProvider clock)
             .Select(meeting => new MeetingAndWork(
                 meeting,
                 OwedWork.Of(meeting.Id, files[meeting.Id], jobs[meeting.Id])))
-            .Where(listed => listed.Meeting.LifecycleState is LifecycleState.Active
+            .Where(listed => (listed.Meeting.LifecycleState is LifecycleState.Active
+                    && listed.Meeting.ArchivedAt is null)
                 || listed.Owed.WaitsOnSomebody)
             .ToList();
     }

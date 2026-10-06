@@ -192,6 +192,59 @@ public class RenamingSomebodyTests
             .ShouldBeNull();
     }
 
+    /// <summary>
+    /// A person may delete a meeting's transcript and keep the names they gave its voices. Renaming
+    /// the person then has no transcript to say the new name on, and must not report one it could not
+    /// render. Goes red with the turn filter taken out of <see cref="RenamingSomebody.Rename"/>: the
+    /// render of a meeting with no response is refused.
+    /// </summary>
+    [Fact]
+    public void Renaming_somebody_named_on_a_meeting_with_no_transcript_renders_nothing_there()
+    {
+        using var corpus = new TemporaryCorpus();
+        var meeting = ARenderedVoiceMeeting.RenderedIn(corpus, When, out var label);
+        Guid somebodyId;
+
+        using (var context = corpus.OpenMigrated())
+        {
+            var human = new HumanLayer(context, When);
+            var somebody = human.Add("Renata");
+            somebodyId = somebody.Id;
+            human.Assign(meeting, label, somebody);
+
+            // The recording this meeting would still have, which is what makes deleting only its
+            // transcript something a person is offered.
+            context.Add(new Artifact
+            {
+                Id = Guid.NewGuid(),
+                MeetingId = meeting,
+                Kind = ArtifactKind.Audio,
+                Origin = ArtifactKind.Audio.OriginOf(),
+                RelativePath = CorpusFiles.PathFor(meeting, "audio.wav"),
+                ByteSize = 4,
+                Sha256 = new string('a', 64),
+                ConfirmedAt = When,
+            });
+            context.SaveChanges();
+
+            new MeetingRemoval(context, When).Remove(meeting, MeetingPart.Transcript);
+        }
+
+        Person person;
+        using (var context = corpus.OpenMigrated())
+        {
+            context.SpeakerAssignments.Count(row => row.MeetingId == meeting).ShouldBe(1);
+            person = context.People.Single(row => row.Id == somebodyId);
+        }
+
+        RenamingSomebody.Rename(corpus.Root, person, "Renata Corregida", TimeProvider.System)
+            .ShouldNotBeNull();
+
+        using var reading = corpus.OpenMigrated();
+        reading.People.Single(row => row.Id == somebodyId).DisplayName.ShouldBe("Renata Corregida");
+        reading.Utterances.Any(turn => turn.MeetingId == meeting).ShouldBeFalse();
+    }
+
     private static string Transcript(CorpusDbContext context, DirectoryInfo root, Guid meeting)
     {
         var transcript = context.Artifacts.Single(
