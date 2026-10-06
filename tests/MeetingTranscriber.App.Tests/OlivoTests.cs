@@ -1481,6 +1481,70 @@ public partial class OlivoTests
         }
     }
 
+    /// <summary>
+    /// Nothing in a control's template answers a passing cursor, except an open list saying which
+    /// entry the pointer is on.
+    /// </summary>
+    /// <remarks>
+    /// <c>docs/design.md</c> §What never moves: nothing in this application reacts to a cursor
+    /// crossing it. A template that is replaced wholesale and then given a setter in its
+    /// <c>PointerOver</c> is that rule broken in the one place nobody reads, so the dictionary is
+    /// searched for every such state and each must be empty. <c>DropDownItem</c> is the exception
+    /// and its own remark says why: an open list where nothing says which entry the pointer is on
+    /// is a list you choose out of by luck. Hover is not reachable by the UI probe, which is why
+    /// this reads the markup.
+    /// </remarks>
+    [Fact]
+    public void No_control_answers_a_passing_cursor()
+    {
+        var states = Olivo()
+            .Descendants()
+            .Where(element => element.Name.LocalName == "VisualState"
+                && (string?)element.Attribute(XName.Get("Name", X)) == "PointerOver")
+            .ToArray();
+
+        states.ShouldNotBeEmpty("The dictionary names no PointerOver state, so this checks nothing.");
+
+        var answering = states
+            .Where(state => state.Descendants().Any(child => child.Name.LocalName is "Setter" or "Storyboard"))
+            .Where(state => state.Ancestors()
+                .Where(ancestor => ancestor.Name.LocalName == "Style")
+                .All(style => (string?)style.Attribute(XName.Get("Key", X)) != "DropDownItem"))
+            .Select(state => At(state).TrimEnd(' ', ':'))
+            .ToArray();
+
+        answering.ShouldBeEmpty(
+            "These PointerOver states draw something, and nothing here reacts to a passing cursor: "
+            + string.Join("; ", answering));
+    }
+
+    /// <summary>
+    /// The dialogue puts its act on the right and what loses nothing on the left.
+    /// </summary>
+    /// <remarks>
+    /// <c>docs/design.md</c> §Two places. The platform's template puts the primary press first, so
+    /// the command row was rebuilt, and the order is a column number nothing else would notice
+    /// swapped back on a green build.
+    /// </remarks>
+    [Fact]
+    public void The_notice_puts_its_act_on_the_right()
+    {
+        var notice = StyleNamed("Notice");
+
+        int ColumnOf(string button) => notice
+            .Descendants()
+            .Where(element => element.Name.LocalName == "Button"
+                && (string?)element.Attribute(XName.Get("Name", X)) == button)
+            .Select(element => int.Parse(
+                (string?)element.Attribute("Grid.Column") ?? "0",
+                System.Globalization.CultureInfo.InvariantCulture))
+            .Single();
+
+        ColumnOf("PrimaryButton").ShouldBeGreaterThan(
+            ColumnOf("CloseButton"),
+            "The primary press is not in a later column than the close press, so the act is on the left.");
+    }
+
     private static bool IsTheDictionary(FileInfo file) =>
         file.Name.Equals("Olivo.xaml", StringComparison.Ordinal);
 

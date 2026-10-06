@@ -53,6 +53,22 @@ public class PickerPanelTests
     }
 
     [Fact]
+    public void The_open_list_is_bounded_by_the_pickers_own_ceiling()
+    {
+        // With the list on a VirtualizingStackPanel and no carousel, nothing else bounds it: on a
+        // 1440 px monitor the open list was 1440 px, and it opened over its own pill.
+        var bounded = Picker()
+            .Descendants()
+            .Where(element => element.Name.LocalName is "ScrollViewer" or "Border")
+            .Any(element => ((string?)element.Attribute("MaxHeight") ?? string.Empty)
+                .Contains("MaxDropDownHeight", StringComparison.Ordinal));
+
+        bounded.ShouldBeTrue(
+            "The DropDown template binds no MaxHeight to MaxDropDownHeight, so an open list is as tall "
+            + "as the window and opens over its own pill.");
+    }
+
+    [Fact]
     public void Every_picker_on_every_screen_is_drawn_from_that_one_style()
     {
         // Without this the check above holds a style nothing has to use. A picker naming another
