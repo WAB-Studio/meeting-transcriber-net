@@ -702,6 +702,7 @@ public sealed partial class Configuracion : UserControl
         SummaryModel.Sonnet => UiTexts.SummaryModelSonnet,
         SummaryModel.Opus => UiTexts.SummaryModelOpus,
         SummaryModel.Haiku => UiTexts.SummaryModelHaiku,
+        SummaryModel.Fable => UiTexts.SummaryModelFable,
         _ => throw new InvalidOperationException(
             $"This screen has no name for the model summaries are asked of: '{model}'."),
     };

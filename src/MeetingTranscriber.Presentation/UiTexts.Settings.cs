@@ -54,13 +54,15 @@ public static partial class UiTexts
 
     public static UiText ClaudeCodeAnswers { get; } = new("Funciona", "Works");
 
-    // The models a summary can be asked of, one per member of `SummaryModel`. Each carries a word
-    // that differs in the two languages, so none is a same-either-way entry.
-    public static UiText SummaryModelSonnet { get; } = new("Sonnet equilibrado", "Balanced Sonnet");
+    // The models a summary can be asked of, one per member of `SummaryModel`. Each is the maker's
+    // own name with no adjective, so each reads the same in both languages.
+    public static UiText SummaryModelSonnet { get; } = new("Sonnet", "Sonnet");
 
-    public static UiText SummaryModelOpus { get; } = new("Opus potente", "Powerful Opus");
+    public static UiText SummaryModelOpus { get; } = new("Opus", "Opus");
 
-    public static UiText SummaryModelHaiku { get; } = new("Haiku rápido", "Fast Haiku");
+    public static UiText SummaryModelHaiku { get; } = new("Haiku", "Haiku");
+
+    public static UiText SummaryModelFable { get; } = new("Fable", "Fable");
 
     public static UiText TheSettingSaysNothingUsable { get; } = new(
         "El archivo que dice dónde están las reuniones no dice nada usable: {0}. No se graba "

@@ -140,6 +140,7 @@ public class CorpusSettingsTests
     [InlineData(SummaryModel.Sonnet)]
     [InlineData(SummaryModel.Opus)]
     [InlineData(SummaryModel.Haiku)]
+    [InlineData(SummaryModel.Fable)]
     public void A_model_chosen_is_read_back(SummaryModel chosen)
     {
         using var corpus = new TemporaryCorpus();
@@ -181,7 +182,7 @@ public class CorpusSettingsTests
     }
 
     /// <summary>
-    /// The three names the summary model is stored under, spelled out for the reason
+    /// The four names the summary model is stored under, spelled out for the reason
     /// <see cref="The_names_on_disk"/> gives. They are also what Claude Code's <c>--model</c> takes,
     /// so a renamed member would change what is asked of the provider as well as what is stored.
     /// </summary>
@@ -189,6 +190,7 @@ public class CorpusSettingsTests
     [InlineData(SummaryModel.Sonnet, "sonnet")]
     [InlineData(SummaryModel.Opus, "opus")]
     [InlineData(SummaryModel.Haiku, "haiku")]
+    [InlineData(SummaryModel.Fable, "fable")]
     public void The_summary_models_names_on_disk(SummaryModel chosen, string stored)
     {
         using var corpus = new TemporaryCorpus();
