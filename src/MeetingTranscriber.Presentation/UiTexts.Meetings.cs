@@ -49,10 +49,8 @@ public static partial class UiTexts
         "its description cannot be read");
 
     public static UiText ItIsInAnotherMeetingsFolder { get; } = new(
-        "está en '{0}', y la grabación de la reunión {1} va en una carpeta con el nombre de esa "
-        + "reunión",
-        "it is in '{0}', and meeting {1}'s recording belongs in a folder of that meeting's own "
-        + "name");
+        "está en la carpeta de otra reunión",
+        "it is in another meeting's folder");
 
     public static UiText ThisCorpusHasNoSuchMeeting { get; } = new(
         "la carpeta de reuniones no tiene la reunión {0}",

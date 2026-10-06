@@ -504,8 +504,7 @@ public sealed class WaitingRecordingsTests : IDisposable
 
         var reason = waiting.Unrecoverable.ShouldNotBeNull();
         reason.Why.ShouldBe(WhyNotAMeeting.ItIsInAnotherMeetingsFolder);
-        reason.Says.ShouldBe(["somewhere-else", recorded], "the folder first and the meeting "
-            + "second, which is the order the sentence naming them takes.");
+        reason.Says.ShouldBeEmpty("the card names neither a folder nor an id.");
 
         Should.Throw<RecordingException>(
             () => WaitingRecordings.Recover(context, waiting, openedAgainAt));

@@ -69,6 +69,31 @@ public class PickerPanelTests
     }
 
     [Fact]
+    public void The_open_list_stays_inside_the_window_under_its_pill()
+    {
+        // The popup is a window of its own that the platform sizes and places for a carousel: as
+        // wide as the monitor and over the entry that is chosen. The template cannot say otherwise
+        // (ShouldConstrainToRootBounds and DesiredPlacement were tried and a photograph of the
+        // desktop showed them ignored), so the list's border is bounded and aligned here and
+        // `PickerList` places the popup under the pill once the platform has opened it.
+        var border = Picker()
+            .Descendants(XName.Get("Popup", Xaml))
+            .Single()
+            .Descendants(XName.Get("Border", Xaml))
+            .First();
+
+        ((string?)border.Attribute("HorizontalAlignment")).ShouldBe(
+            "Left", "The list's border stretches, so it fills the popup window, which is the monitor.");
+        ((string?)border.Attribute("VerticalAlignment")).ShouldBe("Top");
+
+        Picker()
+            .Elements(XName.Get("Setter", Xaml))
+            .Any(setter => (string?)setter.Attribute("Property") == "local:PickerList.IsUnderItsPill"
+                && (string?)setter.Attribute("Value") == "True")
+            .ShouldBeTrue("The DropDown style does not ask for the list to be placed under its pill.");
+    }
+
+    [Fact]
     public void Every_picker_on_every_screen_is_drawn_from_that_one_style()
     {
         // Without this the check above holds a style nothing has to use. A picker naming another

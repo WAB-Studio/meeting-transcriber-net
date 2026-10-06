@@ -194,7 +194,7 @@
             <Button
                 x:Name="OpennessButton"
                 Grid.Column="1"
-                Style="{StaticResource NormalButtonOnPaper}"
+                Style="{StaticResource IconButton}"
                 Click="OnToggleOpenness" />
         </Grid>
 

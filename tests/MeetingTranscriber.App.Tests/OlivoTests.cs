@@ -847,6 +847,7 @@ public partial class OlivoTests
 
         var orphans = Keys(Olivo())
             .Except(PlatformBases)
+            .Except(PlatformAccent)
             .Except(settledByThePage)
             .Except(theThemes)
             .Where(key => !reached.Contains(key))
@@ -1198,6 +1199,22 @@ public partial class OlivoTests
     /// <summary>Every colour value the page writes down, wherever on it they stand.</summary>
     private static HashSet<string> ColoursOnThePage() => Colours(Page());
 
+    /// <summary>
+    /// The platform's accent family, which a slider's fill and a text selection draw from and which
+    /// <c>Olivo.xaml</c> overrides in both themes. No screen names these: the platform does, and
+    /// that is the point of defining them.
+    /// </summary>
+    private static readonly string[] PlatformAccent =
+    [
+        "SystemAccentColor",
+        "SystemAccentColorLight1",
+        "SystemAccentColorLight2",
+        "SystemAccentColorLight3",
+        "SystemAccentColorDark1",
+        "SystemAccentColorDark2",
+        "SystemAccentColorDark3",
+    ];
+
     /// <summary>The two themes <c>Olivo.xaml</c> holds a brush under.</summary>
     private static readonly string[] Themes = ["Default", "Dark"];
 
@@ -1516,6 +1533,92 @@ public partial class OlivoTests
         answering.ShouldBeEmpty(
             "These PointerOver states draw something, and nothing here reacts to a passing cursor: "
             + string.Join("; ", answering));
+    }
+
+    /// <summary>
+    /// Nothing draws from the system accent: the family the platform reads is olivo's, in both themes.
+    /// </summary>
+    /// <remarks>
+    /// The slider's fill and thumb and a text selection take their colour from
+    /// <c>SystemAccentColor</c> and its six shades, so a theme dictionary that does not carry them
+    /// puts Windows' accent, which <c>docs/design.md</c> §And five things this application is not
+    /// says this application never uses, on the first slider and the first selection.
+    /// </remarks>
+    [Fact]
+    public void The_platform_accent_is_olivo_in_both_themes()
+    {
+        foreach (var theme in Themes)
+        {
+            var olive = Brushes(theme)["OliveBrush"];
+            var colours = ThemeDictionary(theme)
+                .Elements()
+                .Where(element => element.Name.LocalName == "Color")
+                .ToDictionary(
+                    colour => (string?)colour.Attribute(XName.Get("Key", X)) ?? string.Empty,
+                    colour => colour.Value,
+                    StringComparer.Ordinal);
+
+            foreach (var key in PlatformAccent)
+            {
+                colours.ShouldContainKey(key, $"{theme} does not override {key}.");
+                colours[key].ShouldBe(
+                    olive,
+                    $"{key} in {theme} is not OliveBrush's value, so the platform draws something in "
+                    + "Windows' accent.");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Every press shows the hand, from one setter on each style a press is drawn from.
+    /// </summary>
+    /// <remarks>
+    /// The six styles every other pressable style chains to. The setter is the whole of it, so a
+    /// style that loses it is a press with the arrow over it, which is silent in the designer.
+    /// </remarks>
+    [Theory]
+    [InlineData("OlivoButtonBase")]
+    [InlineData("TheRowItself")]
+    [InlineData("DropDown")]
+    [InlineData("DropDownItem")]
+    [InlineData("Option")]
+    [InlineData("Tick")]
+    public void Every_pressable_style_shows_the_hand(string key)
+    {
+        var shows = SettersOf(StyleNamed(key))
+            .Any(setter => (string?)setter.Attribute("Property") == "local:HandCursor.IsShown"
+                && (string?)setter.Attribute("Value") == "True");
+
+        shows.ShouldBeTrue($"{key} sets no local:HandCursor.IsShown, so what it draws shows the arrow.");
+    }
+
+    /// <summary>
+    /// A field and the text in it stand centred at the control height, so a press beside one lines up.
+    /// </summary>
+    [Theory]
+    [InlineData("TypedField")]
+    [InlineData("TypedSecret")]
+    public void A_field_and_its_text_stand_centred_at_the_control_height(string key)
+    {
+        var template = StyleNamed(key)
+            .Descendants()
+            .Where(element => element.Name.LocalName == "ControlTemplate")
+            .Single();
+
+        string? Part(string name) => template
+            .Descendants()
+            .Where(element => (string?)element.Attribute(XName.Get("Name", X)) == name)
+            .Select(element => (string?)element.Attribute("VerticalAlignment"))
+            .Single();
+
+        Part("ContentElement").ShouldBe("Center", $"{key}'s text is not centred.");
+        Part("PlaceholderTextContentPresenter").ShouldBe("Center", $"{key}'s hint is not centred.");
+
+        template
+            .Descendants()
+            .Single(element => (string?)element.Attribute(XName.Get("Name", X)) == "BorderElement")
+            .Attribute("Height")?.Value
+            .ShouldBe("{StaticResource ControlHeight}", $"{key}'s box does not stand at the control height.");
     }
 
     /// <summary>

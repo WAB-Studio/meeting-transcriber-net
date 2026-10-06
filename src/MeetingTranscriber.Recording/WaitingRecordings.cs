@@ -84,7 +84,7 @@ public sealed record NotAMeeting(WhyNotAMeeting Why, IReadOnlyList<object?> Says
     {
         WhyNotAMeeting.NothingSaysWhichMeetingItIs => 0,
         WhyNotAMeeting.WhatItSaysAboutItselfCannotBeRead => 0,
-        WhyNotAMeeting.ItIsInAnotherMeetingsFolder => 2,
+        WhyNotAMeeting.ItIsInAnotherMeetingsFolder => 0,
         WhyNotAMeeting.ThisCorpusHasNoSuchMeeting => 1,
         WhyNotAMeeting.NotAllOfItsSourcesAreHere => 2,
         _ => throw new ArgumentOutOfRangeException(
@@ -222,7 +222,7 @@ public sealed record WaitingRecording(UnfinishedRecording Spooled, Guid? Meeting
             if (!string.Equals(Folder.Name, meeting.ToString(), StringComparison.OrdinalIgnoreCase))
             {
                 return new NotAMeeting(
-                    WhyNotAMeeting.ItIsInAnotherMeetingsFolder, [Folder.Name, meeting]);
+                    WhyNotAMeeting.ItIsInAnotherMeetingsFolder, []);
             }
 
             if (Meeting is null)
