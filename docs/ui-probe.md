@@ -43,8 +43,8 @@ Get-AppxPackage -Name 7feb8c95-4553-46f0-a036-6574f4cd7cb4* | Select-Object Name
 
 The probe asks Windows that same question rather than reading the build output: it lists this user's
 packages, keeps the ones registered against a folder at or inside this checkout, and refuses when
-there is none or more than one. So building without registering is now a refusal that says so, and a
-Release build sitting beside Debug no longer makes it name a package nothing has registered.
+there is none or more than one. So building without registering is a refusal that says so, and a
+Release build sitting beside Debug cannot make it name a package nothing has registered.
 
 If this checkout is not in that list against a path ending in `\win-x64`, register it. Remove
 whatever it has first — registering over an existing registration keeps the old location. The remove
@@ -92,7 +92,7 @@ The first session after this asks you to approve `ui-probe` once, because it is 
 server. `claude mcp get ui-probe` then says `Scope: Project config` and `✔ Connected`; if it says
 `Scope: User config` instead, a leftover machine-wide registration is shadowing this one and has to
 go — `claude mcp remove ui-probe -s user`, with the `-s user`, because without a scope it removes
-whichever it finds first and that is now the repository's.
+whichever it finds first, and that is the repository's.
 
 A worktree is its own checkout and gets its own copy, published the same way. It drives the build
 that checkout wrote, under the name that checkout registered — which is what `PackageIdentity.props`
@@ -113,8 +113,8 @@ and the build fails on them. A build alone does not lift the refusal; only start
 
 **A verb is also refused when the published copy of the tool is older than what the tool is built
 out of.** That is the other half of the same trap: `dotnet build` never writes `bin/mcp`, so an edit
-to the probe reaches nothing until it is published, and until this refusal existed every answer for
-the rest of the session came out of yesterday's tool without a word. It follows `ProjectReference`,
+to the probe reaches nothing until it is published, and without the refusal every answer for the
+rest of the session would come out of an older tool without a word. It follows `ProjectReference`,
 so an edit to `MeetingTranscriber.Infrastructure` or `MeetingTranscriber.Domain` refuses it too —
 the probe references the first of those to make its own corpus, and `bin/mcp` carries both. The way
 out is the same three steps in the same order: end the session, publish, open a new one. What is
@@ -161,8 +161,8 @@ first frame still shows the screen it replaced.
 
 ## Record may be pressed
 
-**It may. This file said not to until 2026-09-02, and the repository's owner withdrew that in as
-many words: the corpus on this machine holds nothing sensitive and nothing worth rescuing.** So a
+**It may: the corpus on this machine holds nothing sensitive and nothing worth rescuing, and the
+repository's owner said so in as many words.** So a
 probe records meetings into it, keeps and discards recordings on the list, and kills the
 application in the middle of both. A machine whose corpus has something to lose gets the rule
 back, and this paragraph is where that goes.
@@ -259,7 +259,7 @@ minimised window is restored first.
 over the whole virtual desktop. Do not use the machine while one runs.
 
 **`see` is a copy of the desktop** over the screen's rectangle, grown to cover its popups and clipped
-to the virtual desktop. It is not a print of the window any more, so it shows an open list, a flyout
+to the virtual desktop. So it shows an open list, a flyout
 and a tooltip, and it shows whatever covers the window that is not part of the application. The
 check that the inside is not one flat colour stays, with its ten-second budget.
 
@@ -319,8 +319,7 @@ Put a `wait` after any `press`, `type`, `choose` or `key` whose effect you are a
 is the only thing here that synchronises.
 
 **A `see` whose desktop will not be photographed still writes the tree**, says why there is no
-picture, and fails on it. The picture was a print of the window until 2026-10, and printed its frame
-around a black rectangle on 2026-09-02; it is a copy of the desktop now, so what fails is a window
+picture, and fails on it. The picture is a copy of the desktop, so what fails is a window
 that is minimised, covered by something that is not the application, or that never drew. `wait` and
 `press` still work, and the tree beside the failure is the screen.
 
@@ -417,7 +416,6 @@ A line is `Type #x:Name "what it says"`, indented by depth, with `value=`, `help
 `disabled` and `offscreen` appended when they apply. `value=` is what `type` left in a field.
 
 ```text
-      ComboBox #MicrophonePicker "Micrófono"
       Button #RecordButton "Empezar a grabar"  disabled
       Button #OpennessButton "Abrir la lista entera"
 ```
