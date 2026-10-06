@@ -490,6 +490,9 @@ public class ReadingAMeetingTests
         markup.ShouldContain("<FontIcon x:Name=\"VolumeGlyph\"");
         markup.ShouldContain("PointerEntered=\"OnVolumeAreaEntered\"");
         screen.ShouldMatch(@"OnVolumeAreaEntered\(.*?\)\s*\{[^}]*_pointerIsOverTheVolume = true;[^}]*ShowTheVolume\(\)");
-        screen.ShouldContain("VolumeSlider.Visibility = open ? Visibility.Visible : Visibility.Collapsed;");
+        screen.ShouldContain("open != ScreenMotion.IsShowing(VolumeSlider)");
+        screen.ShouldContain("ScreenMotion.Widen(VolumeSlider, open);");
+        screen.ShouldNotContain("VolumeSlider.Visibility =");
     }
+
 }

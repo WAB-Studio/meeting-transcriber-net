@@ -163,6 +163,80 @@ internal static class ScreenMotion
     }
 
     /// <summary>
+    /// Brings <paramref name="element"/> in or takes it out by its width, with its opacity going
+    /// along, over what <see cref="Move.EnteringOrLeaving"/> is worth.
+    /// </summary>
+    /// <remarks>
+    /// What the volume slider arrives by: it sits beside a press and grows out of it, so a height
+    /// would be the wrong axis. It keeps what <see cref="ArriveOrLeave"/> keeps: where the element
+    /// is heading is remembered here, a move worth nothing is no animation, and <c>MaxWidth</c> is
+    /// let go of when the move ends, because one left pinned at nought would keep the element shut
+    /// for good.
+    /// </remarks>
+    public static void Widen(FrameworkElement element, bool arriving)
+    {
+        ArgumentNullException.ThrowIfNull(element);
+
+        var heading = Headings.GetOrCreateValue(element);
+
+        heading.Moving?.Stop();
+        heading.Moving = null;
+        heading.Arriving = arriving;
+
+        var milliseconds = Now.Milliseconds(Move.EnteringOrLeaving);
+
+        if (milliseconds == 0)
+        {
+            Settle(element, arriving);
+            return;
+        }
+
+        // Its own laid-out width, as `ArriveOrLeave` takes its own height.
+        element.MaxWidth = double.PositiveInfinity;
+        element.Opacity = arriving ? 0 : 1;
+        element.Visibility = Visibility.Visible;
+        element.UpdateLayout();
+
+        var full = element.ActualWidth;
+        if (full <= 0)
+        {
+            Settle(element, arriving);
+            return;
+        }
+
+        var travel = new DoubleAnimation
+        {
+            From = arriving ? 0 : full,
+            To = arriving ? full : 0,
+            Duration = new Duration(TimeSpan.FromMilliseconds(milliseconds)),
+            EnableDependentAnimation = true,
+            EasingFunction = new CubicEase
+            {
+                EasingMode = arriving ? EasingMode.EaseOut : EasingMode.EaseIn,
+            },
+        };
+
+        Storyboard.SetTarget(travel, element);
+        Storyboard.SetTargetProperty(travel, nameof(FrameworkElement.MaxWidth));
+
+        var fade = new DoubleAnimation
+        {
+            From = arriving ? 0 : 1,
+            To = arriving ? 1 : 0,
+            Duration = new Duration(TimeSpan.FromMilliseconds(milliseconds)),
+            EasingFunction = new CubicEase
+            {
+                EasingMode = arriving ? EasingMode.EaseOut : EasingMode.EaseIn,
+            },
+        };
+
+        Storyboard.SetTarget(fade, element);
+        Storyboard.SetTargetProperty(fade, nameof(UIElement.Opacity));
+
+        Begin(element, heading, arriving, new Storyboard { Children = { travel, fade } });
+    }
+
+    /// <summary>
     /// Brings <paramref name="element"/> in or takes it out by its opacity alone, over what
     /// <see cref="Move.EnteringOrLeaving"/> is worth. Nothing about its size moves, so what is
     /// around it does not either.
@@ -297,6 +371,7 @@ internal static class ScreenMotion
     private static void Settle(FrameworkElement element, bool arriving)
     {
         element.MaxHeight = double.PositiveInfinity;
+        element.MaxWidth = double.PositiveInfinity;
         element.Opacity = arriving ? 1 : 0;
         element.Visibility = arriving ? Visibility.Visible : Visibility.Collapsed;
     }

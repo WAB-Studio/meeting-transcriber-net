@@ -1663,7 +1663,12 @@ public sealed partial class ReadingAMeeting : UserControl
             || HasTheKeyboard(VolumeSlider)
             || HasTheKeyboard(VolumeButton);
 
-        VolumeSlider.Visibility = open ? Visibility.Visible : Visibility.Collapsed;
+        // Only a change of mind starts a move: this runs on every value change, and one that
+        // restarted the slider's travel would hold it at its start while somebody drags.
+        if (open != ScreenMotion.IsShowing(VolumeSlider))
+        {
+            ScreenMotion.Widen(VolumeSlider, open);
+        }
     }
 
     // A click leaves pointer focus on the glyph, which is not the keyboard being there and must not
