@@ -202,7 +202,12 @@ the devices really run, about 44 MB a minute on this machine, six minutes is 265
 folder stays after the meeting is made.
 
 Recording needs a microphone, what channel 0 follows, and what will be spoken, all three chosen
-before `RecordButton` is anything but disabled. Saving a six-minute meeting took under five seconds
+before `RecordButton` is anything but disabled. After a stop the window keeps all three, and at
+launch what will be spoken starts as the language of the last meeting that has a recording, so a
+probe corpus that has recorded before opens with it chosen. Pausing and carrying on are one press,
+`PauseButton`, which is named *Pausar* while recording and *Seguir* while paused; there is no
+`ResumeButton`. While choosing, the two meters listen only when the window is the one in front, and
+the probe's never is, so a meter moving before a meeting is not something it can show. Saving a six-minute meeting took under five seconds
 here, so a script meaning to catch the saving state samples it with consecutive `see`s rather than
 a `sleep`.
 
@@ -360,10 +365,15 @@ to `wait` for something on the screen you meant. It is never whichever window is
 
 ## Switching Windows between light and dark
 
-The application follows the theme Windows is set to, and follows a switch made while it is open, so
-a walk of both themes changes the machine's setting under a running window. `AppsUseLightTheme` is
-0 for dark and 1 for light; writing it is not enough, because nothing running is told, so the same
-script broadcasts `WM_SETTINGCHANGE` with `ImmersiveColorSet`.
+The application is drawn in the theme chosen under *Aplicación* in the settings: *Sistema*, *Claro*
+or *Oscuro*, and *Sistema* is the theme Windows is set to, followed through a switch made while the
+window is open. A walk of Windows' own switch is a walk of *Sistema*, so it begins with
+`choose ThemePicker Sistema` — a package that was left on *Claro* or *Oscuro* stays there whatever
+the registry says, and the walk would photograph one theme twice. Choosing *Claro* or *Oscuro* needs
+no registry at all, and the pick is kept in the package's own preference file like the language's.
+Changing the machine's setting under a running window: `AppsUseLightTheme` is 0 for dark and 1 for
+light; writing it is not enough, because nothing running is told, so the same script broadcasts
+`WM_SETTINGCHANGE` with `ImmersiveColorSet`.
 
 ```powershell
 $key = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize'
@@ -389,8 +399,11 @@ Set-AppTheme $had   # put back what the machine had
 ```
 
 Put back what the machine had, whatever the walk did, including when it fails halfway: it is the
-owner's setting and not the probe's. The title bar is read from a photograph (`see`), not from the
-tree, because it is Windows' and carries no automation name of this application's.
+owner's setting and not the probe's. The title bar is the application's own: the mark, the name and
+the back button are in the tree like anything else, and the three caption buttons at its right are
+Windows' and read from a photograph (`see`), because they carry no automation name of this
+application's. Under a chosen theme they are drawn in it, and a photograph of *Oscuro* over a light
+Windows is the proof.
 
 ## What it will not do
 
@@ -398,6 +411,10 @@ tree, because it is Windows' and carries no automation name of this application'
   control offers instead, which is how you find out it wanted another verb. `key` is the answer
   when a control wants a keystroke and neither of those is it — a field that commits on Enter is
   the case it was added for.
+- **It will not drive Windows' own pickers.** *Cambiar* on the folder card opens the folder picker,
+  which is Windows' and has no tree this probe reads, so choosing a folder — and with it moving the
+  meetings to an empty one — is walked by a person. Everything around it is drivable: the card, the
+  tick, *Mover* and *Cancelar* once a folder is chosen.
 - **It will not bring a window forward — and `key` is the one verb that needs it in front.** A
   window behind another still photographs, and every other verb reaches it through UI Automation. A
   key goes to whatever has the keyboard, so `key` asks the element for focus and then reads back

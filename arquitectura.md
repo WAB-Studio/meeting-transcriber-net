@@ -206,6 +206,14 @@ desde la UI. No vive dentro del directorio de instalación ni en la carpeta de
 datos del paquete MSIX: esa carpeta se borra al desinstalar y el corpus contiene
 artefactos pagados que no se pueden volver a obtener.
 
+Cambiar la carpeta desde la UI mueve las reuniones: si la carpeta elegida está vacía, la
+aplicación ofrece moverlas, y nunca mientras se graba, se guarda o hay trabajo en curso. La base
+se copia con la API de backup de SQLite y todos los demás archivos del corpus, menos lo que es
+transitorio por diseño; se abre la copia y se comprueba que cada archivo que la base lista está
+ahí con su hash; sólo entonces se recuerda la carpeta nueva. Si algo falta, no queda nada escrito
+y la carpeta anterior sigue siendo la del corpus. La copia anterior sólo se borra si la persona
+lo pidió, y sólo después de volver a encontrar entera la nueva.
+
 ```text
 MeetingTranscriber/
   corpus.db
@@ -223,6 +231,7 @@ MeetingTranscriber/
     <meeting_id>/
       manifest.json
       changes.jsonl        (sólo si alguien movió un canal mientras grababa)
+      pauses.jsonl         (sólo si alguien pausó la grabación)
       loopback.blocks
       microphone.blocks
   backups/
@@ -390,7 +399,9 @@ usarla: qué nodos vincula y con qué papel, en `template_nodes`, y a quién nom
 `meeting_people`. Sólo pre-llena: elegirlo suma lo que guardó a lo que la reunión ya tiene, no
 puede expresar lo que los constraints prohíben, y ninguna reunión guarda qué template la llenó,
 así que cambiarlo o descartarlo no toca ninguna reunión ya clasificada. Las trece de abajo no
-son templates guardados: son lo que el código abre al elegir cada una.
+son templates guardados: son lo que el código abre al elegir cada una, y cada chip nombra sus
+lugares con las palabras de esa reunión (*Universidad › Materia*, *Profesor*) sin cambiar lo que
+se guarda.
 
 #### Las trece reuniones contra las que se cerró
 
@@ -639,7 +650,10 @@ El motor de audio:
 
 1. conserva posición de dispositivo y timestamp QPC de cada paquete WASAPI;
 2. correlaciona ambos flujos con una timeline monotónica;
-3. conserva silencios y discontinuidades como huecos reales;
+3. conserva silencios y discontinuidades como huecos reales, salvo una pausa: el spool sigue
+   recibiendo bloques mientras está en pausa, y `pauses.jsonl` dice, en el reloj de los propios
+   paquetes, qué tramos fueron pausa, de modo que `audio.wav` los deja fuera al materializarse y
+   la reunión dura lo que se grabó;
 4. convierte cada fuente a un formato interno conocido;
 5. corrige deriva gradualmente durante el remuestreo;
 6. materializa WAV estéreo a 16 kHz sin cambiar el orden lógico de canales.
