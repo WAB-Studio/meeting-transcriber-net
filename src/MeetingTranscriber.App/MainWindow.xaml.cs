@@ -415,6 +415,13 @@ public sealed partial class MainWindow : Window
     /// so nothing the bar ever gains at its right can land under them. <c>RightInset</c> is in
     /// pixels and the column is in the units the layout is, so it is divided by the scale.
     /// The icon the taskbar and Alt+Tab show is the application's own and is set elsewhere.
+    /// <para>
+    /// The region has a transparent background, which is what the window needs of it: a press falls
+    /// through an element that has no fill, so with <c>SetTitleBar</c> on an empty border the bar did
+    /// not move the window at all (fb-106). The other way to hand a window its caption —
+    /// <c>InputNonClientPointerSource</c> with caption rectangles computed off the bar — is not in
+    /// here, because nothing has shown this is not enough on its own.
+    /// </para>
     /// </remarks>
     private void ExtendTheBarIntoTheTitleBar()
     {
