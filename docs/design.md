@@ -86,6 +86,13 @@ settles one.
 A fourth speaker has no colour yet and nobody has decided one. Until somebody does, a third named
 speaker takes the no-name grey rather than a colour invented on the spot.
 
+A press under the pointer is veiled in its own ink, at once and without a fade: tinta at 6 % under
+the pointer and 12 % pressed, and the principal act — whose fill is ink — in papel at 14 % and 28 %.
+The four strengths are `PointerVeilOpacity`, `PressedVeilOpacity`, `PrincipalPointerVeilOpacity` and
+`PrincipalPressedVeilOpacity`, and neither the two button templates nor the drop-down's pill hold a
+`Storyboard` or a `VisualTransition`. They are not rows of either table above, which pin colours and
+speakers; they are strengths of a colour a row already is.
+
 ### Decided, and not yet a key
 
 **No screen ever writes a colour.** Not in markup, not in code, and not inside a component: every
@@ -218,9 +225,10 @@ tarjeta row is invisible. On papel it is tarjeta with no rule; on tarjeta it is 
 four per cent of nothing, so the button reads as a stray outline rather than a thing to press.
 
 Every button is drawn by one of two templates of `Olivo.xaml`: `PrincipalActTemplate` for the
-principal act and `OlivoButtonTemplate` for every other rank. **Neither answers a passing cursor or a
-press** — nothing changes under the pointer, because nothing here reacts to one — and a dead button
-differs only by ink: its words go tertiary, and the principal act's ink fill becomes the rule's
+principal act and `OlivoButtonTemplate` for every other rank. **Both answer a passing cursor and a
+press at once**: a veil in the button's own ink over the whole press (§Colour has the strengths), shown
+the moment the pointer is on it and gone the moment it leaves, with nothing fading either way. A dead
+button differs only by ink: its words go tertiary, and the principal act's ink fill becomes the rule's
 colour so that it stops being the heaviest thing on the screen. What a pointer does get is the hand:
 every press and every pressable row shows it, set by the styles in `Olivo.xaml` and never by a
 screen. A press that is a glyph and nothing else — the list's caret, the player's play and pause,
@@ -448,8 +456,10 @@ weight rather than as an effect. Nothing eases both ways; nothing bounces; nothi
 - **Anything that happens on every element.** A list whose rows arrive one after another says the
   list is important; a list of thirty says it twelve seconds late. Rows arrive together or not at
   all.
-- **Anything on hover.** A screen that reacts to a passing cursor is a screen with a hundred small
-  events in it, none of which somebody asked for.
+- **A fade on hover.** A press answers a pointer at once, with a veil that is there or is not, and
+  nothing fades in or out under it: a fade is what read as a flicker. A screen that reacts to a
+  passing cursor with anything but a press's own veil is a screen with a hundred small events in it,
+  none of which somebody asked for.
 
 ### When Windows says no
 

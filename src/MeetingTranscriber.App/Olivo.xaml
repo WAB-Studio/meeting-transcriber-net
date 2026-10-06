@@ -256,6 +256,13 @@
     <x:Double x:Key="PrincipalActHeight">46</x:Double>
     <x:Double x:Key="NormalButtonHeight">42</x:Double>
 
+    <!-- How strongly a press is veiled under a pointer and while pressed (`docs/design.md` §Colour).
+         Named so the two button templates and the drop-down's pill each say one number once. -->
+    <x:Double x:Key="PointerVeilOpacity">0.06</x:Double>
+    <x:Double x:Key="PressedVeilOpacity">0.12</x:Double>
+    <x:Double x:Key="PrincipalPointerVeilOpacity">0.14</x:Double>
+    <x:Double x:Key="PrincipalPressedVeilOpacity">0.28</x:Double>
+
     <!-- A control — a picker, a pill, a two-way. It was missing while the pickers still carried a
          header, because on a `ComboBox` `Height` is the whole control including that header and 34
          left about fourteen pixels for the box: the four pickers on the front door rendered as a
@@ -307,40 +314,39 @@
          Each is `BasedOn` the platform's own Button style, so focus, the keyboard and the
          automation peer are the platform's and only what is drawn is Olivo's. -->
 
-    <!-- What every button is drawn with. The platform's own template answers a passing cursor and a
-         press with a fill, a rule and an ink of the system's, and fades its fill over 83 ms to do it
-         — on a screen where nothing else moves, that fade is what read as a flicker. `docs/design.md`
-         §What never moves is explicit that nothing in this application reacts to a cursor, so over
-         and pressed are named and left empty, and a press is answered by what it does.
+    <!-- What every button is drawn with. A press answers a cursor at once, and `docs/design.md`
+         §Colour says how: the button is veiled in its own ink — tinta at 6 % under the pointer and
+         12 % pressed, the principal act in papel at 14 % and 28 % — under the four keys above.
+         Nothing fades in or out. The platform's own template did, over 83 ms, and on a screen where
+         nothing else moves that is what read as a flicker; here the state is the state the moment
+         the pointer is on it, and there is no `Storyboard` and no `VisualTransition` in either
+         template to bring one back.
 
-         Only being dead looks different, and it looks different by ink rather than by opacity: the
-         words go tertiary and the fill, where the style gives one, stays the style's. The principal
-         act is the one button whose fill is ink, and a dead ink block is the loudest thing on a
-         screen, so it has the template below and not this one.
+         The veil is a border laid over the platform's own `ContentPresenter`, which keeps its name:
+         the focus rectangle stays the system's and the peer still reads the content off it. It is
+         not hit-testable, so a press goes through it to the button.
 
-         The part is the platform's own — a `ContentPresenter` called `ContentPresenter` — and the
-         focus rectangle stays the system's. -->
+         Only being dead looks different besides, and it looks different by ink rather than by
+         opacity: the words go tertiary and the fill, where the style gives one, stays the style's.
+         The principal act is the one button whose fill is ink, and a dead ink block is the loudest
+         thing on a screen, so it has the template below and not this one. -->
     <ControlTemplate x:Key="OlivoButtonTemplate" TargetType="Button">
-        <ContentPresenter
-            x:Name="ContentPresenter"
-            Background="{TemplateBinding Background}"
-            Foreground="{TemplateBinding Foreground}"
-            BackgroundSizing="{TemplateBinding BackgroundSizing}"
-            BorderBrush="{TemplateBinding BorderBrush}"
-            BorderThickness="{TemplateBinding BorderThickness}"
-            Content="{TemplateBinding Content}"
-            ContentTemplate="{TemplateBinding ContentTemplate}"
-            ContentTransitions="{TemplateBinding ContentTransitions}"
-            CornerRadius="{TemplateBinding CornerRadius}"
-            Padding="{TemplateBinding Padding}"
-            HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
-            VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"
-            AutomationProperties.AccessibilityView="Raw">
+        <Grid>
             <VisualStateManager.VisualStateGroups>
                 <VisualStateGroup x:Name="CommonStates">
                     <VisualState x:Name="Normal" />
-                    <VisualState x:Name="PointerOver" />
-                    <VisualState x:Name="Pressed" />
+                    <VisualState x:Name="PointerOver">
+                        <VisualState.Setters>
+                            <Setter Target="HoverVeil.Visibility" Value="Visible" />
+                            <Setter Target="HoverVeil.Opacity" Value="{StaticResource PointerVeilOpacity}" />
+                        </VisualState.Setters>
+                    </VisualState>
+                    <VisualState x:Name="Pressed">
+                        <VisualState.Setters>
+                            <Setter Target="HoverVeil.Visibility" Value="Visible" />
+                            <Setter Target="HoverVeil.Opacity" Value="{StaticResource PressedVeilOpacity}" />
+                        </VisualState.Setters>
+                    </VisualState>
                     <VisualState x:Name="Disabled">
                         <VisualState.Setters>
                             <Setter Target="ContentPresenter.Foreground" Value="{ThemeResource TertiaryTextBrush}" />
@@ -348,33 +354,50 @@
                     </VisualState>
                 </VisualStateGroup>
             </VisualStateManager.VisualStateGroups>
-        </ContentPresenter>
+            <ContentPresenter
+                x:Name="ContentPresenter"
+                Background="{TemplateBinding Background}"
+                Foreground="{TemplateBinding Foreground}"
+                BackgroundSizing="{TemplateBinding BackgroundSizing}"
+                BorderBrush="{TemplateBinding BorderBrush}"
+                BorderThickness="{TemplateBinding BorderThickness}"
+                Content="{TemplateBinding Content}"
+                ContentTemplate="{TemplateBinding ContentTemplate}"
+                ContentTransitions="{TemplateBinding ContentTransitions}"
+                CornerRadius="{TemplateBinding CornerRadius}"
+                Padding="{TemplateBinding Padding}"
+                HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"
+                AutomationProperties.AccessibilityView="Raw" />
+            <Border
+                x:Name="HoverVeil"
+                Background="{ThemeResource InkBrush}"
+                CornerRadius="{TemplateBinding CornerRadius}"
+                IsHitTestVisible="False"
+                Visibility="Collapsed" />
+        </Grid>
     </ControlTemplate>
 
-    <!-- The same button for the one whose fill is ink: dead, the fill is the rule's colour and the
-         words are tertiary, so it stops being the heaviest thing on the screen without turning into
-         a button that looks pressable. -->
+    <!-- The same button for the one whose fill is ink: veiled in papel, because ink on ink would
+         show nothing; dead, the fill is the rule's colour and the words are tertiary, so it stops
+         being the heaviest thing on the screen without turning into a button that looks pressable. -->
     <ControlTemplate x:Key="PrincipalActTemplate" TargetType="Button">
-        <ContentPresenter
-            x:Name="ContentPresenter"
-            Background="{TemplateBinding Background}"
-            Foreground="{TemplateBinding Foreground}"
-            BackgroundSizing="{TemplateBinding BackgroundSizing}"
-            BorderBrush="{TemplateBinding BorderBrush}"
-            BorderThickness="{TemplateBinding BorderThickness}"
-            Content="{TemplateBinding Content}"
-            ContentTemplate="{TemplateBinding ContentTemplate}"
-            ContentTransitions="{TemplateBinding ContentTransitions}"
-            CornerRadius="{TemplateBinding CornerRadius}"
-            Padding="{TemplateBinding Padding}"
-            HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
-            VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"
-            AutomationProperties.AccessibilityView="Raw">
+        <Grid>
             <VisualStateManager.VisualStateGroups>
                 <VisualStateGroup x:Name="CommonStates">
                     <VisualState x:Name="Normal" />
-                    <VisualState x:Name="PointerOver" />
-                    <VisualState x:Name="Pressed" />
+                    <VisualState x:Name="PointerOver">
+                        <VisualState.Setters>
+                            <Setter Target="HoverVeil.Visibility" Value="Visible" />
+                            <Setter Target="HoverVeil.Opacity" Value="{StaticResource PrincipalPointerVeilOpacity}" />
+                        </VisualState.Setters>
+                    </VisualState>
+                    <VisualState x:Name="Pressed">
+                        <VisualState.Setters>
+                            <Setter Target="HoverVeil.Visibility" Value="Visible" />
+                            <Setter Target="HoverVeil.Opacity" Value="{StaticResource PrincipalPressedVeilOpacity}" />
+                        </VisualState.Setters>
+                    </VisualState>
                     <VisualState x:Name="Disabled">
                         <VisualState.Setters>
                             <Setter Target="ContentPresenter.Background" Value="{ThemeResource LineBrush}" />
@@ -383,7 +406,28 @@
                     </VisualState>
                 </VisualStateGroup>
             </VisualStateManager.VisualStateGroups>
-        </ContentPresenter>
+            <ContentPresenter
+                x:Name="ContentPresenter"
+                Background="{TemplateBinding Background}"
+                Foreground="{TemplateBinding Foreground}"
+                BackgroundSizing="{TemplateBinding BackgroundSizing}"
+                BorderBrush="{TemplateBinding BorderBrush}"
+                BorderThickness="{TemplateBinding BorderThickness}"
+                Content="{TemplateBinding Content}"
+                ContentTemplate="{TemplateBinding ContentTemplate}"
+                ContentTransitions="{TemplateBinding ContentTransitions}"
+                CornerRadius="{TemplateBinding CornerRadius}"
+                Padding="{TemplateBinding Padding}"
+                HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"
+                AutomationProperties.AccessibilityView="Raw" />
+            <Border
+                x:Name="HoverVeil"
+                Background="{ThemeResource PaperBrush}"
+                CornerRadius="{TemplateBinding CornerRadius}"
+                IsHitTestVisible="False"
+                Visibility="Collapsed" />
+        </Grid>
     </ControlTemplate>
 
     <Style x:Key="OlivoButtonBase" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">

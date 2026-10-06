@@ -1502,21 +1502,55 @@ public partial class OlivoTests
     }
 
     /// <summary>
-    /// Nothing in a control's template answers a passing cursor, except an open list saying which
-    /// entry the pointer is on.
+    /// Every press answers a passing cursor at once: both button templates veil themselves under
+    /// the pointer, from a key, with nothing that fades.
     /// </summary>
     /// <remarks>
-    /// <c>docs/design.md</c> §What never moves: nothing in this application reacts to a cursor
-    /// crossing it. A template that is replaced wholesale and then given a setter in its
-    /// <c>PointerOver</c> is that rule broken in the one place nobody reads, so the dictionary is
-    /// searched for every such state and each must be empty. <c>DropDownItem</c> is the exception
-    /// and its own remark says why: an open list where nothing says which entry the pointer is on
-    /// is a list you choose out of by luck. Hover is not reachable by the UI probe, which is why
-    /// this reads the markup.
+    /// <c>docs/design.md</c> §Colour: tinta at 6 % and 12 % pressed, the principal act in papel at
+    /// 14 % and 28 %. A fade is what read as a flicker, so neither template holds a
+    /// <c>Storyboard</c> or a <c>VisualTransition</c>. Radio rows and ticks are left as they were —
+    /// their <c>PointerOver</c> stays empty, and so does every other template's: the veil belongs
+    /// to the two button templates, the drop-down's pill and the open list's entries, by name.
+    /// Hover is not reachable by a build agent, which is why this reads the markup.
     /// </remarks>
     [Fact]
-    public void No_control_answers_a_passing_cursor()
+    public void Every_press_answers_a_passing_cursor_at_once()
     {
+        foreach (var key in new[] { "OlivoButtonTemplate", "PrincipalActTemplate" })
+        {
+            var template = Olivo()
+                .Descendants()
+                .Single(element => element.Name.LocalName == "ControlTemplate"
+                    && (string?)element.Attribute(XName.Get("Key", X)) == key);
+
+            var pointerOver = template
+                .Descendants()
+                .Single(element => element.Name.LocalName == "VisualState"
+                    && (string?)element.Attribute(XName.Get("Name", X)) == "PointerOver");
+
+            pointerOver.Descendants()
+                .Where(setter => setter.Name.LocalName == "Setter"
+                    && ((string?)setter.Attribute("Target") ?? string.Empty).StartsWith("HoverVeil.Opacity", StringComparison.Ordinal))
+                .Select(setter => (string?)setter.Attribute("Value") ?? string.Empty)
+                .ShouldHaveSingleItem($"{key}'s PointerOver does not show HoverVeil at a strength.")
+                .ShouldMatch(@"^\{StaticResource \w*VeilOpacity\}$");
+
+            foreach (var state in new[] { "PointerOver", "Pressed" })
+            {
+                template.Descendants()
+                    .Single(element => element.Name.LocalName == "VisualState"
+                        && (string?)element.Attribute(XName.Get("Name", X)) == state)
+                    .Descendants()
+                    .Where(setter => setter.Name.LocalName == "Setter")
+                    .Select(setter => (string?)setter.Attribute("Target"))
+                    .ShouldBe(["HoverVeil.Visibility", "HoverVeil.Opacity"], $"{key}'s {state} does not show the veil.");
+            }
+
+            template.Descendants()
+                .Where(element => element.Name.LocalName is "Storyboard" or "VisualTransition")
+                .ShouldBeEmpty($"{key} fades. A press answers at once, and nothing fades under a pointer.");
+        }
+
         var states = Olivo()
             .Descendants()
             .Where(element => element.Name.LocalName == "VisualState"
@@ -1525,17 +1559,18 @@ public partial class OlivoTests
 
         states.ShouldNotBeEmpty("The dictionary names no PointerOver state, so this checks nothing.");
 
-        var answering = states
+        string[] answers = ["OlivoButtonTemplate", "PrincipalActTemplate", "DropDown", "DropDownItem"];
+
+        var elsewhere = states
             .Where(state => state.Descendants().Any(child => child.Name.LocalName is "Setter" or "Storyboard"))
             .Where(state => state.Ancestors()
-                .Where(ancestor => ancestor.Name.LocalName == "Style")
-                .All(style => (string?)style.Attribute(XName.Get("Key", X)) != "DropDownItem"))
+                .All(ancestor => !answers.Contains((string?)ancestor.Attribute(XName.Get("Key", X)) ?? string.Empty)))
             .Select(state => At(state).TrimEnd(' ', ':'))
             .ToArray();
 
-        answering.ShouldBeEmpty(
-            "These PointerOver states draw something, and nothing here reacts to a passing cursor: "
-            + string.Join("; ", answering));
+        elsewhere.ShouldBeEmpty(
+            "These PointerOver states draw something outside the presses that answer a cursor: "
+            + string.Join("; ", elsewhere));
     }
 
     /// <summary>
