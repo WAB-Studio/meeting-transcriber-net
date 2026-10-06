@@ -1,6 +1,6 @@
 ﻿---
 phase: climbing
-progress: 213/338
+progress: 215/338
 updated: 2026-10-06
 ---
 
@@ -279,8 +279,8 @@ Board: 3 · Grabador WinUI
 - [ ] ISC-213: A word a transcript got wrong is corrected from where somebody reads it — a meeting's transcript or a speaker's quotation — by selecting it, never by typing how it came out and never from the corrections screen alone.
 - [ ] ISC-214: The programs a meeting can follow are offered one per application that shows a window or plays sound, never one per process and never two for one application.
 - [x] ISC-225: The window is moved by dragging the bar at its top, anywhere on it but its presses.
-- [ ] ISC-227: A meeting's screen lists every correction that changed a word of its transcript, each as the words before and after.
-- [ ] ISC-228: In a meeting's transcript every word a correction changed is marked where it stands, and pressing it shows the words as transcribed and as corrected.
+- [x] ISC-227: A meeting's screen lists every correction that changed a word of its transcript, each as the words before and after.
+- [x] ISC-228: In a meeting's transcript every word a correction changed is marked where it stands, and pressing it shows the words as transcribed and as corrected.
 - [ ] ISC-229: A meeting's audio, its transcript, or the whole meeting is deleted by the person, from the meeting, after saying yes to what goes.
 - [ ] ISC-229.1: Deleting a meeting's audio leaves its transcript, its summary, its names and its filing as they were, and the meeting says its audio was deleted.
 - [ ] ISC-229.2: Deleting a meeting's transcript takes every paid response it came from, every file rendered from them and every summary, leaves the audio and what people said about the meeting, and the meeting is offered for transcription again.
@@ -921,3 +921,5 @@ Board: 7 · Distribución y backup
 - ISC-223.5 — `CorpusMoveTests.Removing_the_old_copy_needs_the_new_one_whole` and `.Removing_the_old_copy_leaves_nothing_behind` (`tests/MeetingTranscriber.Infrastructure.Tests`) green 2026-10-06.
 - ISC-223 — held by its five leaves, `ISC-223.1` to `ISC-223.5`, green 2026-10-06.
 - ISC-225 — walked by the owner 2026-10-06 on the installed build of `30a64d5` (PR #384), reported in their words as "Ya arrastra bien"; `CaptionStripTests` (`tests/MeetingTranscriber.Presentation.Tests`) green 2026-10-06. Not reached: which stretches of the bar were tried, its presses still pressing, any scale but that machine's.
+- ISC-227 — `TerminologyTests.Every_word_a_correction_changed_is_marked_where_it_stands`, `.A_mark_moves_when_an_earlier_replacement_changes_the_length`, `.A_correction_inside_one_already_made_is_one_mark`, `.A_correction_across_a_marks_edge_is_one_mark_over_both`, `MeetingRendererTests.A_correction_that_reaches_the_meeting_and_changes_nothing_is_not_seen` (`tests/MeetingTranscriber.Processing.Tests`) and `ReadingAMeetingTests.The_words_card_lists_what_corrected_this_transcript` (`tests/MeetingTranscriber.App.Tests`) green 2026-10-06. Not reached: the list drawn on screen; the owner's walk.
+- ISC-228 — `TerminologyTests.Apply_reads_what_ApplyMarked_reads` (`tests/MeetingTranscriber.Processing.Tests`) and `ReadingAMeetingTests.A_corrected_word_is_a_press_that_shows_before_and_after` (`tests/MeetingTranscriber.App.Tests`) green 2026-10-06. Not reached: the underline and flyout drawn and pressed, and their ink; the owner's walk.
