@@ -61,7 +61,7 @@ something here has stopped earning its place, and the fix is to move a section o
 
 | Where the rest lives | Open it when |
 | --- | --- |
-| `arquitectura.md` | The design as a whole, in Spanish. Written in the destination, not the present. |
+| `arquitectura.md` | The design as a whole and why it is shaped so; what is decided and not built says so where it stands. |
 | `docs/layout.md` | Looking for where something lives, or what a project may reference. |
 | `docs/shell.md` | A command by hand did something other than what it looks like it did. |
 | `docs/migrations.md` | Adding or editing an EF migration. |
@@ -76,7 +76,7 @@ something here has stopped earning its place, and the fix is to move a section o
 
 ## Nothing has shipped yet
 
-Nothing has shipped — no installed build, no corpus anybody keeps — so nothing carries old data
+Nothing has shipped — no build handed to anybody, no corpus anybody keeps — so nothing carries old data
 forward: no compatibility path, no fallback, no version check. `docs/migrations.md` says when this
 stops being true.
 

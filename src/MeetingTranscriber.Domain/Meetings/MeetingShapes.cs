@@ -122,7 +122,7 @@ public sealed record ShapeNames(
 /// <summary>A place on the screen for somebody, and how the meeting would name them.</summary>
 /// <remarks>
 /// It carries the two roles and never a person. §5.3 is explicit that a shape pre-fills nothing —
-/// <em>siempre va a pre-llenar nada más</em> — so a slot is a row waiting for a name, with the two
+/// <em>only ever pre-fills</em> — so a slot is a row waiting for a name, with the two
 /// toggles already set the way that story sets them.
 /// </remarks>
 /// <param name="Attended">Whether the slot opens with <em>was there</em> on.</param>

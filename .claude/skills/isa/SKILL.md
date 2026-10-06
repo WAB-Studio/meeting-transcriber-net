@@ -18,7 +18,7 @@ It is **not** the design document and **not** the work queue. Three artifacts, o
 
 | Artifact | Its one job |
 | --- | --- |
-| `arquitectura.md` | The design and its reasoning — decisions, model, flows, risks. Prose, Spanish. |
+| `arquitectura.md` | The design and its reasoning — decisions, model, flows, risks. Prose. |
 | `ISA.md` | What done means as falsifiable claims, how each is probed, and the count. |
 | ClickUp | The work queue — what to do next, who has it, what state it is in. |
 

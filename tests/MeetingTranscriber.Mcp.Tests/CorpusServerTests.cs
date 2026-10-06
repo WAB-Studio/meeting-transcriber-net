@@ -264,7 +264,7 @@ public class CorpusServerTests
         ]);
 
         // The names §8.2 spells, the three filters that fill `filtros` (`limite`, `desde`, `hasta`),
-        // and `saltar`, the paging §8.2 asks for as "respeta paginación". `obtener_cita` has none:
+        // and `saltar`, the paging §8.2 asks for as "respects paging". `obtener_cita` has none:
         // it is five turns at most, and what reads past them is `leer_turnos`.
         Parameters(tools, "buscar_reuniones").ShouldBe(["limite", "query", "saltar"]);
         Parameters(tools, "leer_resumen").ShouldBe(["meeting_id", "saltar"]);
