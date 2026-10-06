@@ -53,7 +53,9 @@ before you return. An `owed` entry with no card of its own is recorded in the re
 whose files it shares, or of the first card in the share where it shares none, under `owed_built`.
 
 `<card_dir>/pr.md` for each card: what a PR body would say for that card alone — a `Closes #<n>`
-line, a `Claims:` line, `## What changed` and `## Why` — plus the decisions and what this now does
+line where the card is a GitHub issue, and none where it is not: a card with any other id is named
+by that id in `## What changed`, because a `#<n>` that happens to match an open issue closes that
+issue on merge — then a `Claims:` line, `## What changed` and `## Why` — plus the decisions and what this now does
 for a meeting, a recording or the corpus that it did not. The code goes in the commit message — what
 you tried, why one shape beat another, what a review found — and stays out of `pr.md`.
 

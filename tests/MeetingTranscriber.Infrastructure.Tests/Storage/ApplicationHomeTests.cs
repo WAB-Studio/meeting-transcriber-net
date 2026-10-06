@@ -20,6 +20,19 @@ public class ApplicationHomeTests
     }
 
     [Fact]
+    public void Every_pointer_of_this_user_is_kept_in_the_one_profile_folder()
+    {
+        var expected = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+            CorpusLocation.ApplicationFolderName);
+
+        ApplicationHome.ProfileFolder().FullName.ShouldBe(expected);
+        ApplicationHome.OfThisUser().Folder.FullName.ShouldBe(expected);
+        CorpusLocation.OfThisUser().Fallback.FullName.ShouldBe(expected);
+        ClaudeCodeLocation.OfThisUser().Setting.Directory!.FullName.ShouldBe(expected);
+    }
+
+    [Fact]
     public void A_home_on_the_launch_line_holds_both_pointers_and_the_first_corpus()
     {
         using var folder = new TemporaryFolder();

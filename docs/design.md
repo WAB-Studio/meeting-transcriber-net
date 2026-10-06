@@ -781,11 +781,16 @@ conditions and stay.
 
 The right column is a compact table: who spoke with their share, what it was about, and who
 transcribed and who summarised and when. It scrolls apart from the left. The player runs along the
-bottom: a play and pause glyph, the time reached, the track, the length and a volume slider.
+bottom: a play and pause glyph, the time reached, the track, the length and a speaker glyph for the
+volume. The glyph follows the level — muted, low, middle, high — and a press on it mutes and brings
+the last level back. Its slider is out of the way until the pointer is over the glyph or either has
+the keyboard, and then it opens to the glyph's left, from nothing to twice the recording's own level
+and starting at its own level; a drag that wanders off it keeps it open.
 **The coloured marks on the track are the summary's citations**, so where each thing falls
 across the hour is visible. The track's tooltip shows a time and never milliseconds. Both sides are
-played at their own level through a soft limiter, so one side speaking is heard as loud as it was
-said and both loud at once do not clip, and the volume stands after it. A
+folded in at their own level, then the volume is applied, then a soft limiter, so one side speaking
+is heard as loud as it was said and neither both loud at once nor the volume at twice clips. A
+one-track recording and *Quién es quién*'s voice clips play through the same order. A
 meeting given more than one summary lists every one of them in the card that says who wrote this,
 under the label *resúmenes de esta reunión*, newest accepted first: a radio row each, saying who
 wrote it and when it was accepted. The chosen row is the summary on the screen, and choosing

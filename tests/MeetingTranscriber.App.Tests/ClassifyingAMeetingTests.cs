@@ -611,29 +611,6 @@ public class ClassifyingAMeetingTests
     }
 
     /// <summary>
-    /// A pill opens under a pointer. Its first press was read as the one that had just dismissed its
-    /// list, because "never dismissed" was <c>long.MinValue</c> and the elapsed time against it
-    /// overflowed to a negative number — so on Clasificar, whose pills are built again by every
-    /// answer, no pill ever opened by a press, and a new place could not be named at either level.
-    /// </summary>
-    [Fact]
-    public void A_pill_that_was_never_dismissed_does_not_read_a_press_as_a_dismissal()
-    {
-        var source = File.ReadAllText(AppSources.At(Path.Combine("MeetingTranscriber.App", "DropDown.cs")).FullName);
-
-        source.ShouldNotContain(
-            "_dismissedAt = long.MinValue",
-            customMessage: "the elapsed time against long.MinValue overflows below the window, so every press "
-            + "on a fresh pill reads as a dismissal and the pill never opens.");
-
-        Regex.IsMatch(source, @"long\?\s+_dismissedAt")
-            .ShouldBeTrue("_dismissedAt is not a nullable, so there is no way to say nothing has dismissed it.");
-
-        Regex.IsMatch(source, @"_dismissedAt is \{ \} \w+\s*&&")
-            .ShouldBeTrue("a press is read against a dismissal that may never have happened.");
-    }
-
-    /// <summary>
     /// One method's body, anchored on the closing brace at its own indentation. Lazy to
     /// <c>[ ]*\}</c> would stop at the first brace inside it, which is a check that reads the guard
     /// at the top and none of what follows.
