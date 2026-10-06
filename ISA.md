@@ -1,6 +1,6 @@
 ﻿---
 phase: climbing
-progress: 215/338
+progress: 218/338
 updated: 2026-10-06
 ---
 
@@ -352,7 +352,7 @@ rather than re-derived at every question, and the corpus answers the same way wh
 run has been over it.
 Board: 6 · Conocimiento local
 - [x] ISC-92: Search costs what an index costs and not what a scan costs, however many meetings there are.
-- [ ] ISC-92.1: Finding meetings with a word like the one typed reads the transcript index's own list of words, never every turn of every meeting.
+- [x] ISC-92.1: Finding meetings with a word like the one typed reads the transcript index's own list of words, never every turn of every meeting.
 - [x] ISC-93: Everything search promises to find is found.
 - [x] ISC-94: A hit carries the meeting, its date, its title, an elided snippet and where on the timeline it was said.
 - [x] ISC-95: Anti: a meeting on its way out is never something search offers.
@@ -381,8 +381,8 @@ Board: 6 · Conocimiento local
 - [x] ISC-198: Anti: offering who a person being added already is needs no model — every candidate is found with none installed.
 - [x] ISC-199: A term searched for also finds the meetings where it came out the way a correction elsewhere says it gets written wrong, though nobody corrected those meetings.
 - [ ] ISC-226: A meeting is found from the main screen by any word typed, the meetings ranked by where the word is: what it is filed under, called or noted as first, then its summary, then its transcript, then meetings holding a word like it.
-- [ ] ISC-226.1: A search from the main screen returns each meeting once, under the first of those four places it reaches, and the four in that order.
-- [ ] ISC-226.2: Anti: nothing typed into the main screen's search is refused as a search the index cannot run.
+- [x] ISC-226.1: A search from the main screen returns each meeting once, under the first of those four places it reaches, and the four in that order.
+- [x] ISC-226.2: Anti: nothing typed into the main screen's search is refused as a search the index cannot run.
 
 ### F8 · Distribution and backup
 Why: the application installs, upgrades and comes back from a lost disk, because the corpus
@@ -923,3 +923,6 @@ Board: 7 · Distribución y backup
 - ISC-225 — walked by the owner 2026-10-06 on the installed build of `30a64d5` (PR #384), reported in their words as "Ya arrastra bien"; `CaptionStripTests` (`tests/MeetingTranscriber.Presentation.Tests`) green 2026-10-06. Not reached: which stretches of the bar were tried, its presses still pressing, any scale but that machine's.
 - ISC-227 — `TerminologyTests.Every_word_a_correction_changed_is_marked_where_it_stands`, `.A_mark_moves_when_an_earlier_replacement_changes_the_length`, `.A_correction_inside_one_already_made_is_one_mark`, `.A_correction_across_a_marks_edge_is_one_mark_over_both`, `MeetingRendererTests.A_correction_that_reaches_the_meeting_and_changes_nothing_is_not_seen` (`tests/MeetingTranscriber.Processing.Tests`) and `ReadingAMeetingTests.The_words_card_lists_what_corrected_this_transcript` (`tests/MeetingTranscriber.App.Tests`) green 2026-10-06. Not reached: the list drawn on screen; the owner's walk.
 - ISC-228 — `TerminologyTests.Apply_reads_what_ApplyMarked_reads` (`tests/MeetingTranscriber.Processing.Tests`) and `ReadingAMeetingTests.A_corrected_word_is_a_press_that_shows_before_and_after` (`tests/MeetingTranscriber.App.Tests`) green 2026-10-06. Not reached: the underline and flyout drawn and pressed, and their ink; the owner's walk.
+- ISC-92.1 — `MeetingSearchTests.The_fourth_band_reads_the_terms_and_not_the_turns` and `.A_word_like_the_one_typed_finds_the_fourth_band` (`tests/MeetingTranscriber.Infrastructure.Tests`) green 2026-10-06. Not reached: a corpus large enough to time it.
+- ISC-226.1 — `MeetingSearchTests.Meetings_come_back_in_the_four_bands_in_order` and `.A_meeting_comes_back_once_under_the_best_band_it_reaches` (`tests/MeetingTranscriber.Infrastructure.Tests`) green 2026-10-06. Not reached: the drawer drawing them, which is a walk.
+- ISC-226.2 — `MeetingSearchTests.What_is_typed_is_never_refused` and `.Typed_text_with_no_word_in_it_finds_nothing_and_says_nothing` (`tests/MeetingTranscriber.Infrastructure.Tests`) green 2026-10-06. Not reached: the field itself.

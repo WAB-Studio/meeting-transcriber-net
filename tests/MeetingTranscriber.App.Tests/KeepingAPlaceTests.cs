@@ -145,21 +145,27 @@ public sealed partial class KeepingAPlaceTests
     }
 
     /// <summary>
-    /// This screen moves the keyboard from exactly one place.
+    /// This screen moves the keyboard from exactly two places: a draw, and the press that opens a
+    /// search.
     /// </summary>
     /// <remarks>
     /// It goes on drawing while it is collapsed behind the meeting screen and the classifier, so a
-    /// second focus call here is a press taken off the screen somebody is actually on. What this
-    /// holds is the spelling — <c>Focus(</c> — and the reason that is enough is that the one call
-    /// there is stands behind a capture that already refused every press nobody can see.
+    /// focus call that a draw can reach is a press taken off the screen somebody is actually on.
+    /// What this holds is the spelling — <c>Focus(</c> — and the reason it is enough is that the one
+    /// call a draw reaches stands behind a capture that already refused every press nobody can see.
+    /// The other is the magnifier's own handler, which only a person pressing the magnifier on this
+    /// screen can run, so no draw reaches it.
     /// </remarks>
     [Fact]
-    public void This_screen_takes_focus_in_one_place_only()
+    public void This_screen_takes_focus_where_a_draw_gives_it_back_and_where_a_search_opens()
     {
-        Occurrences(".Focus(").ShouldHaveSingleItem(
-            "MeetingsDrawer moves the keyboard from more than one place, and it draws while it is "
+        Occurrences(".Focus(").Count().ShouldBe(
+            2,
+            "MeetingsDrawer moves the keyboard from more than two places, and it draws while it is "
             + "collapsed behind another screen — so one of them can take a press off the screen "
             + "somebody is on.");
+
+        Body("private void OnSearchPressed(").ShouldContain("SearchBox.Focus(FocusState.Programmatic)");
     }
 
     /// <summary>Where <paramref name="what"/> stands in the drawer, ignoring prose about it.</summary>

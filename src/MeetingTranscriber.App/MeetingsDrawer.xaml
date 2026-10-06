@@ -181,19 +181,40 @@
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
 
             <TextBlock
+                x:Name="MeetingsTitle"
                 Grid.Column="0"
                 VerticalAlignment="Center"
                 Text="{x:Bind In(loc:UiTexts.Meetings)}"
                 Style="{StaticResource SectionText}" />
 
+            <!-- Shown in the title's place while somebody searches. Its placeholder is set in the
+                 code-behind with the magnifier's words, because both change with the language and
+                 neither is bound. -->
+            <TextBox
+                x:Name="SearchBox"
+                Grid.Column="0"
+                Visibility="Collapsed"
+                Style="{StaticResource TypedField}"
+                TextChanged="OnSearchTyped"
+                KeyDown="OnSearchKeyDown" />
+
+            <!-- Before the caret, and its words are set in the code-behind: they say whether the
+                 press opens a search or closes the one that is open. -->
+            <Button
+                x:Name="SearchButton"
+                Grid.Column="1"
+                Style="{StaticResource IconButton}"
+                Click="OnSearchPressed" />
+
             <!-- Its words are set in the code-behind and not bound here, because they are the one
                  thing on this screen that says which of the two positions the drawer is in. -->
             <Button
                 x:Name="OpennessButton"
-                Grid.Column="1"
+                Grid.Column="2"
                 Style="{StaticResource IconButton}"
                 Click="OnToggleOpenness" />
         </Grid>

@@ -312,6 +312,7 @@ public sealed partial class MeetingsDrawer : UserControl
         _language = language;
         Bindings.Update();
         ShowWhichPositionItIsIn();
+        ShowWhetherItIsSearching();
 
         Read();
     }
@@ -556,6 +557,13 @@ public sealed partial class MeetingsDrawer : UserControl
         // two lists, and not a state read a moment later that this control never drew.
         _theListRead = answered;
 
+        // A search showing is run again with what is typed, so the watch keeps its results as
+        // current as the list underneath it.
+        if (IsSearching && SearchBox.Text.Length > 0)
+        {
+            RunTheSearch(SearchBox.Text);
+        }
+
         if (answered)
         {
             _watch?.TheListHasRead(_meetings, recordings);
@@ -695,9 +703,20 @@ public sealed partial class MeetingsDrawer : UserControl
     /// about how much room they get.
     /// </para>
     /// </remarks>
-    private void OnToggleOpenness(object sender, RoutedEventArgs e)
+    private void OnToggleOpenness(object sender, RoutedEventArgs e) => TakeTheWholeWindow(!HasTheWholeWindow);
+
+    /// <summary>
+    /// Puts the drawer in one of its two positions and says so to the window. The one path both the
+    /// caret and a search take, so the window hears of every move.
+    /// </summary>
+    private void TakeTheWholeWindow(bool whole)
     {
-        HasTheWholeWindow = !HasTheWholeWindow;
+        if (HasTheWholeWindow == whole)
+        {
+            return;
+        }
+
+        HasTheWholeWindow = whole;
         ShowWhichPositionItIsIn();
 
         OpennessChanged?.Invoke(this, EventArgs.Empty);
@@ -723,6 +742,226 @@ public sealed partial class MeetingsDrawer : UserControl
     }
 
     /// <summary>
+    /// What the magnifier offers: to search while the list is showing, and to stop searching while
+    /// a search is. Set in code for the reason <see cref="ShowWhichPositionItIsIn"/> is.
+    /// </summary>
+    private void ShowWhetherItIsSearching()
+    {
+        var offered = In(IsSearching ? UiTexts.CloseTheSearch : UiTexts.SearchTheMeetings);
+
+        SearchButton.Content = new FontIcon
+        {
+            Glyph = IsSearching ? "\uE711" : "\uE721",
+            FontSize = (double)Application.Current.Resources["BodySize"],
+        };
+        AutomationProperties.SetName(SearchButton, offered);
+        ToolTipService.SetToolTip(SearchButton, offered);
+        SearchBox.PlaceholderText = In(UiTexts.SearchTheMeetings);
+        AutomationProperties.SetName(SearchBox, In(UiTexts.SearchTheMeetings));
+    }
+
+    /// <summary>Whether the header is showing a search and not the title.</summary>
+    private bool IsSearching => SearchBox.Visibility is Visibility.Visible;
+
+    /// <summary>Whether the drawer had the whole window before the magnifier raised it.</summary>
+    private bool _wholeBeforeTheSearch;
+
+    /// <summary>Whether a search is running now. At most one is.</summary>
+    private bool _searchIsRunning;
+
+    /// <summary>The newest text typed while a search ran, which is the only one that runs next.</summary>
+    private string? _searchWaiting;
+
+    /// <summary>What the search last found, drawn in place of the list while one is showing.</summary>
+    private IReadOnlyList<MeetingFound>? _found;
+
+    /// <summary>
+    /// The magnifier: opens the search, raising the list to the whole window, or closes it.
+    /// </summary>
+    /// <remarks>
+    /// Not a sub-screen: a sub-screen belongs to the window, and the list it searches belongs to
+    /// this drawer. What the drawer was before is remembered and given back on close, so a search
+    /// opened over the docked list does not leave it raised.
+    /// </remarks>
+    private void OnSearchPressed(object sender, RoutedEventArgs e)
+    {
+        if (IsSearching)
+        {
+            CloseTheSearch();
+            return;
+        }
+
+        _wholeBeforeTheSearch = HasTheWholeWindow;
+        TakeTheWholeWindow(true);
+
+        SearchBox.Text = string.Empty;
+        SearchBox.Visibility = Visibility.Visible;
+        MeetingsTitle.Visibility = Visibility.Collapsed;
+        ShowWhetherItIsSearching();
+        SearchBox.Focus(FocusState.Programmatic);
+    }
+
+    /// <summary>
+    /// Escape closes the search from the field, as it closes anything else opened to be typed into.
+    /// </summary>
+    private void OnSearchKeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if (e.Key is Windows.System.VirtualKey.Escape)
+        {
+            e.Handled = true;
+            CloseTheSearch();
+        }
+    }
+
+    /// <summary>What is typed is searched for, and nothing typed gives the list back.</summary>
+    private void OnSearchTyped(object sender, TextChangedEventArgs e)
+    {
+        if (!IsSearching)
+        {
+            return;
+        }
+
+        if (SearchBox.Text.Length == 0)
+        {
+            CloseTheSearch();
+            return;
+        }
+
+        RunTheSearch(SearchBox.Text);
+    }
+
+    /// <summary>Gives the list back, and the drawer the position it was in before the magnifier.</summary>
+    private void CloseTheSearch()
+    {
+        if (!IsSearching)
+        {
+            return;
+        }
+
+        // Before the text is cleared: the clear is a change like any other, and by then there is
+        // no search for it to start.
+        SearchBox.Visibility = Visibility.Collapsed;
+        SearchBox.Text = string.Empty;
+        MeetingsTitle.Visibility = Visibility.Visible;
+        _found = null;
+        _searchWaiting = null;
+
+        ShowWhetherItIsSearching();
+        TakeTheWholeWindow(_wholeBeforeTheSearch);
+        Render();
+    }
+
+    /// <summary>
+    /// Runs the search off this thread, one at a time. Text typed while one runs waits, and only
+    /// the newest of it runs next, so a keystroke never queues behind older ones.
+    /// </summary>
+    /// <remarks>
+    /// Every exception a person can act on is said on the status line and nothing is left on a task
+    /// nobody holds: this is <c>async void</c>, and the one thing it awaits is caught here.
+    /// </remarks>
+    private async void RunTheSearch(string typed)
+    {
+        if (_searchIsRunning)
+        {
+            _searchWaiting = typed;
+            return;
+        }
+
+        _searchIsRunning = true;
+        _searchWaiting = null;
+
+        IReadOnlyList<MeetingFound>? found = null;
+        string? failed = null;
+
+        try
+        {
+            var folder = Corpus().Folder;
+            found = await Task.Run(() => AskTheCorpus(folder, typed));
+        }
+        catch (Exception unreadable) when (ScreenFailures.Reportable(unreadable))
+        {
+            failed = unreadable.Message;
+        }
+
+        _searchIsRunning = false;
+
+        if (_closed || !IsSearching)
+        {
+            return;
+        }
+
+        // An answer to words no longer in the field is not drawn: the search was closed and opened
+        // again while it ran, and what is typed now is what gets answered.
+        if (!string.Equals(typed, SearchBox.Text, StringComparison.Ordinal))
+        {
+            if (SearchBox.Text.Length > 0)
+            {
+                RunTheSearch(SearchBox.Text);
+            }
+
+            return;
+        }
+
+        if (found is not null)
+        {
+            _found = found;
+            Render();
+        }
+
+        if (failed is not null)
+        {
+            _status.Says(UiTexts.ThatDidNotGoThrough, failed);
+            SaysWhatItIsShowing();
+        }
+
+        if (_searchWaiting is { } next)
+        {
+            RunTheSearch(next);
+        }
+    }
+
+    /// <summary>The meetings holding what was typed, on a context of this search's own.</summary>
+    private static IReadOnlyList<MeetingFound> AskTheCorpus(DirectoryInfo? folder, string typed)
+    {
+        if (folder is null || !CorpusDatabase.HoldsACorpus(folder))
+        {
+            return [];
+        }
+
+        using var context = CorpusDatabase.Open(folder);
+        return MeetingSearch.Find(context, typed);
+    }
+
+    /// <summary>
+    /// One meeting a search found: its name, which opens it, when it was, and the band it was found
+    /// in. Built from what was found and never looked up among the listed meetings, because a
+    /// meeting a search finds need not be one the list shows.
+    /// </summary>
+    private UIElement Found(MeetingFound found)
+    {
+        var line = new StackPanel { Spacing = 4 };
+        line.Children.Add(OpenPress(found.Meeting));
+
+        var data = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 16 };
+        data.Children.Add(new TextBlock { Text = ScreenNumbers.When(found.Meeting), Style = Chrome("MeetingWhen") });
+        data.Children.Add(new TextBlock
+        {
+            Text = In(found.Band switch
+            {
+                SearchBand.Filing => UiTexts.FoundInTheFiling,
+                SearchBand.Summary => UiTexts.FoundInTheSummary,
+                SearchBand.Transcript => UiTexts.TheTranscript,
+                SearchBand.Similar => UiTexts.FoundAlike,
+                _ => throw new ArgumentOutOfRangeException(nameof(found), found.Band, "No word names this band."),
+            }),
+            Style = Chrome("MeetingLine"),
+        });
+        line.Children.Add(data);
+
+        return new Border { Style = Chrome("MeetingCard"), Child = line };
+    }
+
+    /// <summary>
     /// Everything on screen, built from the meetings last read, with somebody's place in it kept
     /// across the rebuild: the press that had the keyboard is taken before the cards go and given
     /// back once they are all there.
@@ -743,37 +982,57 @@ public sealed partial class MeetingsDrawer : UserControl
         _presses.Clear();
         Cards.Children.Clear();
 
-        // The recordings first, which is the whole of where they go: a recording the application
-        // never finished is at the top of this list and nothing says so in words.
-        foreach (var row in _waiting)
+        // A search showing is what is on the list, and the list comes back when it closes.
+        if (IsSearching && _found is { } found)
         {
-            Cards.Children.Add(WaitingCard(row));
-        }
-
-        // And each of them instead of the meeting it is of, never above it. A recording nobody
-        // stopped has had its row in the corpus since before its first sample, so the meeting is
-        // already in the list read above — drawing both would put one meeting on the screen twice,
-        // once saying it has no audio and once offering to make some of it.
-        var drawn = _waiting.Select(row => row.Recording.MeetingId).OfType<Guid>().ToHashSet();
-
-        foreach (var entry in _meetings)
-        {
-            if (!drawn.Contains(entry.Meeting.Id))
+            foreach (var one in found)
             {
-                Cards.Children.Add(Card(entry));
+                Cards.Children.Add(Found(one));
+            }
+
+            if (found.Count == 0)
+            {
+                Cards.Children.Add(new TextBlock
+                {
+                    Text = In(UiTexts.NothingFound),
+                    Style = Chrome("MeetingWhen"),
+                });
             }
         }
-
-        // An empty list says so once, where the rows would be — and not when the corpus would not
-        // open or would not be read, because an empty list is not the same fact as no meetings and
-        // "none" over a corpus nobody reached is the lie Read refuses to tell.
-        if (_meetings.Count == 0 && _waiting.Count == 0 && !_status.IsSaying)
+        else
         {
-            Cards.Children.Add(new TextBlock
+            // The recordings first, which is the whole of where they go: a recording the application
+            // never finished is at the top of this list and nothing says so in words.
+            foreach (var row in _waiting)
             {
-                Text = In(UiTexts.NoMeetingsHereYet),
-                Style = Chrome("MeetingWhen"),
-            });
+                Cards.Children.Add(WaitingCard(row));
+            }
+
+            // And each of them instead of the meeting it is of, never above it. A recording nobody
+            // stopped has had its row in the corpus since before its first sample, so the meeting is
+            // already in the list read above — drawing both would put one meeting on the screen twice,
+            // once saying it has no audio and once offering to make some of it.
+            var drawn = _waiting.Select(row => row.Recording.MeetingId).OfType<Guid>().ToHashSet();
+
+            foreach (var entry in _meetings)
+            {
+                if (!drawn.Contains(entry.Meeting.Id))
+                {
+                    Cards.Children.Add(Card(entry));
+                }
+            }
+
+            // An empty list says so once, where the rows would be — and not when the corpus would not
+            // open or would not be read, because an empty list is not the same fact as no meetings and
+            // "none" over a corpus nobody reached is the lie Read refuses to tell.
+            if (_meetings.Count == 0 && _waiting.Count == 0 && !_status.IsSaying)
+            {
+                Cards.Children.Add(new TextBlock
+                {
+                    Text = In(UiTexts.NoMeetingsHereYet),
+                    Style = Chrome("MeetingWhen"),
+                });
+            }
         }
 
         PutThemBack(place);
@@ -1146,47 +1405,7 @@ public sealed partial class MeetingsDrawer : UserControl
         Grid.SetRow(data, 1);
         line.Children.Add(data);
 
-        // ISC-165.1 on a row. A meeting nobody has named reads as one nobody has named: the
-        // catalogue's own words, in the reader's language and greyed the way a caption is, and
-        // never a name worked out from the date, the folder or the first thing said in it. There
-        // is nothing here to invent one from and that is deliberate — a title is somebody's, and
-        // the only thing allowed to fill it in without being asked is the summary when it arrives.
-        var named = !string.IsNullOrWhiteSpace(entry.Meeting.Title);
-
-        // The name, and the press that opens the meeting. It is the same control because the row
-        // is what you press: `docs/design.md` puts two answers on a row and nothing else, so an
-        // open button would have to take the place of one of the two that cost money. What it says
-        // is the meeting's own name — or, for one nobody has named, the catalogue's two words,
-        // which is ISC-165.1 unchanged: this screen has nothing to invent a name from and is not
-        // pretending to.
-        var open = new Button
-        {
-            Content = new TextBlock
-            {
-                Text = named ? entry.Meeting.Title : In(UiTexts.AMeetingNobodyHasNamed),
-                Style = Chrome(named ? "MeetingName" : "MeetingUnnamed"),
-                TextTrimming = TextTrimming.CharacterEllipsis,
-            },
-            Style = Chrome("MeetingOpen"),
-            VerticalAlignment = VerticalAlignment.Center,
-        };
-
-        // Named rather than left to whatever a button derives from a TextBlock in its content.
-        // What is on it is the meeting's own name, and that is what a narrator reads out — which
-        // is not something a control template promises.
-        AutomationProperties.SetName(
-            open,
-            named ? entry.Meeting.Title : In(UiTexts.AMeetingNobodyHasNamed));
-
-        // And an id beside it, which is a different question with a different answer. The name is
-        // read aloud and is a person's, so it is in their language and half this list has none —
-        // every meeting nobody has named reads the same two words, and nothing on the screen can
-        // then be told from anything else. The id says which meeting, in every language and for
-        // as long as the meeting exists, which is what a tool driving this window needs to press
-        // one of twelve rows — and what a redraw needs to find this press again afterwards.
-        KnownAs(open, RowPresses.ToOpen(entry.Meeting.Id));
-
-        open.Click += (_, _) => MeetingChosen?.Invoke(this, entry.Meeting.Id);
+        var open = OpenPress(entry.Meeting);
         Grid.SetColumn(open, 0);
         line.Children.Add(open);
 
@@ -1260,6 +1479,58 @@ public sealed partial class MeetingsDrawer : UserControl
         }
 
         return new Border { Style = Chrome("MeetingCard"), Child = line };
+    }
+
+    /// <summary>
+    /// The name of a meeting and the press that opens it, which is one control: the row is what you
+    /// press. Shared by a row of the list and a row of a search, so a meeting opens the same way
+    /// from either.
+    /// </summary>
+    private Button OpenPress(Meeting meeting)
+    {
+        // ISC-165.1 on a row. A meeting nobody has named reads as one nobody has named: the
+        // catalogue's own words, in the reader's language and greyed the way a caption is, and
+        // never a name worked out from the date, the folder or the first thing said in it. There
+        // is nothing here to invent one from and that is deliberate — a title is somebody's, and
+        // the only thing allowed to fill it in without being asked is the summary when it arrives.
+        var named = !string.IsNullOrWhiteSpace(meeting.Title);
+
+        // The name, and the press that opens the meeting. It is the same control because the row
+        // is what you press: `docs/design.md` puts two answers on a row and nothing else, so an
+        // open button would have to take the place of one of the two that cost money. What it says
+        // is the meeting's own name — or, for one nobody has named, the catalogue's two words,
+        // which is ISC-165.1 unchanged: this screen has nothing to invent a name from and is not
+        // pretending to.
+        var open = new Button
+        {
+            Content = new TextBlock
+            {
+                Text = named ? meeting.Title : In(UiTexts.AMeetingNobodyHasNamed),
+                Style = Chrome(named ? "MeetingName" : "MeetingUnnamed"),
+                TextTrimming = TextTrimming.CharacterEllipsis,
+            },
+            Style = Chrome("MeetingOpen"),
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+
+        // Named rather than left to whatever a button derives from a TextBlock in its content.
+        // What is on it is the meeting's own name, and that is what a narrator reads out — which
+        // is not something a control template promises.
+        AutomationProperties.SetName(
+            open,
+            named ? meeting.Title : In(UiTexts.AMeetingNobodyHasNamed));
+
+        // And an id beside it, which is a different question with a different answer. The name is
+        // read aloud and is a person's, so it is in their language and half this list has none —
+        // every meeting nobody has named reads the same two words, and nothing on the screen can
+        // then be told from anything else. The id says which meeting, in every language and for
+        // as long as the meeting exists, which is what a tool driving this window needs to press
+        // one of twelve rows — and what a redraw needs to find this press again afterwards.
+        KnownAs(open, RowPresses.ToOpen(meeting.Id));
+
+        open.Click += (_, _) => MeetingChosen?.Invoke(this, meeting.Id);
+
+        return open;
     }
 
     /// <summary>

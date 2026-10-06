@@ -173,4 +173,18 @@ public static partial class UiTexts
 
     public static UiText ItIsIgnoredForNow { get; } =
         new("Listo: ignorada por ahora.", "Done: ignored for now.");
+
+    // Searching the list. The transcript's band says the existing `TheTranscript`, the same word for
+    // the same thing.
+    public static UiText SearchTheMeetings { get; } = new("Buscar", "Search");
+
+    public static UiText CloseTheSearch { get; } = new("Cerrar búsqueda", "Close search");
+
+    public static UiText NothingFound { get; } = new("Nada encontrado", "Nothing found");
+
+    public static UiText FoundInTheFiling { get; } = new("Clasificación", "Filing");
+
+    public static UiText FoundInTheSummary { get; } = new("Resumen", "Summary");
+
+    public static UiText FoundAlike { get; } = new("Parecida", "Similar");
 }
