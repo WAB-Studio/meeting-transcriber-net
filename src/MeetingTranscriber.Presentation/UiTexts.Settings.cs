@@ -88,6 +88,50 @@ public static partial class UiTexts
     public static UiText TheFolderPickerDidNotOpen { get; } = new(
         "Windows no abrió el selector de carpetas.", "Windows did not open the folder picker.");
 
+    // The folder card's tooltip: what is kept where the card says.
+    public static UiText WhatTheFolderKeeps { get; } = new(
+        "Aquí se guardan tus reuniones: audio, transcripciones y resúmenes.",
+        "Your meetings are kept here: audio, transcripts and summaries.");
+
+    // Moving the meetings to an empty folder: the line that offers it, the tick that also removes
+    // the old copy, the act, and what the screen says while it works.
+    public static UiText TheMeetingsMoveTo { get; } = new(
+        "Mover las reuniones a {0}", "Move the meetings to {0}");
+
+    public static UiText RemoveTheOldCopy { get; } = new("Borrar la copia anterior", "Delete the old copy");
+
+    public static UiText Move { get; } = new("Mover", "Move");
+
+    public static UiText Moving { get; } = new("Moviendo…", "Moving…");
+
+    // One sentence per member of `CorpusMoveRefusal`, said before anything is written.
+    public static UiText TheFolderIsNotEmpty { get; } = new(
+        "La carpeta no está vacía.", "The folder is not empty.");
+
+    public static UiText ThatFolderGoesOnUninstall { get; } = new(
+        "Esa carpeta se borra al desinstalar.", "That folder is deleted on uninstall.");
+
+    public static UiText OneFolderIsInsideTheOther { get; } = new(
+        "Una carpeta está dentro de la otra.", "One folder is inside the other.");
+
+    public static UiText WorkMustFinishFirst { get; } = new(
+        "Hay trabajo en curso; espere a que termine.", "Work is under way; wait for it to finish.");
+
+    public static UiText ARecordingIsWaitingToBeDecided { get; } = new(
+        "Hay una grabación sin decidir.", "A recording is waiting to be decided.");
+
+    // Said while a meeting is being recorded or saved, which the move waits out. The reason goes
+    // inside the second one: it is what the disk or SQLite said, the evidence somebody quotes.
+    public static UiText AMeetingIsBeingRecorded { get; } = new(
+        "Hay una reunión en curso; termina de grabarla antes de mover las reuniones.",
+        "A meeting is being recorded; finish it before moving the meetings.");
+
+    public static UiText TheMeetingsCouldNotBeMoved { get; } = new(
+        "No se pudieron mover las reuniones: {0}", "The meetings could not be moved: {0}");
+
+    public static UiText TheOldCopyWasNotRemoved { get; } = new(
+        "No se borró la copia anterior.", "The old copy was not deleted.");
+
     public static UiText WhoIsUsingTheApplication { get; } = new("Tu nombre", "Your name");
 
     public static UiText WhoIsUsingThisIsKept { get; } = new(

@@ -348,6 +348,8 @@ public sealed partial class MainWindow : Window
         Settings.Left += OnLeftTheSettings;
         Settings.LanguageChosen += OnLanguageChosenInTheSettings;
         Settings.CorpusChosen += OnCorpusChosenInTheSettings;
+        Settings.MeetingsMoved += OnMeetingsMovedInTheSettings;
+        Settings.MayGoBackChanged += OnMayGoBackChanged;
 
         // Read off the drawer once here as well as on every move, so which position the screen
         // opens in is the drawer's answer rather than two defaults that happen to agree.
@@ -455,6 +457,23 @@ public sealed partial class MainWindow : Window
     public event EventHandler? CorpusChosen;
 
     /// <summary>
+    /// The meetings were moved to another folder on the settings screen. Raised on up for the
+    /// reason <see cref="CorpusChosen"/> is, and it carries both folders because removing the old
+    /// copy is the application's too and needs the one the setting no longer names.
+    /// </summary>
+    public event EventHandler<MeetingsMoved>? MeetingsMoved;
+
+    /// <summary>
+    /// What stops the runner so the settings screen can move the meetings, handed on to it. Set by
+    /// the application, which owns the runner.
+    /// </summary>
+    public Func<Task<Action>>? StopTheRunner
+    {
+        get => Settings.StopTheRunner;
+        set => Settings.StopTheRunner = value;
+    }
+
+    /// <summary>
     /// Reads the whole window in this language: what the XAML bound, the title, the pickers, what
     /// has happened so far, the status line and the meetings under it. Nothing on screen is left
     /// in the one before.
@@ -545,7 +564,8 @@ public sealed partial class MainWindow : Window
     /// <summary>
     /// One sub-screen: the control, whether it has the window's room now, and the call that leaves it.
     /// </summary>
-    private readonly record struct SubScreen(FrameworkElement Screen, bool HasTheRoom, Action GoBack);
+    private readonly record struct SubScreen(
+        FrameworkElement Screen, bool HasTheRoom, Action GoBack, bool MayBeLeft = true);
 
     /// <summary>
     /// Every sub-screen, in the order that says which one wins when more than one is open. The one
@@ -563,9 +583,9 @@ public sealed partial class MainWindow : Window
     /// </remarks>
     private SubScreen[] TheSubScreens() =>
     [
-        new(Settings, Settings.IsOpen, Settings.GoBack),
+        new(Settings, Settings.IsOpen, Settings.GoBack, Settings.MayGoBack),
         new(Classifying, Classifying.IsOpen, Classifying.GoBack),
-        new(Corrections, Corrections.IsOpen, Corrections.GoBack),
+        new(Corrections, Corrections.IsOpen, Corrections.GoBack, Corrections.MayGoBack),
         new(Voices, Voices.IsOpen, Voices.GoBack),
         new(NodeStory, NodeStory.IsShowingANode, NodeStory.GoBack),
         new(Reading, Reading.IsShowingAMeeting, Reading.GoBack),
@@ -615,6 +635,11 @@ public sealed partial class MainWindow : Window
     private void Refresh()
     {
         var screen = Screen();
+
+        // A meeting being started, recorded or saved is what the settings screen cannot move the
+        // meetings under, and it is read here because this is where every change of state lands.
+        Settings.ARecordingIsUnderWay = screen.State is RecorderState.Starting
+            or RecorderState.Recording or RecorderState.Paused or RecorderState.Finishing;
 
         RecordButton.IsEnabled = screen.Allows(RecorderPress.Start);
         ShowThePausePress(screen);
@@ -1845,7 +1870,7 @@ public sealed partial class MainWindow : Window
         // left. The settings press is not on screen while a sub-screen has the room, because the
         // way out of one is the bar's.
         BackButton.Visibility = room is null ? Visibility.Collapsed : Visibility.Visible;
-        BackButton.IsEnabled = !ReferenceEquals(room, Corrections) || Corrections.MayGoBack;
+        BackButton.IsEnabled = TheRoomMayBeLeft();
         SettingsButton.Visibility = room is null ? Visibility.Visible : Visibility.Collapsed;
         ShowTheReport();
 
@@ -1965,7 +1990,15 @@ public sealed partial class MainWindow : Window
     /// without waiting for the next refresh.
     /// </summary>
     private void OnMayGoBackChanged(object? sender, EventArgs e) =>
-        BackButton.IsEnabled = !ReferenceEquals(TheSubScreenWithTheRoom(), Corrections) || Corrections.MayGoBack;
+        BackButton.IsEnabled = TheRoomMayBeLeft();
+
+    /// <summary>
+    /// Whether the sub-screen that has the room can be left now. Asked of the one list, so a screen
+    /// that refuses being left — the corrections while a save renders, the settings while the
+    /// meetings are copied — is a field of its entry and not a condition beside the button.
+    /// </summary>
+    private bool TheRoomMayBeLeft() =>
+        TheSubScreens().FirstOrDefault(sub => sub.HasTheRoom) is not { Screen: not null } room || room.MayBeLeft;
 
     /// <summary>
     /// Somebody opened one of the meetings on the list.
@@ -2224,6 +2257,12 @@ public sealed partial class MainWindow : Window
     /// </summary>
     private void OnCorpusChosenInTheSettings(object? sender, EventArgs e) =>
         CorpusChosen?.Invoke(this, EventArgs.Empty);
+
+    /// <summary>
+    /// The meetings were moved on the settings screen. Raised on, for the same reason.
+    /// </summary>
+    private void OnMeetingsMovedInTheSettings(object? sender, MeetingsMoved moved) =>
+        MeetingsMoved?.Invoke(this, moved);
 
     private void OnOpenPackagingChecks(object sender, RoutedEventArgs e) =>
         PackagingChecksAsked?.Invoke(this, EventArgs.Empty);

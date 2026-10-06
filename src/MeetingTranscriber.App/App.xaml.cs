@@ -59,6 +59,12 @@ public partial class App : Application
     private CancellationTokenSource? _work;
 
     /// <summary>
+    /// The pump <see cref="_work"/> stops, kept so a move of the meetings can wait for it to end: it
+    /// holds the corpus's <c>runner.mark</c> until it does. Replaced by the next launch's.
+    /// </summary>
+    private Task? _pump;
+
+    /// <summary>
     /// Initializes the singleton application object.  This is the first line of authored code
     /// executed, and as such is the logical equivalent of main() or WinMain().
     /// </summary>
@@ -141,6 +147,8 @@ public partial class App : Application
         window.LanguageChosen += OnLanguageChosen;
         window.PackagingChecksAsked += OnPackagingChecksAsked;
         window.CorpusChosen += OnCorpusChosen;
+        window.MeetingsMoved += OnMeetingsMoved;
+        window.StopTheRunner = StopTheRunner;
 
         // The sender is compared before clearing anything, and not merely for the closing window's
         // own sake: while there is only one window this always agrees with `_main`, but
@@ -216,6 +224,67 @@ public partial class App : Application
     }
 
     /// <summary>
+    /// Stops the runner's pump and waits for it to let go of the corpus, and answers what starts
+    /// the runner again over the same corpus. What a move of the meetings needs before it copies:
+    /// the pump holds the corpus's lease, and a job finishing mid-copy would be written to the
+    /// folder being left.
+    /// </summary>
+    private async Task<Action> StopTheRunner()
+    {
+        var corpus = _corpus;
+        _work?.Cancel();
+
+        if (_pump is { } pump)
+        {
+            await pump;
+        }
+
+        return () =>
+        {
+            if (corpus is not null)
+            {
+                StartWhatThisLaunchOwesTheCorpus(corpus);
+            }
+        };
+    }
+
+    /// <summary>
+    /// The meetings were moved to another folder on the settings screen, and the setting already
+    /// names it. The runner is already stopped: the move stopped it before it copied.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Everything <see cref="OnCorpusChosen"/> does, because a move ends the same way a choice does:
+    /// the setting is re-read and a window opens over what it names, with the runner's pump started
+    /// over the new folder.
+    /// </para>
+    /// <para>
+    /// The old copy is removed last and only when the tick was set, after the new copy was found
+    /// whole a second time, which <see cref="CorpusMove.RemoveTheOldCopyAsync"/> does itself. A
+    /// removal that fails leaves both folders and says so on the new window: nothing was lost, the
+    /// meetings are in two places, and a person knows which.
+    /// </para>
+    /// </remarks>
+    private async void OnMeetingsMoved(object? sender, MeetingsMoved moved)
+    {
+        OnCorpusChosen(sender, EventArgs.Empty);
+
+        if (!moved.RemoveTheOld)
+        {
+            return;
+        }
+
+        try
+        {
+            await CorpusMove.RemoveTheOldCopyAsync(moved.From, moved.To);
+        }
+        catch (Exception stuck) when (ScreenFailures.Reportable(stuck))
+        {
+            _main?.Report(UiTexts.TheOldCopyWasNotRemoved);
+        }
+    }
+
+    /// <summary>
     /// Starts everything this launch owes the corpus it just opened, and then the runner's pump
     /// over that same corpus.
     /// </summary>
@@ -266,7 +335,7 @@ public partial class App : Application
             var work = new CancellationTokenSource();
             _work = work;
 
-            _ = Task.Run(async () =>
+            _pump = Task.Run(async () =>
             {
                 WhatALaunchOwes.RunIn(folder);
 

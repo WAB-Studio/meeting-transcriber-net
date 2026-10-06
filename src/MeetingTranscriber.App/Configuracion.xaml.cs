@@ -106,6 +106,15 @@ public sealed partial class Configuracion : UserControl
     /// </summary>
     private bool _choosingAFolder;
 
+    /// <summary>The empty folder the meetings were offered a move to, until it is pressed or cancelled.</summary>
+    private DirectoryInfo? _offeredMoveTo;
+
+    /// <summary>True while the meetings are being copied; the one place it changes is <see cref="Moving"/>.</summary>
+    private bool _moving;
+
+    /// <summary>Cancelled when the window goes, so a copy in flight stops and takes away what it wrote.</summary>
+    private readonly CancellationTokenSource _movingStops = new();
+
     /// <summary>The same shape as <see cref="_choosingAFolder"/>, for the file picker beside it.</summary>
     private bool _choosingClaudeCode;
 
@@ -248,6 +257,39 @@ public sealed partial class Configuracion : UserControl
     /// </summary>
     public event EventHandler? CorpusChosen;
 
+    /// <summary>
+    /// The meetings were copied to the empty folder somebody named, found whole there, and the
+    /// folder was recorded as where the corpus is. What is done about it is not this screen's: the
+    /// application opens a window over the new folder and, when the old copy was to go, removes it
+    /// once nothing is using it. Unlike <see cref="CorpusChosen"/> it carries both folders, because
+    /// the second half of a move needs the one the setting no longer names.
+    /// </summary>
+    public event EventHandler<MeetingsMoved>? MeetingsMoved;
+
+    /// <summary>Raised where <see cref="MayGoBack"/> changes value.</summary>
+    public event EventHandler? MayGoBackChanged;
+
+    /// <summary>
+    /// Whether a meeting is being recorded or saved, set by the window each time it settles what is
+    /// on screen. The meetings cannot be moved under one: the spool is being written, and the
+    /// recording is in no row yet for the move to find.
+    /// </summary>
+    public bool ARecordingIsUnderWay { get; set; }
+
+    /// <summary>
+    /// Stops the runner's pump over this corpus and answers what starts it again, set by the
+    /// application, which owns the pump. A move asks for it before it copies, so nothing writes the
+    /// folder it is leaving, and carries on with what it returns when the move did not happen.
+    /// </summary>
+    public Func<Task<Action>>? StopTheRunner { get; set; }
+
+    /// <summary>
+    /// Whether the way back is open: not while the meetings are being copied, because leaving would
+    /// put the window back over a corpus that is about to be replaced. The window's app bar draws
+    /// its back press dead on it.
+    /// </summary>
+    public bool MayGoBack => !_moving;
+
     /// <summary>Whether this screen is on the window.</summary>
     public bool IsOpen => _open;
 
@@ -382,6 +424,7 @@ public sealed partial class Configuracion : UserControl
         _open = false;
         _firstStep = false;
         _status.Nothing();
+        StopOfferingTheMove();
 
         // A key pasted and never saved does not wait in a screen nobody is looking at.
         DeepgramKeyBox.Password = string.Empty;
@@ -389,7 +432,11 @@ public sealed partial class Configuracion : UserControl
     }
 
     /// <summary>The window is going. Nothing here draws after this.</summary>
-    public void Closing() => _closed = true;
+    public void Closing()
+    {
+        _closed = true;
+        _movingStops.Cancel();
+    }
 
     /// <summary>
     /// What a text says in the language this screen is being read in. The XAML binds to it, which
@@ -850,12 +897,6 @@ public sealed partial class Configuracion : UserControl
         // above takes the path and nothing else, so there is no punctuation for this screen to
         // choose between two of them.
         CorpusText.Text = text is null ? Corpus().Path : text.In(_language, Corpus().Path);
-
-        // Drawn only over a refused corpus: a corpus that opened is moved by moving the files and
-        // then saying so, and no screen offers the first half.
-        ChangeWhereItIsKept.Visibility = Corpus().Refusal is null
-            ? Visibility.Collapsed
-            : Visibility.Visible;
     }
 
     /// <summary>
@@ -1049,7 +1090,17 @@ public sealed partial class Configuracion : UserControl
     };
 
     /// <summary>Leaves the screen, which is the window's app bar's to ask.</summary>
-    public void GoBack() => Left?.Invoke(this, EventArgs.Empty);
+    public void GoBack()
+    {
+        // Refused here and not only by the bar drawing its press dead: Alt+Left and the Start press
+        // reach the same door.
+        if (_moving)
+        {
+            return;
+        }
+
+        Left?.Invoke(this, EventArgs.Empty);
+    }
 
     /// <summary>
     /// <em>Empezar</em>: the first step is done, and leaving it is leaving the screen. Nothing is
@@ -1069,8 +1120,8 @@ public sealed partial class Configuracion : UserControl
     }
 
     /// <summary>
-    /// Somebody asked to change where the corpus is kept, which is only offered over a refused
-    /// one.
+    /// Somebody asked to change where the corpus is kept. A folder that holds meetings is switched
+    /// to; an empty one, over a corpus that opened, is offered a move.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -1109,7 +1160,7 @@ public sealed partial class Configuracion : UserControl
     /// </remarks>
     private async void OnChangeWhereItIsKept(object sender, RoutedEventArgs e)
     {
-        if (_choosingAFolder || Corpus().Refusal is null)
+        if (_choosingAFolder || _moving)
         {
             return;
         }
@@ -1150,7 +1201,14 @@ public sealed partial class Configuracion : UserControl
             {
                 if (!_closed)
                 {
-                    Say(RefusalOfAPickedFolder(refusal), inspected.Path);
+                    if (refusal == CorpusRefusal.NoCorpusInTheFolder && ThereAreMeetingsToMoveInto(folder))
+                    {
+                        OfferTheMove(folder);
+                    }
+                    else
+                    {
+                        Say(RefusalOfAPickedFolder(refusal), inspected.Path);
+                    }
                 }
 
                 return;
@@ -1187,6 +1245,185 @@ public sealed partial class Configuracion : UserControl
             }
         }
     }
+
+    /// <summary>
+    /// Whether a folder with no corpus in it is one the meetings can be offered a move to: this
+    /// install has meetings to move, and the folder holds nothing at all. A folder that holds
+    /// something else is not offered, because the move writes into a folder it finds empty and
+    /// would otherwise be a way of mixing a corpus into somebody's files.
+    /// </summary>
+    private bool ThereAreMeetingsToMoveInto(DirectoryInfo folder)
+    {
+        if (Corpus().Folder is not { } current || !CorpusDatabase.HoldsACorpus(current))
+        {
+            return false;
+        }
+
+        try
+        {
+            return !Directory.EnumerateFileSystemEntries(folder.FullName).Any();
+        }
+        catch (Exception unanswered) when (unanswered is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
+    private void OfferTheMove(DirectoryInfo folder)
+    {
+        _offeredMoveTo = folder;
+        _status.Nothing();
+        Render();
+
+        MoveText.Text = UiTexts.TheMeetingsMoveTo.In(_language, folder.FullName);
+        RemoveTheOldCopyTick.IsChecked = false;
+        MovePanel.Visibility = Visibility.Visible;
+    }
+
+    private void StopOfferingTheMove()
+    {
+        _offeredMoveTo = null;
+        MovePanel.Visibility = Visibility.Collapsed;
+    }
+
+    private void OnCancelTheMove(object sender, RoutedEventArgs e) => StopOfferingTheMove();
+
+    /// <summary>
+    /// <em>Mover</em>: copies every meeting to the folder that was offered, finds every file the
+    /// corpus records there whole, and only then records the folder and tells the window.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The copy is <see cref="CorpusMove.Copy"/> and the write of the setting is
+    /// <see cref="CorpusLocation.Choose"/>, in that order and on one thread of work: the setting
+    /// names a folder only after the copy was proved, so a move that failed anywhere leaves the
+    /// application pointed at the folder it had. What is said for each way out is one sentence —
+    /// a refusal says which, and anything the disk or SQLite did says what they said.
+    /// </para>
+    /// <para>
+    /// Refused while a meeting is being recorded or saved, here and not only by the front door
+    /// being behind this screen: a recording in progress is the one thing a copy cannot see.
+    /// </para>
+    /// </remarks>
+    private async void OnMoveTheMeetings(object sender, RoutedEventArgs e)
+    {
+        if (_moving || _offeredMoveTo is not { } to || Corpus().Folder is not { } from)
+        {
+            return;
+        }
+
+        if (ARecordingIsUnderWay)
+        {
+            Say(UiTexts.AMeetingIsBeingRecorded);
+            return;
+        }
+
+        var removeTheOldCopy = RemoveTheOldCopyTick.IsChecked == true;
+        var stopping = _movingStops.Token;
+        Action? carryOn = null;
+        var moved = false;
+
+        Moving(true);
+
+        try
+        {
+            // The runner first: its pump holds the old corpus's lease and a job that finished after
+            // the backup would be written to the folder being left.
+            if (StopTheRunner is { } stop)
+            {
+                carryOn = await stop();
+            }
+
+            await Task.Run(
+                () => CorpusMove.Copy(from, to, stopping, whenWhole: () => CorpusLocation.OfThisUser().Choose(to)),
+                stopping);
+
+            moved = true;
+        }
+        catch (OperationCanceledException) when (stopping.IsCancellationRequested)
+        {
+            // The window went while the copy was running. Nothing is left in the folder and
+            // nothing is drawn.
+            return;
+        }
+        catch (CorpusMoveRefused refused)
+        {
+            Moving(false);
+            Say(RefusalOfAMove(refused.Refusal));
+        }
+        catch (Exception failed) when (ScreenFailures.Reportable(failed))
+        {
+            Moving(false);
+            Say(UiTexts.TheMeetingsCouldNotBeMoved, failed.Message);
+        }
+
+        if (!moved)
+        {
+            // Still pointed at the folder it had, so the runner goes on over that one.
+            carryOn?.Invoke();
+            return;
+        }
+
+        Moving(false);
+
+        if (_closed)
+        {
+            return;
+        }
+
+        StopOfferingTheMove();
+        MeetingsMoved?.Invoke(this, new MeetingsMoved(from, to, removeTheOldCopy));
+    }
+
+    /// <summary>
+    /// Says the screen is copying, or no longer is: the one place <see cref="_moving"/> changes, so
+    /// <see cref="MayGoBackChanged"/> is raised wherever it does. The whole screen goes dead while
+    /// it does, because nothing on it means anything over a corpus that is about to be replaced.
+    /// </summary>
+    private void Moving(bool value)
+    {
+        if (_moving == value)
+        {
+            return;
+        }
+
+        _moving = value;
+
+        if (_closed)
+        {
+            return;
+        }
+
+        IsEnabled = !value;
+
+        if (value)
+        {
+            Say(UiTexts.Moving);
+        }
+        else
+        {
+            _status.Nothing();
+            Render();
+        }
+
+        MayGoBackChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>
+    /// What each refusal of a move says. The last arm stops rather than substituting, for the reason
+    /// <see cref="RefusalOfAPickedFolder"/>'s does: a refusal added without a sentence would be said
+    /// as one of the others.
+    /// </summary>
+    private static UiText RefusalOfAMove(CorpusMoveRefusal refusal) => refusal switch
+    {
+        CorpusMoveRefusal.NotEmpty => UiTexts.TheFolderIsNotEmpty,
+        CorpusMoveRefusal.GoesWhenThePackageDoes => UiTexts.ThatFolderGoesOnUninstall,
+        CorpusMoveRefusal.InsideTheOther => UiTexts.OneFolderIsInsideTheOther,
+        CorpusMoveRefusal.WorkPending => UiTexts.WorkMustFinishFirst,
+        CorpusMoveRefusal.ARecordingWaits => UiTexts.ARecordingIsWaitingToBeDecided,
+        _ => throw new InvalidOperationException(
+            $"This screen has no text for corpus move refusal '{refusal}'."),
+    };
 
     /// <summary>
     /// Somebody asked to change which executable Claude Code runs from.
@@ -1934,3 +2171,9 @@ public sealed partial class Configuracion : UserControl
         StatusText.Visibility = _status.IsSaying ? Visibility.Visible : Visibility.Collapsed;
     }
 }
+
+/// <summary>
+/// The meetings were moved: where they were, where they are, and whether the old copy was to go
+/// once the application stopped using it.
+/// </summary>
+public sealed record MeetingsMoved(DirectoryInfo From, DirectoryInfo To, bool RemoveTheOld);

@@ -136,16 +136,123 @@ public class ConfiguracionTests
     }
 
     /// <summary>
-    /// The press that changes the corpus folder is drawn only when the corpus was refused, which
-    /// is the one state it exists to answer.
+    /// The press that changes the corpus folder is always drawn: a folder that opened is moved from
+    /// here too, so it is no longer the one answer to a refused corpus.
     /// </summary>
+    /// <remarks>
+    /// Goes red with the visibility put back over the refusal: the press is then on screen for a
+    /// corpus that did not open and nowhere else, which is the only state the move cannot start in.
+    /// </remarks>
     [Fact]
-    public void The_press_that_changes_the_corpus_folder_is_drawn_only_when_the_corpus_was_refused()
+    public void The_press_that_changes_the_corpus_folder_is_always_drawn()
     {
         var screen = File.ReadAllText(AppSources.At(Screen).FullName);
 
-        screen.ShouldContain("ChangeWhereItIsKept.Visibility = Corpus().Refusal is null");
+        screen.ShouldNotContain("ChangeWhereItIsKept.Visibility");
+
+        Handler("private async void OnChangeWhereItIsKept(").ShouldNotContain("Corpus().Refusal is null");
     }
+
+    /// <summary>
+    /// An empty folder is offered a move, with the old copy's removal unticked, and one that holds
+    /// meetings is switched to as it always was.
+    /// </summary>
+    [Fact]
+    public void An_empty_folder_is_offered_a_move_and_one_with_meetings_is_switched_to()
+    {
+        var markup = File.ReadAllText(
+            AppSources.At(Path.Combine("MeetingTranscriber.App", "Configuracion.xaml")).FullName);
+        var handler = Handler("private async void OnChangeWhereItIsKept(");
+
+        // The offer is for a folder with no corpus in it that holds nothing at all, over a corpus
+        // that opened.
+        handler.ShouldContain("refusal == CorpusRefusal.NoCorpusInTheFolder && ThereAreMeetingsToMoveInto(folder)");
+        handler.ShouldContain("OfferTheMove(folder)");
+        Handler("private bool ThereAreMeetingsToMoveInto(").ShouldContain("Directory.EnumerateFileSystemEntries(folder.FullName).Any()");
+
+        // The switch is the line it always was, after the folder passed its inspection.
+        handler.ShouldContain("CorpusLocation.OfThisUser().Choose(folder)");
+        handler.ShouldContain("CorpusChosen?.Invoke(this, EventArgs.Empty)");
+
+        // The line, the tick (never ticked for the person), the way out and the act.
+        markup.ShouldContain("x:Name=\"RemoveTheOldCopyTick\"");
+        markup.ShouldContain("IsChecked=\"False\"");
+        markup.ShouldContain("Click=\"OnCancelTheMove\"");
+        markup.ShouldContain("Click=\"OnMoveTheMeetings\"");
+        markup.ShouldContain("In(loc:UiTexts.WhatTheFolderKeeps)");
+        Handler("private void OfferTheMove(").ShouldContain("RemoveTheOldCopyTick.IsChecked = false");
+    }
+
+    /// <summary>
+    /// The move copies and then records the folder, in that order and refused while a meeting is
+    /// recorded, and the old copy's removal travels to the application with the choice made.
+    /// </summary>
+    [Fact]
+    public void The_move_copies_then_records_and_hands_the_choice_to_the_application()
+    {
+        var handler = Handler("private async void OnMoveTheMeetings(");
+        var app = File.ReadAllText(AppSources.At(Path.Combine("MeetingTranscriber.App", "App.xaml.cs")).FullName);
+        var window = File.ReadAllText(
+            AppSources.At(Path.Combine("MeetingTranscriber.App", "MainWindow.xaml.cs")).FullName);
+
+        // The runner is stopped before the copy, and the folder is recorded inside the copy's own
+        // rollback, after it was found whole.
+        handler.IndexOf("await stop()", StringComparison.Ordinal)
+            .ShouldBeLessThan(handler.IndexOf("CorpusMove.Copy(", StringComparison.Ordinal));
+        handler.ShouldContain("whenWhole: () => CorpusLocation.OfThisUser().Choose(to)");
+        handler.ShouldContain("carryOn?.Invoke()");
+        handler.ShouldContain("if (ARecordingIsUnderWay)");
+        handler.ShouldContain("new MeetingsMoved(from, to, removeTheOldCopy)");
+
+        window.ShouldContain("Settings.ARecordingIsUnderWay =");
+        window.ShouldContain("Settings.MeetingsMoved += OnMeetingsMovedInTheSettings");
+        app.ShouldContain("window.MeetingsMoved += OnMeetingsMoved");
+        app.ShouldContain("CorpusMove.RemoveTheOldCopyAsync(moved.From, moved.To)");
+
+        // Only when the tick was set.
+        Handler("private async void OnMeetingsMoved(", Path.Combine("MeetingTranscriber.App", "App.xaml.cs"))
+            .ShouldContain("if (!moved.RemoveTheOld)");
+        app.ShouldContain("window.StopTheRunner = StopTheRunner;");
+    }
+
+    /// <summary>
+    /// The screen refuses to be left while the meetings are copied, and the bar's back press is drawn
+    /// dead on it.
+    /// </summary>
+    /// <remarks>
+    /// Goes red with <c>GoBack</c> raising <c>Left</c> while moving: the press that is dead on the
+    /// bar is then alive through Alt+Left, and a window put back over a corpus about to be replaced.
+    /// </remarks>
+    [Fact]
+    public void The_screen_refuses_to_be_left_while_moving()
+    {
+        var screen = File.ReadAllText(AppSources.At(Screen).FullName);
+        var window = File.ReadAllText(
+            AppSources.At(Path.Combine("MeetingTranscriber.App", "MainWindow.xaml.cs")).FullName);
+
+        var goBack = Handler("public void GoBack()");
+        goBack.IndexOf("if (_moving)", StringComparison.Ordinal)
+            .ShouldBeLessThan(goBack.IndexOf("Left?.Invoke", StringComparison.Ordinal));
+
+        screen.ShouldContain("public bool MayGoBack => !_moving;");
+        Handler("private void Moving(bool value)").ShouldContain("IsEnabled = !value");
+        Handler("private void Moving(bool value)").ShouldContain("MayGoBackChanged?.Invoke");
+
+        window.ShouldContain("new(Settings, Settings.IsOpen, Settings.GoBack, Settings.MayGoBack)");
+        window.ShouldContain("Settings.MayGoBackChanged += OnMayGoBackChanged");
+        window.ShouldContain("private bool TheRoomMayBeLeft() =>");
+        window.ShouldContain("|| room.MayBeLeft;");
+    }
+
+    /// <summary>Every way a move can be refused has a sentence on this screen, and no other does.</summary>
+    [Fact]
+    public void Every_refusal_of_a_move_has_a_sentence_on_this_screen() =>
+        EnumTable.Read(
+                Screen,
+                "refusal",
+                "CorpusMoveRefusal",
+                Path.Combine("MeetingTranscriber.Infrastructure", "Storage", "CorpusMove.cs"))
+            .ShouldNameItsWholeEnum("CorpusMoveRefusal");
 
     /// <summary>
     /// The folder picker this screen opens is the Windows App SDK one, which does not need a window
@@ -619,11 +726,12 @@ public class ConfiguracionTests
     /// The handler's own body, from its signature to the closing brace that balances it, so a
     /// negative assertion over it says nothing about the rest of the screen.
     /// </summary>
-    private static string Handler(string signature)
+    private static string Handler(string signature, string? file = null)
     {
-        var screen = File.ReadAllText(AppSources.At(Screen).FullName);
+        file ??= Screen;
+        var screen = File.ReadAllText(AppSources.At(file).FullName);
         var start = screen.IndexOf(signature, StringComparison.Ordinal);
-        start.ShouldBeGreaterThanOrEqualTo(0, $"{Screen} no longer has '{signature}'.");
+        start.ShouldBeGreaterThanOrEqualTo(0, $"{file} no longer has '{signature}'.");
 
         var opens = screen.IndexOf('{', start);
         var depth = 0;

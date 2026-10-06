@@ -1,6 +1,6 @@
 ﻿---
 phase: climbing
-progress: 204/312
+progress: 210/312
 updated: 2026-10-06
 ---
 
@@ -377,12 +377,12 @@ Board: 7 · Distribución y backup
 - [x] ISC-114.2: The corpus opens wherever it was moved to, and the same one is opened again the next time the application starts.
 - [x] ISC-114.3: A corpus location that cannot be opened is refused naming the folder, rather than opened.
 - [x] ISC-114.4: Anti: a corpus location that cannot be opened never becomes a second, empty corpus somewhere else.
-- [ ] ISC-223: Changing where the meetings are kept moves every meeting to the new folder, each file found there whole before the application uses it, and the old copy is removed only when somebody chose that, and only once the new one was found whole.
-- [ ] ISC-223.1: After the meetings are moved to an empty folder, the application opens on that folder with every meeting the old one held, each with every file the old one held for it.
-- [ ] ISC-223.2: Anti: the application never starts using the new folder before every file the corpus records has been found there with the bytes it recorded.
-- [ ] ISC-223.3: Anti: a move that finds any file missing or different in the new folder leaves the meetings kept where they were, the old folder as it was and the new one holding nothing the move wrote.
-- [ ] ISC-223.4: Anti: the old copy is still there, whole, after a move nobody asked to remove it in.
-- [ ] ISC-223.5: Anti: the old copy is removed only after the new one has been found whole once more, and a new copy not found whole leaves the old one in place.
+- [x] ISC-223: Changing where the meetings are kept moves every meeting to the new folder, each file found there whole before the application uses it, and the old copy is removed only when somebody chose that, and only once the new one was found whole.
+- [x] ISC-223.1: After the meetings are moved to an empty folder, the application opens on that folder with every meeting the old one held, each with every file the old one held for it.
+- [x] ISC-223.2: Anti: the application never starts using the new folder before every file the corpus records has been found there with the bytes it recorded.
+- [x] ISC-223.3: Anti: a move that finds any file missing or different in the new folder leaves the meetings kept where they were, the old folder as it was and the new one holding nothing the move wrote.
+- [x] ISC-223.4: Anti: the old copy is still there, whole, after a move nobody asked to remove it in.
+- [x] ISC-223.5: Anti: the old copy is removed only after the new one has been found whole once more, and a new copy not found whole leaves the old one in place.
 - [ ] ISC-146: The package installs and uninstalls on a machine that is not the one it was built on.
 - [ ] ISC-206: The repository produces one signed package a machine can install, and what is inside it is what its manifest says.
 - [ ] ISC-215: The installed application is called Meeting Transcriber wherever Windows lists it, never by the name of a project in this repository.
@@ -886,3 +886,9 @@ Board: 7 · Distribución y backup
 - ISC-191 — held by its three leaves, `ISC-191.1` to `ISC-191.3`, green 2026-10-01.
 - ISC-217.1 — `ApplicationIconTests.Every_image_the_manifest_names_is_there_at_every_scale_and_target_size`, `.No_image_Windows_is_handed_is_a_template_placeholder`, `.The_mark_rendered_is_the_one_the_app_bar_draws` and `.The_images_were_drawn_from_the_mark_and_the_palette_as_they_stand` (`tests/MeetingTranscriber.App.Tests`) green 2026-10-05; red that day with the template's images put back, 2 of 7 failing, and with `Mark.svg`'s arcs swapped, the stamp and the app bar both failing. The `.appxrecipe` of a solution build lists every image and the `.ico`. Not reached: an installed Start menu.
 - ISC-217.2 — `ApplicationIconTests.The_taskbar_mark_is_drawn_over_nothing_in_the_ink_of_the_taskbar_it_sits_on` (`tests/MeetingTranscriber.App.Tests`) green 2026-10-05, every target size transparent at its corners and in its theme's `InkBrush`; red that day with the light taskbar's image copied over the dark one's. Not reached: which variant an installed shell picks, which is a person looking at a light and a dark taskbar.
+- ISC-223.1 — `CorpusMoveTests.A_moved_corpus_opens_with_every_file_whole` and `.What_the_write_ahead_log_still_holds_is_moved_too` (`tests/MeetingTranscriber.Infrastructure.Tests`) green 2026-10-06; red that day with the database backup left out. Not reached: a window pressed through, since the folder picker is Windows' and the probe cannot drive it.
+- ISC-223.2 — `CorpusMoveTests.A_moved_corpus_opens_with_every_file_whole` (`tests/MeetingTranscriber.Infrastructure.Tests`) and `ConfiguracionTests.The_move_copies_then_records_and_hands_the_choice_to_the_application` (`tests/MeetingTranscriber.App.Tests`) green 2026-10-06, the second reading that the folder is recorded only inside the copy, after it was found whole. Not reached: a running window.
+- ISC-223.3 — `CorpusMoveTests.A_file_that_does_not_arrive_whole_undoes_the_move`, `.A_file_the_corpus_records_and_the_folder_does_not_hold_undoes_the_move`, `.A_file_that_cannot_be_read_leaves_the_new_folder_empty`, `.A_folder_that_could_not_be_recorded_is_left_empty` and `.A_move_that_is_stopped_leaves_the_new_folder_empty` (`tests/MeetingTranscriber.Infrastructure.Tests`) green 2026-10-06.
+- ISC-223.4 — `CorpusMoveTests.A_move_on_its_own_leaves_the_old_copy_whole` (`tests/MeetingTranscriber.Infrastructure.Tests`) green 2026-10-06.
+- ISC-223.5 — `CorpusMoveTests.Removing_the_old_copy_needs_the_new_one_whole` and `.Removing_the_old_copy_leaves_nothing_behind` (`tests/MeetingTranscriber.Infrastructure.Tests`) green 2026-10-06.
+- ISC-223 — held by its five leaves, `ISC-223.1` to `ISC-223.5`, green 2026-10-06.

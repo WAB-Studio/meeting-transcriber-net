@@ -323,17 +323,27 @@
                      refusal it was, and the meetings list's own sentence —
                      `UiTexts.TheCorpusCouldNotBeOpened` — sends somebody to this screen for it.
 
-                     *Cambiar* is beside it, and only when the corpus was refused: a corpus that
-                     opened is moved by moving the files and then saying so, and no screen offers
-                     the first half. -->
-                <Border x:Name="FolderCard" Style="{StaticResource Card}" Padding="{StaticResource SmallCardPadding}">
-                    <Grid ColumnSpacing="12">
+                     *Cambiar* is beside it always. A folder that already holds meetings is
+                     switched to; an empty one is offered a move, which is the second row: one line
+                     naming it, a tick for removing the old copy (unticked, because a copy nobody
+                     asked to lose is the one thing that must not be lost), *Cancelar* at the
+                     margin and *Mover* as the act. The card says what it keeps on hover. -->
+                <Border
+                    x:Name="FolderCard"
+                    Style="{StaticResource Card}"
+                    Padding="{StaticResource SmallCardPadding}"
+                    ToolTipService.ToolTip="{x:Bind In(loc:UiTexts.WhatTheFolderKeeps)}">
+                    <Grid ColumnSpacing="12" RowSpacing="12">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
 
-                        <StackPanel Grid.Column="0" Spacing="8">
+                        <StackPanel Grid.Row="0" Grid.Column="0" Spacing="8">
                             <TextBlock
                                 Text="{x:Bind In(loc:UiTexts.Folder)}"
                                 Style="{StaticResource BodyText}"
@@ -346,13 +356,46 @@
 
                         <Button
                             x:Name="ChangeWhereItIsKept"
+                            Grid.Row="0"
                             Grid.Column="1"
                             VerticalAlignment="Bottom"
                             Style="{StaticResource PillButton}"
                             Click="OnChangeWhereItIsKept"
-                            Visibility="Collapsed"
                             AutomationProperties.Name="{x:Bind In(loc:UiTexts.ChangeWhereTheCorpusIsKept)}"
                             Content="{x:Bind In(loc:UiTexts.Change)}" />
+
+                        <StackPanel
+                            x:Name="MovePanel"
+                            Grid.Row="1"
+                            Grid.Column="0"
+                            Grid.ColumnSpan="2"
+                            Spacing="8"
+                            Visibility="Collapsed">
+                            <TextBlock
+                                x:Name="MoveText"
+                                Style="{StaticResource BodyText}"
+                                TextWrapping="Wrap" />
+                            <CheckBox
+                                x:Name="RemoveTheOldCopyTick"
+                                Style="{StaticResource Tick}"
+                                IsChecked="False"
+                                Content="{x:Bind In(loc:UiTexts.RemoveTheOldCopy)}" />
+                            <StackPanel
+                                Orientation="Horizontal"
+                                Spacing="8"
+                                HorizontalAlignment="Right">
+                                <Button
+                                    x:Name="CancelTheMove"
+                                    Style="{StaticResource ButtonAtTheMargin}"
+                                    Click="OnCancelTheMove"
+                                    Content="{x:Bind In(loc:UiTexts.Cancel)}" />
+                                <Button
+                                    x:Name="MoveTheMeetings"
+                                    Style="{StaticResource PillButton}"
+                                    Click="OnMoveTheMeetings"
+                                    Content="{x:Bind In(loc:UiTexts.Move)}" />
+                            </StackPanel>
+                        </StackPanel>
                     </Grid>
                 </Border>
 
