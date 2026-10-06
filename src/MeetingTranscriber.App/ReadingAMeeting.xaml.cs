@@ -133,6 +133,13 @@ public sealed partial class ReadingAMeeting : UserControl
     /// </summary>
     private bool _movingTheTrack;
 
+    // Where the volume stood before a press on its glyph muted it, and whether the pointer is over
+    // the volume or holds the slider, which is what keeps the slider open under a drag that has
+    // left it.
+    private double _volumeBeforeMute = 100;
+    private bool _pointerIsOverTheVolume;
+    private bool _volumeIsBeingDragged;
+
     /// <summary>
     /// Every turn of the meeting as the rendered files say it, read with it, or nothing while there
     /// is no transcription. What the transcript's lines and the turns unfolded under a citation are
@@ -173,6 +180,10 @@ public sealed partial class ReadingAMeeting : UserControl
         _watch.Tick += OnWatch;
         _workWatch.Tick += OnWorkWatch;
         TheTranscriptLines.ItemTemplate = new LineFactory(ATurn);
+
+        VolumeSlider.AddHandler(PointerPressedEvent, new PointerEventHandler(OnVolumePressed), true);
+        VolumeSlider.AddHandler(PointerReleasedEvent, new PointerEventHandler(OnVolumeLetGo), true);
+        VolumeSlider.AddHandler(PointerCaptureLostEvent, new PointerEventHandler(OnVolumeLetGo), true);
     }
 
     /// <summary>Somebody asked to go back to the meetings.</summary>
@@ -1470,6 +1481,7 @@ public sealed partial class ReadingAMeeting : UserControl
         // The slider outlives the recordings it is set for, so a meeting opened after one turned
         // down is not played at full volume while the slider says otherwise.
         _playing.Volume = (float)(VolumeSlider.Value / 100);
+        ShowTheVolume();
 
         _movingTheTrack = true;
         Track.Maximum = Math.Max(1, _playing.Length.Milliseconds);
@@ -1568,11 +1580,96 @@ public sealed partial class ReadingAMeeting : UserControl
     {
         ArgumentNullException.ThrowIfNull(e);
 
+        if (e.NewValue > 0)
+        {
+            _volumeBeforeMute = e.NewValue;
+        }
+
         if (_playing is { } playing)
         {
             playing.Volume = (float)(e.NewValue / 100);
         }
+
+        ShowTheVolume();
     }
+
+    /// <summary>
+    /// A press on the speaker mutes, or brings back the level it was muted from.
+    /// </summary>
+    private void OnMuteOrUnmute(object sender, RoutedEventArgs e) =>
+        VolumeSlider.Value = VolumeSlider.Value > 0 ? 0 : _volumeBeforeMute;
+
+    private void OnVolumeAreaEntered(object sender, PointerRoutedEventArgs e)
+    {
+        _pointerIsOverTheVolume = true;
+        ShowTheVolume();
+    }
+
+    private void OnVolumeAreaExited(object sender, PointerRoutedEventArgs e)
+    {
+        _pointerIsOverTheVolume = false;
+        ShowTheVolume();
+    }
+
+    private void OnVolumeFocusChanged(object sender, RoutedEventArgs e) => ShowTheVolume();
+
+    private void OnVolumePressed(object sender, PointerRoutedEventArgs e)
+    {
+        _volumeIsBeingDragged = true;
+        ShowTheVolume();
+    }
+
+    private void OnVolumeLetGo(object sender, PointerRoutedEventArgs e)
+    {
+        _volumeIsBeingDragged = false;
+        ShowTheVolume();
+    }
+
+    /// <summary>
+    /// Draws the volume: the glyph for the level, its name and tooltip for what a press would do,
+    /// and the slider only while the pointer is over the volume or either part has the keyboard.
+    /// </summary>
+    /// <remarks>
+    /// Never hidden while the slider holds the pointer's capture: a drag that wanders off the
+    /// glyph is still a drag, and closing the slider under the thumb would end it. A slider's own
+    /// thumb handles its pointer events, so the press and the release are listened to for handled
+    /// events too.
+    /// </remarks>
+    private void ShowTheVolume()
+    {
+        // The slider's starting value is set while the markup is still being built, before the glyph
+        // beside it exists.
+        if (VolumeSlider is null || VolumeGlyph is null || VolumeButton is null)
+        {
+            return;
+        }
+
+        var level = VolumeSlider.Value;
+
+        VolumeGlyph.Glyph = level switch
+        {
+            <= 0 => "",
+            <= 66 => "",
+            <= 133 => "",
+            _ => "",
+        };
+
+        var says = In(level > 0 ? UiTexts.Mute : UiTexts.Unmute);
+        AutomationProperties.SetName(VolumeButton, says);
+        ToolTipService.SetToolTip(VolumeButton, says);
+
+        var open = _pointerIsOverTheVolume
+            || _volumeIsBeingDragged
+            || HasTheKeyboard(VolumeSlider)
+            || HasTheKeyboard(VolumeButton);
+
+        VolumeSlider.Visibility = open ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    // A click leaves pointer focus on the glyph, which is not the keyboard being there and must not
+    // keep the slider open once the pointer has left.
+    private static bool HasTheKeyboard(Control control) =>
+        control.FocusState is FocusState.Keyboard or FocusState.Programmatic;
 
     private void OnTrackMoved(object sender, RangeBaseValueChangedEventArgs e)
     {

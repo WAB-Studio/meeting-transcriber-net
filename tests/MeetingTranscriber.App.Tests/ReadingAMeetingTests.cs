@@ -473,4 +473,23 @@ public class ReadingAMeetingTests
         screen.ShouldContain("playing.Volume = (float)(e.NewValue / 100)");
         screen.ShouldContain("ToolTipService.SetToolTip(PlayButton");
     }
+
+    /// <summary>
+    /// The volume is a speaker glyph, and its slider opens when the pointer comes to it and reaches
+    /// 200 %.
+    /// </summary>
+    [Fact]
+    public void The_volume_opens_on_the_pointer_and_reaches_twice()
+    {
+        var markup = File.ReadAllText(AppSources.At(Markup).FullName);
+        var screen = File.ReadAllText(AppSources.At(Screen).FullName);
+
+        markup.ShouldContain("Maximum=\"200\"");
+        markup.ShouldNotContain("Maximum=\"100\"");
+        markup.ShouldMatch(@"x:Name=""VolumeSlider""[^>]*Visibility=""Collapsed""");
+        markup.ShouldContain("<FontIcon x:Name=\"VolumeGlyph\"");
+        markup.ShouldContain("PointerEntered=\"OnVolumeAreaEntered\"");
+        screen.ShouldMatch(@"OnVolumeAreaEntered\(.*?\)\s*\{[^}]*_pointerIsOverTheVolume = true;[^}]*ShowTheVolume\(\)");
+        screen.ShouldContain("VolumeSlider.Visibility = open ? Visibility.Visible : Visibility.Collapsed;");
+    }
 }
