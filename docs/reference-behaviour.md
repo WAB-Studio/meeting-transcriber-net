@@ -85,9 +85,8 @@ still projects from the channel that did carry speech.
 **Channel 1 is the microphone, and how many people it caught is not deterministic.** — .NET only,
 `Speakers.Resolve`
 
-The Python renderer applies the user's name to channel 1 without consulting the diarizer, and
-`Domain/Audio/` copied that as "channel 1 is the user". The fixtures disprove it:
-`two-channel-long` has two diarized speakers on channel 1, which is two people in one room sharing
+The Python renderer applies the user's name to channel 1 without consulting the diarizer. The
+fixtures disprove that rule: `two-channel-long` has two diarized speakers on channel 1, which is two people in one room sharing
 one microphone, and Python would have signed both sets of words with one name.
 
 What a channel fixes is the device the audio arrived through, never how many people spoke into it.
@@ -154,11 +153,15 @@ response never made.
 
 - **Terminology corrections** are applied to derived views only, longest alias first, matching
   whole words and never inside one, and the paid response is never touched. In .NET they are rows
-  of `terminology_corrections` applied when rendering — the rule is the same, its home is not, so
-  it is tested with the renderer.
+  of `terminology_corrections` applied by the renderer (`MeetingRenderer`, through `Terminology`) —
+  the rule is the same, its home is not, so it is tested with the renderer.
 - **Citation validation** — a claim whose timestamp is not a turn start is refused, and so is a
   speaker label belonging to nobody in that recording. .NET moves the anchor from a timestamp to
-  the meeting and the turn's position, which is what survives a rebuild; the check itself belongs
-  to extraction.
-- **Markdown and JSONL shape** — one `##` heading per turn so a chunker splits on speaker
-  boundaries, frontmatter a person can read, UTF-8 without a BOM. That is the renderer's task.
+  the meeting and the turn's position, which is what survives a rebuild; the check itself is
+  `ExtractionCheck`, which holds an extraction against the turns of the meeting it was made from.
+- **Markdown and JSONL shape** — `MeetingRenderer` writes them, through `TranscriptRenderer`.
+  `transcript.md` opens with frontmatter a person can read (`meeting`, `started_at`, `language`,
+  `turns`, and `title` and `context` when there are any), then one `##` heading per turn, naming the
+  speaker and when the turn starts, so a chunker splits on speaker boundaries. `utterances.jsonl` is
+  one line per turn with its ordinal, its start and end in milliseconds, its channel, its speaker
+  label as stored, its confidence and its text. Both are UTF-8 without a BOM.
