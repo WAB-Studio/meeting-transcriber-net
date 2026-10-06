@@ -55,4 +55,19 @@ public class SpellingsTests
 
         Spellings.WordsOf(decomposed).ShouldBe(["quati", "c", "y", "sesión"]);
     }
+
+    [Theory]
+    [InlineData("Resident Evil,", "Resident Evil")]
+    [InlineData("  \"Deepgram\".", "Deepgram")]
+    [InlineData("sesión", "sesión")]
+    [InlineData("¿Qué dijo Nubeco?", "Qué dijo Nubeco")]
+    public void A_selection_is_trimmed_at_both_ends_and_kept_whole_between(string selection, string words) =>
+        Spellings.TrimToWords(selection).ShouldBe(words);
+
+    [Theory]
+    [InlineData("  .")]
+    [InlineData("")]
+    [InlineData(null)]
+    public void A_selection_with_no_word_in_it_stands_for_nothing(string? selection) =>
+        Spellings.TrimToWords(selection).ShouldBeNull();
 }

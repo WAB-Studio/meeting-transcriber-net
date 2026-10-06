@@ -45,13 +45,23 @@ public sealed record KeptClassification(MeetingTemplate Template, MeetingFiling 
 /// Every classification put by under a name, by name, each with what choosing it would add. They are
 /// the corpus's and not this meeting's: no meeting records which one filled it.
 /// </param>
+/// <param name="NodesUsed">
+/// How many meetings are filed under each node in each role, which is what orders a pill's list: the
+/// places somebody files under most are offered first. A node nothing is filed under has no entry.
+/// </param>
+/// <param name="PeopleUsed">
+/// How many meetings name each person, in either way, which orders a place for somebody's list for
+/// the same reason. A person no meeting names has no entry.
+/// </param>
 public sealed record MeetingAsClassified(
     Meeting Meeting,
     MeetingFiling Chosen,
     IReadOnlyList<Node> Tree,
     IReadOnlyList<PersonAsOfTheMeeting> Everybody,
     Person? Me,
-    IReadOnlyList<KeptClassification> Kept);
+    IReadOnlyList<KeptClassification> Kept,
+    IReadOnlyDictionary<(Guid Node, MeetingNodeRole Role), int> NodesUsed,
+    IReadOnlyDictionary<Guid, int> PeopleUsed);
 
 /// <summary>
 /// The corpus side of the screen a meeting is filed from: what to offer, what it is filed under
@@ -115,8 +125,32 @@ public sealed class MeetingClassifying(CorpusDbContext context, TimeProvider clo
             tree,
             everybody,
             new HumanLayer(context, clock).Me(),
-            Kept(byId, everybody));
+            Kept(byId, everybody),
+            NodesUsed(),
+            PeopleUsed());
     }
+
+    /// <summary>How many meetings are filed under each node, by the role the link carries.</summary>
+    /// <remarks>
+    /// Counted by the pair, because the same organization is the employer in one column and the
+    /// client in another and offering it first in both would answer a question nobody asked. Every
+    /// meeting counts, this one included. Counted in memory over the links: the tree belongs to one
+    /// person and its links are small, and the corpus's own converters for the role stay out of a
+    /// grouping the database would have to translate.
+    /// </remarks>
+    private Dictionary<(Guid Node, MeetingNodeRole Role), int> NodesUsed() => context.MeetingNodes
+        .AsNoTracking()
+        .ToArray()
+        .GroupBy(link => (link.NodeId, link.Role))
+        .ToDictionary(group => group.Key, group => group.Select(link => link.MeetingId).Distinct().Count());
+
+    /// <summary>How many meetings name each person, whichever of the two ways they are named.</summary>
+    /// <remarks>Internal because the screen that names voices orders its people by the same count, and asks this rather than counting again.</remarks>
+    internal Dictionary<Guid, int> PeopleUsed() => context.MeetingPeople
+        .AsNoTracking()
+        .ToArray()
+        .GroupBy(row => row.PersonId)
+        .ToDictionary(group => group.Key, group => group.Select(row => row.MeetingId).Distinct().Count());
 
     /// <summary>Every classification put by, by name, as the filing choosing it would add.</summary>
     /// <remarks>

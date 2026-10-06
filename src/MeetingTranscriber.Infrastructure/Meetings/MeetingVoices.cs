@@ -16,7 +16,11 @@ namespace MeetingTranscriber.Infrastructure.Meetings;
 /// </param>
 /// <param name="Audio">The file a clip plays from, only when <paramref name="TheRecording"/> is
 /// <see cref="RecordedAudio.Playable"/>.</param>
-/// <param name="Everybody">Every person in the corpus, by display name and then by id.</param>
+/// <param name="Everybody">
+/// Every person in the corpus: those this meeting already names first, then by how many meetings
+/// name them, then by display name and by id. Who somebody is likely to be on a voice is who the
+/// meeting already has, and after that who comes up most.
+/// </param>
 /// <param name="Organizations">
 /// The nodes at the top of the tree, for the dialogue that adds a person: only an organization is a
 /// place somebody can belong to.
@@ -53,9 +57,20 @@ public sealed class MeetingVoices(CorpusDbContext context, TimeProvider clock)
         var voices = Heard(meetingId);
         var audio = reading.Audio(meetingId, out var recorded);
 
+        var named = context.MeetingPeople
+            .AsNoTracking()
+            .Where(row => row.MeetingId == meetingId)
+            .Select(row => row.PersonId)
+            .ToHashSet();
+
+        var timesNamed = new MeetingClassifying(context, clock).PeopleUsed();
+
         var everybody = context.People
             .AsNoTracking()
-            .OrderBy(person => person.DisplayName)
+            .ToArray()
+            .OrderByDescending(person => named.Contains(person.Id))
+            .ThenByDescending(person => timesNamed.GetValueOrDefault(person.Id))
+            .ThenBy(person => person.DisplayName, StringComparer.Ordinal)
             .ThenBy(person => person.Id)
             .ToArray();
 

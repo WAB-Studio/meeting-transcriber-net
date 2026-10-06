@@ -28,6 +28,14 @@ namespace MeetingTranscriber.Audio;
 /// threads through and quietly produce a recording with frames duplicated and frames missing —
 /// so a second thread arriving is refused instead, loudly, where a lock would have hidden it.
 /// </para>
+/// <para>
+/// <b>What was paused is not written.</b> The spool keeps silent blocks through a pause, so the
+/// timeline is built with the stretches the pauses file names, on the packets' own clock. Every
+/// output frame whose instant falls inside one — measured from the anchored origin at the nominal
+/// rate, which is as exact as the press that made the mark — is read and dropped from both channels
+/// alike, so the two stay describing the same instant at every frame that remains. A stretch with no
+/// end runs to the end of the recording.
+/// </para>
 /// </remarks>
 public sealed class SharedTimeline
 {
@@ -57,11 +65,20 @@ public sealed class SharedTimeline
     private bool anchored;
     private bool closed;
     private long emitted;
+    private long written;
 
-    private SharedTimeline(TimelineSource[] sources, IAlignedAudio into)
+    /// <summary>The pauses in packet-clock ticks, until the origin is fixed and they become frames.</summary>
+    private readonly IReadOnlyList<(long From, long? To)> leftOut;
+
+    /// <summary>The pauses as timeline frames, from the anchored origin: first frame out, first frame back in.</summary>
+    private (long From, long To)[] cut = [];
+
+    private SharedTimeline(
+        TimelineSource[] sources, IAlignedAudio into, IReadOnlyList<(long From, long? To)> leftOut)
     {
         this.sources = sources;
         this.into = into;
+        this.leftOut = leftOut;
         offsets = new long[sources.Length];
         gone = new bool[sources.Length];
         blocks = [.. sources.Select(_ => new short[WriteFrames])];
@@ -75,7 +92,11 @@ public sealed class SharedTimeline
     /// Two, named, and never a list: the application records both or neither, so a timeline that
     /// could be built with one source would only exist to make a half recording representable.
     /// </remarks>
-    public static SharedTimeline Of(StreamFormat loopback, StreamFormat microphone, IAlignedAudio into)
+    public static SharedTimeline Of(
+        StreamFormat loopback,
+        StreamFormat microphone,
+        IAlignedAudio into,
+        IReadOnlyList<(long From, long? To)>? leftOut = null)
     {
         ArgumentNullException.ThrowIfNull(loopback);
         ArgumentNullException.ThrowIfNull(microphone);
@@ -85,7 +106,7 @@ public sealed class SharedTimeline
         sources[CapturedAudio.IndexOf(AudioChannel.Loopback)] = new TimelineSource(AudioChannel.Loopback, loopback);
         sources[CapturedAudio.IndexOf(AudioChannel.Microphone)] = new TimelineSource(AudioChannel.Microphone, microphone);
 
-        return new SharedTimeline(sources, into);
+        return new SharedTimeline(sources, into, leftOut ?? []);
     }
 
     /// <summary>Takes one packet, and hands on whatever both sources now cover.</summary>
@@ -164,7 +185,7 @@ public sealed class SharedTimeline
             Emit(flushing: true);
 
             return new TimelineSummary(
-                Length(emitted),
+                Length(written),
                 [.. sources.Select(Summarise)]);
         }
         finally
@@ -288,8 +309,22 @@ public sealed class SharedTimeline
                 : 0;
         }
 
+        // A frame is out when its instant, origin + frame / rate, is at or after the pause and before
+        // the resume. Rounded up at both ends so that the frame on an edge belongs to the same side
+        // whichever end asks.
+        cut =
+        [
+            .. leftOut.Select(stretch => (
+                From: Math.Max(0, FrameAt(stretch.From, origin)),
+                To: stretch.To is { } to ? Math.Max(0, FrameAt(to, origin)) : long.MaxValue)),
+        ];
+
         anchored = true;
     }
+
+    private static long FrameAt(long ticks, MonotonicInstant origin) =>
+        (long)Math.Ceiling(
+            (ticks - origin.Ticks) * (double)CapturedAudio.SampleRate / MonotonicInstant.TicksPerSecond);
 
     private void Write(int frames)
     {
@@ -311,10 +346,54 @@ public sealed class SharedTimeline
             block[(lead + body)..].Clear();
         }
 
-        into.Write(CapturedAudio.Interleave(
-            blocks[CapturedAudio.IndexOf(AudioChannel.Loopback)].AsSpan(0, frames),
-            blocks[CapturedAudio.IndexOf(AudioChannel.Microphone)].AsSpan(0, frames)));
+        var kept = LeaveOut(frames);
+        if (kept > 0)
+        {
+            into.Write(CapturedAudio.Interleave(
+                blocks[CapturedAudio.IndexOf(AudioChannel.Loopback)].AsSpan(0, kept),
+                blocks[CapturedAudio.IndexOf(AudioChannel.Microphone)].AsSpan(0, kept)));
+        }
 
         emitted += frames;
+        written += kept;
+    }
+
+    /// <summary>
+    /// Takes the frames inside a paused stretch out of the block both channels were just read into,
+    /// from both at once, and says how many are left at its front.
+    /// </summary>
+    private int LeaveOut(int frames)
+    {
+        if (cut.Length == 0)
+        {
+            return frames;
+        }
+
+        var kept = 0;
+        for (var frame = 0; frame < frames;)
+        {
+            var at = emitted + frame;
+            var inside = Array.Find(cut, stretch => at >= stretch.From && at < stretch.To);
+            if (inside != default)
+            {
+                // To the end of this stretch or of the block, whichever comes first.
+                frame += (int)Math.Min(frames - frame, inside.To - at);
+                continue;
+            }
+
+            // To the start of the next stretch or the end of the block.
+            var next = cut.Where(stretch => stretch.From > at).Select(stretch => stretch.From).DefaultIfEmpty(long.MaxValue).Min();
+            var run = (int)Math.Min(frames - frame, next - at);
+
+            foreach (var block in blocks)
+            {
+                block.AsSpan(frame, run).CopyTo(block.AsSpan(kept));
+            }
+
+            kept += run;
+            frame += run;
+        }
+
+        return kept;
     }
 }

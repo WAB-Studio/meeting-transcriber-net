@@ -1,14 +1,15 @@
 using System.Runtime.InteropServices;
 
 using MeetingTranscriber.Domain.Audio;
+using MeetingTranscriber.Domain.Time;
 
 using NAudio.Wave;
 
 namespace MeetingTranscriber.Audio.Tests;
 
 /// <summary>
-/// What pausing a meeting does to the recording of it: nothing to its length, and everything to
-/// what is in the stretch that was paused.
+/// What pausing a meeting does to the recording of it: the stretch that was paused is silence in
+/// the spool and is not in the meeting that is made of it.
 /// </summary>
 /// <remarks>
 /// The room is loud for the whole of every recording here, pause included. That is the point of
@@ -27,6 +28,8 @@ public sealed class PausedRecordingTests : IDisposable
     /// </summary>
     private const double LongerThanASourceIsGivenUpOn = 35;
 
+    private static readonly UtcTimestamp Noon = UtcTimestamp.From(new DateTimeOffset(2026, 10, 5, 12, 0, 0, TimeSpan.Zero));
+
     private readonly DirectoryInfo folder = new(Path.Combine(
         Path.GetTempPath(), "meeting-transcriber-tests", Guid.NewGuid().ToString("n")));
 
@@ -42,7 +45,7 @@ public sealed class PausedRecordingTests : IDisposable
         var pause = new RecordingPause();
         var heard = Room(AudioChannel.Microphone);
 
-        pause.Pause();
+        pause.Pause(Noon);
         var paused = pause.Reaching(heard);
 
         paused.Channel.ShouldBe(heard.Channel);
@@ -70,11 +73,11 @@ public sealed class PausedRecordingTests : IDisposable
         pause.IsPaused.ShouldBeFalse();
         pause.Reaching(heard).ShouldBeSameAs(heard);
 
-        pause.Pause();
+        pause.Pause(Noon);
         pause.IsPaused.ShouldBeTrue();
         pause.Reaching(heard).ShouldNotBeSameAs(heard);
 
-        pause.Resume();
+        pause.Resume(Noon);
         pause.IsPaused.ShouldBeFalse();
         pause.Reaching(heard).ShouldBeSameAs(heard);
     }
@@ -91,7 +94,7 @@ public sealed class PausedRecordingTests : IDisposable
         var others = Room(AudioChannel.Loopback);
         var me = Room(AudioChannel.Microphone);
 
-        pause.Pause();
+        pause.Pause(Noon);
 
         pause.Reaching(others).Samples.ToArray().ShouldAllBe(sample => sample == 0);
         pause.Reaching(me).Samples.ToArray().ShouldAllBe(sample => sample == 0);
@@ -108,7 +111,7 @@ public sealed class PausedRecordingTests : IDisposable
         Array.Fill(big, (byte)0x7f);
 
         var pause = new RecordingPause();
-        pause.Pause();
+        pause.Pause(Noon);
 
         var paused = pause.Reaching(
             new CapturePacket(AudioChannel.Loopback, 0, MonotonicInstant.FromMilliseconds(0), big));
@@ -118,13 +121,12 @@ public sealed class PausedRecordingTests : IDisposable
     }
 
     /// <summary>
-    /// ISC-81, at the length that matters. A pause longer than the half minute after which the
-    /// timeline gives up on a silent source is the case a pause built out of gaps loses the meeting
-    /// to — the recording would come back as long as the stretch before the pause, and the minute
-    /// after it would be at the wrong minute for the rest of the meeting.
+    /// A pause longer than the half minute after which the timeline gives up on a silent source is
+    /// the case a pause built out of gaps loses the meeting to. It is silence in the spool, so that
+    /// does not happen, and the meeting is made without it: as long as what was recorded.
     /// </summary>
     [Fact]
-    public void A_meeting_paused_longer_than_a_source_is_given_up_on_is_as_long_as_the_clock_says()
+    public void A_meeting_paused_longer_than_a_source_is_given_up_on_leaves_the_pause_out()
     {
         const double before = 5;
         const double after = 5;
@@ -134,35 +136,29 @@ public sealed class PausedRecordingTests : IDisposable
 
         var recording = MeetingAudio.Materialise(folder);
 
-        // The meeting is as long as it took, pause and all.
         recording.Length.Milliseconds.ShouldBeInRange(
-            (long)((whole * 1_000) - 100), (long)((whole * 1_000) + 100));
+            (long)(((before + after) * 1_000) - 100), (long)(((before + after) * 1_000) + 100));
 
         var frames = Read(recording.File);
 
-        // The room was loud throughout, so what is quiet is exactly what was paused.
+        // The room was loud throughout, so anything quiet would be a pause left in.
         Loudest(frames, from: 1, until: before - 0.5).ShouldBeGreaterThan(Loudness.Loud);
-        Loudest(frames, from: before + 0.5, until: before + LongerThanASourceIsGivenUpOn - 0.5)
-            .ShouldBe(0f);
-        Loudest(frames, from: before + LongerThanASourceIsGivenUpOn + 0.5, until: whole - 0.5)
-            .ShouldBeGreaterThan(Loudness.Loud);
+        Loudest(frames, from: before + 0.5, until: before + after - 0.5).ShouldBeGreaterThan(Loudness.Loud);
     }
 
     /// <summary>
-    /// The minute after a pause is at the minute of the meeting it was said in, which is what the
-    /// transcript's clock being the meeting's clock comes down to. Measured against a marker rather
-    /// than against the file's length, because a recording can be the right length overall and
-    /// still have moved everything after the pause forward.
+    /// What was said after a pause lands where the pause was, earlier by exactly what was paused.
+    /// Measured against a marker rather than against the file's length, because a recording can be
+    /// the right length overall and still have the cut in the wrong place.
     /// </summary>
     [Fact]
-    public void What_was_said_after_a_pause_is_where_it_was_said_in_the_meeting()
+    public void What_was_said_after_a_pause_lands_the_pause_earlier()
     {
         const double pausedFrom = 2;
         const double pausedUntil = 5;
         const double spoke = 7;
+        const double landsAt = spoke - (pausedUntil - pausedFrom);
 
-        // Quiet everywhere except one burst well after the pause, so where that burst lands is the
-        // whole answer.
         Record(
             seconds: 9,
             pausedFrom,
@@ -171,10 +167,23 @@ public sealed class PausedRecordingTests : IDisposable
 
         var frames = Read(MeetingAudio.Materialise(folder).File);
 
-        Loudest(frames, from: spoke, until: spoke + 0.2).ShouldBeGreaterThan(Loudness.Loud);
+        Loudest(frames, from: landsAt, until: landsAt + 0.2).ShouldBeGreaterThan(Loudness.Loud);
 
-        // And nowhere else: a build that closed the pause up would have put it three seconds early.
-        Loudest(frames, from: 0, until: spoke - 0.1).ShouldBe(0f);
+        // And nowhere else: a build that left the pause in would have put it three seconds late.
+        Loudest(frames, from: 0, until: landsAt - 0.1).ShouldBe(0f);
+        Loudest(frames, from: landsAt + 0.3, until: 5).ShouldBe(0f);
+    }
+
+    /// <summary>A pause nobody resumed runs to the end of the recording.</summary>
+    [Fact]
+    public void A_pause_with_no_resume_runs_to_the_end_of_the_recording()
+    {
+        Record(seconds: 8, pausedFrom: 3, pausedUntil: null);
+
+        var recording = MeetingAudio.Materialise(folder);
+
+        recording.Length.Milliseconds.ShouldBeInRange(2_900, 3_100);
+        Loudest(Read(recording.File), from: 0.5, until: 2.5).ShouldBeGreaterThan(Loudness.Loud);
     }
 
     public void Dispose()
@@ -205,7 +214,7 @@ public sealed class PausedRecordingTests : IDisposable
     private void Record(
         double seconds,
         double pausedFrom,
-        double pausedUntil,
+        double? pausedUntil,
         Func<double, float>? room = null)
     {
         var heard = room ?? Fabricated.Bursts(0.25);
@@ -232,13 +241,15 @@ public sealed class PausedRecordingTests : IDisposable
 
             if (!pressed && at >= pausedFrom)
             {
-                pause.Pause();
+                pause.Pause(Noon);
+                RecordingPauses.Append(folder, new PauseLine(PauseMark.Paused, packet.CapturedAt.Ticks, Noon));
                 pressed = true;
             }
 
-            if (!released && at >= pausedUntil)
+            if (!released && pausedUntil is { } until && at >= until)
             {
-                pause.Resume();
+                pause.Resume(Noon);
+                RecordingPauses.Append(folder, new PauseLine(PauseMark.Resumed, packet.CapturedAt.Ticks, Noon));
                 released = true;
             }
 

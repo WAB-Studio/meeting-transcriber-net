@@ -117,7 +117,7 @@ public sealed partial class ChannelMeter : UserControl
     /// </summary>
     /// <remarks>
     /// Nothing on this control draws it, and it reaches the automation tree and nowhere else. The
-    /// words are the row above's — the chip, the role and the picker — because
+    /// words are the row above's — the role and the picker — because
     /// <c>docs/design.md</c> §Where it goes pins the meter to the control that chooses its source.
     /// But the bar is the thing carrying a value, so it is the thing that has to carry the name a
     /// screen reader says: a TextBlock beside it announces itself and leaves the one element on

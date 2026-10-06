@@ -35,6 +35,39 @@ public class MeetingVoicesTests
         read.Everybody.Select(person => person.Id).ShouldContain(somebody.Id);
     }
 
+    /// <summary>
+    /// Who the meeting already names comes first, then whoever the corpus names most, then by name.
+    /// </summary>
+    /// <remarks>
+    /// The one place the order matters is the picker over a voice: the person most likely to be on
+    /// it is somebody this meeting already has, and after that somebody who comes up often — and an
+    /// alphabetical list puts Zoe, who is on every meeting, under every Aaron who is on none.
+    /// </remarks>
+    [Fact]
+    public void The_people_this_meeting_names_come_first()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var human = new HumanLayer(context, When);
+        var aaron = human.Add("Aaron");
+        var zoe = human.Add("Zoe");
+        var mia = human.Add("Mia");
+        var nora = human.Add("Nora");
+
+        var here = Meeting(context, (AudioChannel.Loopback, 0, "buenas"));
+        var before = Meeting(context, (AudioChannel.Loopback, 0, "hola"));
+        var earlier = Meeting(context, (AudioChannel.Loopback, 0, "chau"));
+
+        human.Name(here, nora, MeetingPersonRole.Attended);
+        human.Name(before, zoe, MeetingPersonRole.Attended);
+        human.Name(earlier, zoe, MeetingPersonRole.Attended);
+        human.Name(earlier, mia, MeetingPersonRole.Attended);
+
+        var read = new MeetingVoices(context, TimeProvider.System).Of(here);
+
+        read.Everybody.Select(person => person.Id).ShouldBe([nora.Id, zoe.Id, mia.Id, aaron.Id]);
+    }
+
     [Fact]
     public void A_meeting_whose_audio_is_there_is_offered_its_file()
     {

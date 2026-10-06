@@ -78,6 +78,27 @@ public sealed partial class WordsThatComeOutWrong : UserControl
     /// <summary>Counts every search started, so an answer for a term no longer in the field is dropped.</summary>
     private int _search;
 
+    /// <summary>
+    /// The words brought from a selection, as they were selected, until the meeting has been read and
+    /// they are either pinned or said to be corrected already. Nothing when the screen was opened on
+    /// its own.
+    /// </summary>
+    private string? _asked;
+
+    /// <summary>
+    /// The form brought from a selection, kept at the top of the list and ticked whatever a later
+    /// search returns: the words somebody pointed at are the ones this screen was opened for, and a
+    /// search that did not happen to find them must not lose them.
+    /// </summary>
+    private string? _pinned;
+
+    /// <summary>
+    /// True until the first search over the pinned words has ticked them. Ticked once and not on
+    /// every search: a person who unticks the form they brought, and then refines the search, has
+    /// said no, and a later search must not say yes for them.
+    /// </summary>
+    private bool _theyAreToBeTicked;
+
     private bool _saving;
 
     /// <summary>
@@ -144,10 +165,25 @@ public sealed partial class WordsThatComeOutWrong : UserControl
     }
 
     /// <summary>Opens one meeting: reads where it is filed, what it seems to get wrong and what is already fixed.</summary>
-    public void Show(Guid meetingId)
+    /// <param name="meetingId">The meeting the words were read in.</param>
+    /// <param name="asWritten">
+    /// Words selected on the meeting's transcript or on a voice's quotation, already trimmed, which
+    /// open in the field selected and pinned as a ticked form whatever the search finds — or nothing
+    /// when the screen is opened on its own.
+    /// </param>
+    public void Show(Guid meetingId, string? asWritten = null)
     {
         Reset();
         _meeting = meetingId;
+        _asked = string.IsNullOrWhiteSpace(asWritten) ? null : asWritten.Trim();
+
+        if (_asked is not null)
+        {
+            _drawing = true;
+            TypedField.Text = _asked;
+            _drawing = false;
+        }
+
         _ = ReadAsync(meetingId, ++_generation);
         Render();
     }
@@ -188,6 +224,9 @@ public sealed partial class WordsThatComeOutWrong : UserControl
         _searched = string.Empty;
         _suspects = [];
         _ticked.Clear();
+        _asked = null;
+        _pinned = null;
+        _theyAreToBeTicked = false;
         _status.Nothing();
         Saving(false);
 
@@ -210,7 +249,8 @@ public sealed partial class WordsThatComeOutWrong : UserControl
         IReadOnlyList<(Guid Node, IReadOnlyList<string> Path)> Places,
         IReadOnlyDictionary<Guid, string[]> Paths,
         UnpromptedWords Unprompted,
-        IReadOnlyList<WordCorrected> Corrected);
+        IReadOnlyList<WordCorrected> Corrected,
+        IReadOnlySet<string> AlreadyWrittenByACorrection);
 
     /// <summary>Reads the meeting's places, its suspects and the corrections made, off the UI thread.</summary>
     private async Task ReadAsync(Guid meetingId, int generation)
@@ -234,6 +274,28 @@ public sealed partial class WordsThatComeOutWrong : UserControl
             _held = held;
             _suspects = [.. held.Unprompted.Suspects];
             WhichMeetingText.Text = ScreenNumbers.Which(held.Meeting);
+
+            if (_asked is { } asked)
+            {
+                _asked = null;
+
+                if (held.AlreadyWrittenByACorrection.Contains(asked))
+                {
+                    // A correction keyed on words a correction wrote would leave the transcript as it
+                    // is and read as though it had saved: it is said here and nothing is pinned.
+                    _status.Says(UiTexts.AlreadyCorrected);
+                }
+                else
+                {
+                    _pinned = asked;
+                    _theyAreToBeTicked = true;
+                    Render();
+                    await SearchAsync();
+                    _ = TypedField.Focus(FocusState.Programmatic);
+                    TypedField.SelectAll();
+                    return;
+                }
+            }
         }
         catch (MeetingStageException gone)
         {
@@ -288,8 +350,14 @@ public sealed partial class WordsThatComeOutWrong : UserControl
             }
         }
 
+        // What the corrections already reaching this meeting wrote: the transcript shows corrected
+        // text, so words selected on it may be the very words a correction put there.
+        var written = MeetingRenderer.CorrectionsReaching(context, meetingId)
+            .Select(correction => correction.CorrectText)
+            .ToHashSet(StringComparer.Ordinal);
+
         return new Held(
-            meeting, places, paths, FindingCorrections.UnpromptedIn(context, meetingId), WordsScreen.Corrected(made));
+            meeting, places, paths, FindingCorrections.UnpromptedIn(context, meetingId), WordsScreen.Corrected(made), written);
     }
 
     // ── Searching ────────────────────────────────────────────────────────────────────────────
@@ -364,14 +432,38 @@ public sealed partial class WordsThatComeOutWrong : UserControl
 
         _status.Nothing();
         _searched = typed;
-        _forms = found;
+        _forms = WithThePinned(found);
         _ticked.Clear();
-        foreach (var form in found.Where(WordsScreen.StartsTicked))
+        foreach (var form in _forms.Where(form => (_theyAreToBeTicked && form.Text == _pinned) || WordsScreen.StartsTicked(form)))
         {
             _ticked.Add(form.Text);
         }
 
+        _theyAreToBeTicked = false;
+
         Render();
+    }
+
+    /// <summary>
+    /// What the search found with the pinned form first: the one the corpus wrote with its own
+    /// counts when it found it, and one made of the selection itself when it did not.
+    /// </summary>
+    /// <remarks>
+    /// Made rather than left out: the words were read on this meeting a moment ago, so at least one
+    /// meeting wrote them once, and a search for something typed over them that did not return them
+    /// is not a reason to lose what this screen was opened for.
+    /// </remarks>
+    private IReadOnlyList<WrittenForm> WithThePinned(IReadOnlyList<WrittenForm> found)
+    {
+        if (_pinned is not { } pinned)
+        {
+            return found;
+        }
+
+        var theOne = found.FirstOrDefault(form => form.Text == pinned)
+            ?? new WrittenForm(pinned, Times: 1, Meetings: 1, Resemblance: 1);
+
+        return [theOne, .. found.Where(form => form.Text != pinned)];
     }
 
     // ── Drawing ──────────────────────────────────────────────────────────────────────────────
@@ -672,6 +764,7 @@ public sealed partial class WordsThatComeOutWrong : UserControl
         _forms = [];
         _searched = string.Empty;
         _ticked.Clear();
+        _pinned = null;
         ClearTheField();
         Render();
 

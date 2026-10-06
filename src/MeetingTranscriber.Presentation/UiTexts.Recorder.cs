@@ -227,6 +227,21 @@ public static partial class UiTexts
         "No se pudo abrir el micrófono otra vez; lo demás sigue grabándose.",
         "The microphone could not be opened again; the rest is still recording.");
 
+    // The meters before a meeting listen to what was chosen, and a source Windows refuses is said once.
+    // The refusal's own words are dumped under it, where the machine's English belongs.
+    public static UiText TheSourcesCouldNotBeListenedTo { get; } = new(
+        "No se pudo escuchar antes de grabar.", "Could not listen before recording.");
+
+    // Pausing and carrying on write a line beside the recording before they change anything, which a
+    // folder can refuse. Nothing changed: the meeting is in the state it was in.
+    public static UiText ThePauseCouldNotBeChanged { get; } = new(
+        "No se pudo cambiar la pausa; todo sigue como estaba.",
+        "The pause could not be changed; nothing changed.");
+
+    // Changing the microphone while a meeting records. Nothing changed: channel 1 is where it was.
+    public static UiText TheMicrophoneCouldNotBeChanged { get; } = new(
+        "No se pudo cambiar el micrófono.", "The microphone could not be changed.");
+
     // What a channel that changed device mid meeting says, for either channel and either way it moves:
     // what it records now, and what it did before. The names go in as values, which keeps a device's name
     // out of the catalogue.

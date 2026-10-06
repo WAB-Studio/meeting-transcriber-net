@@ -9,6 +9,26 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
 
+    <UserControl.Resources>
+        <!-- A press that stands beside a typed field is the field's height, so the two read as one
+             row: the field is `ControlHeight` and its press was the taller normal button. -->
+        <Style x:Key="ButtonBesideAField" TargetType="Button" BasedOn="{StaticResource NormalButtonOnCard}">
+            <Setter Property="Height" Value="{StaticResource ControlHeight}" />
+            <Setter Property="MinHeight" Value="{StaticResource ControlHeight}" />
+        </Style>
+
+        <!-- *Quitar* loses something, so it is drawn as a press and not as a word: the row rank
+             at the margin, past the gap, with the 1px rule `IconButton` carries. -->
+        <Style x:Key="TheKeysRemovePress" TargetType="Button" BasedOn="{StaticResource RowButtonThatLosesSomething}">
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="BorderBrush" Value="{ThemeResource EmptyControlRingBrush}" />
+        </Style>
+
+        <!-- The export is a glyph and its name and tooltip are set where the press is drawn: it
+             says what it does on hover and to a screen reader, and shows no word. -->
+        <Style x:Key="TheExportGlyph" TargetType="Button" BasedOn="{StaticResource IconButton}" />
+    </UserControl.Resources>
+
     <!-- The one screen that lives apart, and everything on it is an answer about this install
          rather than about the next meeting. Every block is a card with its own heading: what
          should happen after a recording, the two engines (the summarising one with the model it
@@ -23,9 +43,9 @@
          than a convenience.
 
          The same screen is the first step: while nobody has said who is using the application it
-         opens with only the cards needed to begin (after recording, the Deepgram key, your name),
-         a *Get started* title and *Start* to leave it — not a second drawing of three blocks this
-         screen already has. `Configuracion.Open` decides it, and the press at the foot of the
+         opens with only the cards needed to begin (after recording, the two
+         engines, the Deepgram key, your name), a *Get started* title and *Start* to leave it — not
+         a second drawing of blocks this screen already has. `Configuracion.Open` decides it, and the press at the foot of the
          window always opens the whole of it.
 
          A sub-screen of the window and not a window of its own, the way the meeting screen and
@@ -125,6 +145,15 @@
                                 Text="{x:Bind In(loc:UiTexts.TheEngineThatSummarises)}"
                                 Style="{StaticResource BodyText}" />
 
+                            <!-- How this engine is paid, said under its name and before anything is
+                                 chosen from it: it runs on the person's own Claude plan, because the
+                                 application strips every API key before it starts one, so no figure
+                                 is shown and none is spent from here. -->
+                            <TextBlock
+                                Text="{x:Bind In(loc:UiTexts.OnYourClaudePlan)}"
+                                Style="{StaticResource BodyText}"
+                                Foreground="{ThemeResource SecondaryTextBrush}" />
+
                             <!-- Written the moment it is chosen, through the one gate every write
                                  on this screen goes through, and dead with the group above it when
                                  there is nowhere to write. -->
@@ -135,6 +164,23 @@
                                 Style="{StaticResource DropDown}"
                                 AutomationProperties.Name="{x:Bind In(loc:UiTexts.SummariseWith)}"
                                 SelectionChanged="OnSummaryModelChosen" />
+
+                            <!-- How much reasoning the summary is asked to spend, beside its own
+                                 label for the reason the language's is, and written the way the
+                                 model is. -->
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <TextBlock
+                                    VerticalAlignment="Center"
+                                    Text="{x:Bind In(loc:UiTexts.Effort)}"
+                                    Style="{StaticResource BodyText}"
+                                    Foreground="{ThemeResource SecondaryTextBrush}" />
+                                <ComboBox
+                                    x:Name="EffortPicker"
+                                    MinWidth="120"
+                                    Style="{StaticResource DropDown}"
+                                    AutomationProperties.Name="{x:Bind In(loc:UiTexts.Effort)}"
+                                    SelectionChanged="OnSummaryEffortChosen" />
+                            </StackPanel>
                         </StackPanel>
                     </Border>
                 </Grid>
@@ -172,7 +218,7 @@
                             <Button
                                 x:Name="KeepTheKeyButton"
                                 VerticalAlignment="Bottom"
-                                Style="{StaticResource NormalButtonOnCard}"
+                                Style="{StaticResource ButtonBesideAField}"
                                 Click="OnKeepTheKey"
                                 IsEnabled="False"
                                 AutomationProperties.Name="{x:Bind In(loc:UiTexts.SaveTheDeepgramKey)}"
@@ -188,7 +234,7 @@
                             <Button
                                 x:Name="RemoveTheKeyButton"
                                 VerticalAlignment="Center"
-                                Style="{StaticResource RowButtonThatLosesSomething}"
+                                Style="{StaticResource TheKeysRemovePress}"
                                 Click="OnRemoveTheKey"
                                 Visibility="Collapsed"
                                 AutomationProperties.Name="{x:Bind In(loc:UiTexts.RemoveTheDeepgramKey)}"
@@ -197,12 +243,12 @@
                     </StackPanel>
                 </Border>
 
-                <!-- Who is using the application, and the language it is read in. Both are answers
-                     about this install. It is one field and one press whether it is being
-                     answered for the first time or corrected afterwards. The affiliation the design
-                     asks about is not here and is not missing: `docs/design.md` says the first
-                     screen of an application is not where somebody enumerates their jobs, and the
-                     `Persona` dialogue is where one is added. -->
+                <!-- Who is using the application. It is one field and one press whether it is being
+                     answered for the first time or corrected afterwards, and the press stands at the
+                     field's height so the two read as one row. The affiliation the design asks about
+                     is not here and is not missing: `docs/design.md` says the first screen of an
+                     application is not where somebody enumerates their jobs, and the `Persona`
+                     dialogue is where one is added. -->
                 <Border Style="{StaticResource Card}" Padding="{StaticResource SmallCardPadding}">
                     <StackPanel Spacing="8">
                         <TextBlock
@@ -220,30 +266,54 @@
                             <Button
                                 x:Name="WhoIsUsingThisButton"
                                 VerticalAlignment="Bottom"
-                                Style="{StaticResource NormalButtonOnCard}"
+                                Style="{StaticResource ButtonBesideAField}"
                                 Click="OnKeepWhoIsUsingThis"
                                 Content="{x:Bind In(loc:UiTexts.Save)}" />
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
 
-                            <!-- The language the application is **read** in, which is not the
-                                 language a meeting is spoken in: that one is on the recording
-                                 card, beside what it is about.
+                <!-- How the application itself reads and looks, which is not about who is using it:
+                     the language it is **read** in, which is not the language a meeting is spoken in
+                     (that one is on the recording card, beside what it is about), and the theme it
+                     is drawn in. Both are answers about this install, and neither is needed to begin, so the
+                     card stands in the whole screen and not in the first step.
 
-                                 Its label is beside it and not over it: a picker is a pill and a
-                                 pill carries no header, so what it chooses is said as text. That
-                                 text is also what a screen reader is given, by name. -->
+                     Each label is beside its picker and not over it: a picker is a pill and a pill
+                     carries no header, so what it chooses is said as text. That text is also what a
+                     screen reader is given, by name. -->
+                <Border x:Name="AppCard" Style="{StaticResource Card}" Padding="{StaticResource SmallCardPadding}">
+                    <StackPanel Spacing="8">
+                        <TextBlock
+                            Text="{x:Bind In(loc:UiTexts.App)}"
+                            Style="{StaticResource BodyText}"
+                            Foreground="{ThemeResource SecondaryTextBrush}" />
+
+                        <StackPanel Orientation="Horizontal" Spacing="8">
                             <TextBlock
-                                VerticalAlignment="Bottom"
-                                Margin="0,0,0,7"
+                                VerticalAlignment="Center"
                                 Text="{x:Bind In(loc:UiTexts.Language)}"
                                 Style="{StaticResource BodyText}"
                                 Foreground="{ThemeResource SecondaryTextBrush}" />
                             <ComboBox
                                 x:Name="LanguagePicker"
                                 MinWidth="150"
-                                VerticalAlignment="Bottom"
                                 Style="{StaticResource DropDown}"
                                 AutomationProperties.Name="{x:Bind In(loc:UiTexts.Language)}"
                                 SelectionChanged="OnLanguageChosen" />
+
+                            <TextBlock
+                                Margin="12,0,0,0"
+                                VerticalAlignment="Center"
+                                Text="{x:Bind In(loc:UiTexts.Theme)}"
+                                Style="{StaticResource BodyText}"
+                                Foreground="{ThemeResource SecondaryTextBrush}" />
+                            <ComboBox
+                                x:Name="ThemePicker"
+                                MinWidth="150"
+                                Style="{StaticResource DropDown}"
+                                AutomationProperties.Name="{x:Bind In(loc:UiTexts.Theme)}"
+                                SelectionChanged="OnThemeChosen" />
                         </StackPanel>
                     </StackPanel>
                 </Border>
@@ -253,17 +323,27 @@
                      refusal it was, and the meetings list's own sentence —
                      `UiTexts.TheCorpusCouldNotBeOpened` — sends somebody to this screen for it.
 
-                     *Cambiar* is beside it, and only when the corpus was refused: a corpus that
-                     opened is moved by moving the files and then saying so, and no screen offers
-                     the first half. -->
-                <Border x:Name="FolderCard" Style="{StaticResource Card}" Padding="{StaticResource SmallCardPadding}">
-                    <Grid ColumnSpacing="12">
+                     *Cambiar* is beside it always. A folder that already holds meetings is
+                     switched to; an empty one is offered a move, which is the second row: one line
+                     naming it, a tick for removing the old copy (unticked, because a copy nobody
+                     asked to lose is the one thing that must not be lost), *Cancelar* at the
+                     margin and *Mover* as the act. The card says what it keeps on hover. -->
+                <Border
+                    x:Name="FolderCard"
+                    Style="{StaticResource Card}"
+                    Padding="{StaticResource SmallCardPadding}"
+                    ToolTipService.ToolTip="{x:Bind In(loc:UiTexts.WhatTheFolderKeeps)}">
+                    <Grid ColumnSpacing="12" RowSpacing="12">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
 
-                        <StackPanel Grid.Column="0" Spacing="8">
+                        <StackPanel Grid.Row="0" Grid.Column="0" Spacing="8">
                             <TextBlock
                                 Text="{x:Bind In(loc:UiTexts.Folder)}"
                                 Style="{StaticResource BodyText}"
@@ -276,13 +356,46 @@
 
                         <Button
                             x:Name="ChangeWhereItIsKept"
+                            Grid.Row="0"
                             Grid.Column="1"
                             VerticalAlignment="Bottom"
                             Style="{StaticResource PillButton}"
                             Click="OnChangeWhereItIsKept"
-                            Visibility="Collapsed"
                             AutomationProperties.Name="{x:Bind In(loc:UiTexts.ChangeWhereTheCorpusIsKept)}"
                             Content="{x:Bind In(loc:UiTexts.Change)}" />
+
+                        <StackPanel
+                            x:Name="MovePanel"
+                            Grid.Row="1"
+                            Grid.Column="0"
+                            Grid.ColumnSpan="2"
+                            Spacing="8"
+                            Visibility="Collapsed">
+                            <TextBlock
+                                x:Name="MoveText"
+                                Style="{StaticResource BodyText}"
+                                TextWrapping="Wrap" />
+                            <CheckBox
+                                x:Name="RemoveTheOldCopyTick"
+                                Style="{StaticResource Tick}"
+                                IsChecked="False"
+                                Content="{x:Bind In(loc:UiTexts.RemoveTheOldCopy)}" />
+                            <StackPanel
+                                Orientation="Horizontal"
+                                Spacing="8"
+                                HorizontalAlignment="Right">
+                                <Button
+                                    x:Name="CancelTheMove"
+                                    Style="{StaticResource ButtonAtTheMargin}"
+                                    Click="OnCancelTheMove"
+                                    Content="{x:Bind In(loc:UiTexts.Cancel)}" />
+                                <Button
+                                    x:Name="MoveTheMeetings"
+                                    Style="{StaticResource PillButton}"
+                                    Click="OnMoveTheMeetings"
+                                    Content="{x:Bind In(loc:UiTexts.Move)}" />
+                            </StackPanel>
+                        </StackPanel>
                     </Grid>
                 </Border>
 
@@ -346,14 +459,16 @@
                                 TextWrapping="Wrap"
                                 Visibility="Collapsed" />
 
+                            <!-- A glyph, so its name and its tooltip are set in `ShowTheExport`
+                                 with the rest of what changes while an export runs. -->
                             <Button
                                 x:Name="ExportButton"
                                 Grid.Column="1"
                                 VerticalAlignment="Top"
-                                Style="{StaticResource NormalButtonOnCard}"
-                                Click="OnExport"
-                                AutomationProperties.Name="{x:Bind In(loc:UiTexts.ExportTheCorpusToAFolder)}"
-                                Content="{x:Bind In(loc:UiTexts.Export)}" />
+                                Style="{StaticResource TheExportGlyph}"
+                                Click="OnExport">
+                                <FontIcon Glyph="&#xE896;" FontSize="{StaticResource BodySize}" />
+                            </Button>
                         </Grid>
                     </StackPanel>
                 </Border>

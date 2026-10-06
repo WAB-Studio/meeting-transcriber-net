@@ -168,6 +168,62 @@ public sealed class CorpusSettings(CorpusDbContext context)
     }
 
     /// <summary>
+    /// The key the effort a summary is asked for is stored under, by its wire name.
+    /// </summary>
+    public const string SummaryEffortKey = "summary-effort";
+
+    /// <summary>
+    /// The effort a summary is asked for, or <see cref="Domain.Meetings.SummaryEffort.High"/> when
+    /// nobody has chosen and when what is stored is not something this build knows.
+    /// </summary>
+    /// <remarks>
+    /// Nothing throws over what was read, as <see cref="SummaryModel()"/> does not. High is the
+    /// level the picker offers first and the one a corpus that says nothing is asked for; it is not
+    /// measured to be the CLI's own default for every model, so a corpus that never chose now sends
+    /// an explicit <c>--effort high</c> where it sent none.
+    /// </remarks>
+    public SummaryEffort SummaryEffort()
+    {
+        var stored = context.Settings
+            .AsNoTracking()
+            .FirstOrDefault(setting => setting.Key == SummaryEffortKey)?
+            .Value;
+
+        return stored is not null
+            && WireNames<SummaryEffort>.FromWire.TryGetValue(stored, out var chosen)
+            ? chosen
+            : Domain.Meetings.SummaryEffort.High;
+    }
+
+    /// <summary>
+    /// Settles the effort a summary is asked for, as of <paramref name="at"/>. One row, rewritten.
+    /// </summary>
+    /// <param name="chosen">What was chosen.</param>
+    /// <param name="at">When it was chosen, which is the press that chose it.</param>
+    public void SummaryEffort(SummaryEffort chosen, UtcTimestamp at)
+    {
+        var wire = WireNames<SummaryEffort>.Of(chosen);
+        var stored = context.Settings.FirstOrDefault(setting => setting.Key == SummaryEffortKey);
+
+        if (stored is null)
+        {
+            context.Settings.Add(new Setting
+            {
+                Key = SummaryEffortKey,
+                Value = wire,
+                UpdatedAt = at,
+            });
+        }
+        else
+        {
+            stored.Value = wire;
+            stored.UpdatedAt = at;
+        }
+
+        context.SaveChanges();
+    }
+
+    /// <summary>
     /// The key the last export is stored under: a JSON object holding the kinds by their wire
     /// names, the count of meetings and the finished folder, with the export's instant as
     /// <c>UpdatedAt</c>.

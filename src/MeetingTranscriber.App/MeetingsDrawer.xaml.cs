@@ -708,10 +708,19 @@ public sealed partial class MeetingsDrawer : UserControl
     /// drawer is in. Set here rather than bound in the XAML because it is the one thing on this
     /// screen whose words change without the language changing.
     /// </summary>
-    private void ShowWhichPositionItIsIn() =>
-        OpennessButton.Content = In(HasTheWholeWindow
+    private void ShowWhichPositionItIsIn()
+    {
+        var next = In(HasTheWholeWindow
             ? UiTexts.BringTheMeetingsBackDown
             : UiTexts.OpenTheMeetingsWhole);
+
+        // A caret, up while the list is docked (it opens upward) and down while it is raised. A
+        // glyph is a `FontIcon` made for the state and never one shared between the two: the words
+        // are its name and its tooltip, which is all a person who cannot see it is given.
+        OpennessButton.Content = new FontIcon { Glyph = HasTheWholeWindow ? "" : "", FontSize = (double)Application.Current.Resources["BodySize"] };
+        AutomationProperties.SetName(OpennessButton, next);
+        ToolTipService.SetToolTip(OpennessButton, next);
+    }
 
     /// <summary>
     /// Everything on screen, built from the meetings last read, with somebody's place in it kept
@@ -1117,9 +1126,9 @@ public sealed partial class MeetingsDrawer : UserControl
         && string.Equals(folder, row.Recording.Folder.FullName, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
-    /// One meeting, as one line: the name, which is the press that opens it, when it was and how
-    /// long it ran, where it is, and the presses it offers at the right. What went wrong with it
-    /// stands under that line.
+    /// One meeting, as two lines: the name, which is the press that opens it, and under it when it
+    /// was, how long it ran and where it is. The presses it offers stand at the right across both
+    /// lines, and what went wrong with it stands under them.
     /// </summary>
     private UIElement Card(MeetingAndWork entry)
     {
@@ -1127,10 +1136,15 @@ public sealed partial class MeetingsDrawer : UserControl
 
         line.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         line.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        line.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        line.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         line.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         line.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        line.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+        // When it was and where it is, one line under the name.
+        var data = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 16 };
+
+        Grid.SetRow(data, 1);
+        line.Children.Add(data);
 
         // ISC-165.1 on a row. A meeting nobody has named reads as one nobody has named: the
         // catalogue's own words, in the reader's language and greyed the way a caption is, and
@@ -1187,8 +1201,7 @@ public sealed partial class MeetingsDrawer : UserControl
             VerticalAlignment = VerticalAlignment.Center,
         };
 
-        Grid.SetColumn(when, 1);
-        line.Children.Add(when);
+        data.Children.Add(when);
 
         // The one status, decided by the meeting's own work and only spoken here — except for the
         // meeting the recorder is saving right now. A meeting being saved has no audio filed yet,
@@ -1217,15 +1230,15 @@ public sealed partial class MeetingsDrawer : UserControl
             VerticalAlignment = VerticalAlignment.Center,
         };
 
-        Grid.SetColumn(status, 2);
-        line.Children.Add(status);
+        data.Children.Add(status);
 
         if (entry.MayBeTriedAgain
             || (entry.Owed.Next is not null && (entry.Owed.MayBeTaken || entry.Owed.MayBeLeft)))
         {
             var presses = Presses(entry);
 
-            Grid.SetColumn(presses, 3);
+            Grid.SetColumn(presses, 1);
+            Grid.SetRowSpan(presses, 2);
             line.Children.Add(presses);
         }
 
@@ -1241,8 +1254,8 @@ public sealed partial class MeetingsDrawer : UserControl
                 Style = Chrome("MeetingFailed"),
             };
 
-            Grid.SetRow(why, 1);
-            Grid.SetColumnSpan(why, 4);
+            Grid.SetRow(why, 2);
+            Grid.SetColumnSpan(why, 2);
             line.Children.Add(why);
         }
 

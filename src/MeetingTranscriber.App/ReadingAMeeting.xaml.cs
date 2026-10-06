@@ -35,7 +35,9 @@ namespace MeetingTranscriber.App;
 /// meeting that is transcribed has to be readable (<c>docs/design.md</c> §Reunion). It is a
 /// repeater and draws only the lines in view, and every line is read through
 /// <see cref="MeetingRenderer.AsRead"/>, so this screen and <c>transcript.md</c> say the same words.
-/// A word is corrected where it is read, in the dialogue <see cref="CorrectingAWord"/>.
+/// Words are corrected from where they are read: selecting some offers <em>Corregir</em> beside
+/// them, which asks the window to open the corrections screen with those words in its field
+/// (<see cref="CorrectTheSelection"/>).
 /// </para>
 /// <para>
 /// It decides nothing about the meeting. Every question it asks — whether the player is there,
@@ -138,26 +140,26 @@ public sealed partial class ReadingAMeeting : UserControl
     /// </summary>
     private IReadOnlyList<Turn>? _turns;
 
-    /// <summary>
-    /// The words last selected on a line of the transcript, and the line they are on. Kept at the
-    /// moment they are selected and not read back when pressed: a line scrolled out of view is
-    /// recycled with its selection.
-    /// </summary>
-    private (TextBlock Line, string Words)? _selected;
-
     /// <summary>One line of the transcript: who said it, the minute, and the words.</summary>
     private sealed record TranscriptLine(string Who, Duration At, string Text);
 
     /// <summary>
-    /// What a repeater builds each line with, handed the screen's own two methods: the line is
-    /// built here, where the styles are, and a recycled line lets go of what it held selected.
+    /// What a repeater builds each line with, handed the screen's own method: the line is built
+    /// here, where the styles are.
     /// </summary>
-    private sealed class LineFactory(Func<TranscriptLine, UIElement> build, Action<UIElement> recycle) : IElementFactory
+    private sealed class LineFactory(Func<TranscriptLine, UIElement> build) : IElementFactory
     {
         public UIElement GetElement(ElementFactoryGetArgs args) => build((TranscriptLine)args.Data);
 
-        public void RecycleElement(ElementFactoryRecycleArgs args) => recycle(args.Element);
+        public void RecycleElement(ElementFactoryRecycleArgs args)
+        {
+            // Nothing is held on a line between uses: what it offered over a selection hides itself
+            // when the repeater scrolls it away.
+        }
     }
+
+    /// <summary>True while the name is a field somebody is typing in and not a line of text.</summary>
+    private bool _renaming;
 
     /// <summary>What the name field held when the meeting was drawn, so a leave that changed
     /// nothing writes nothing.</summary>
@@ -170,7 +172,7 @@ public sealed partial class ReadingAMeeting : UserControl
         InitializeComponent();
         _watch.Tick += OnWatch;
         _workWatch.Tick += OnWorkWatch;
-        TheTranscriptLines.ItemTemplate = new LineFactory(ATurn, Recycled);
+        TheTranscriptLines.ItemTemplate = new LineFactory(ATurn);
     }
 
     /// <summary>Somebody asked to go back to the meetings.</summary>
@@ -182,8 +184,11 @@ public sealed partial class ReadingAMeeting : UserControl
     /// <summary>Somebody asked to name who spoke on this meeting.</summary>
     public event EventHandler<Guid>? NameTheVoices;
 
-    /// <summary>Somebody asked to correct the words that came out wrong on this meeting.</summary>
-    public event EventHandler<Guid>? CorrectWords;
+    /// <summary>
+    /// Somebody asked to correct words on this meeting: with the words they selected, or with none
+    /// when they asked for the screen itself.
+    /// </summary>
+    public event EventHandler<WordsToCorrect>? CorrectWords;
 
     /// <summary>Somebody asked to read the history of something this meeting is filed under.</summary>
     public event EventHandler<Guid>? NodeChosen;
@@ -272,6 +277,7 @@ public sealed partial class ReadingAMeeting : UserControl
     /// </remarks>
     public void Pause()
     {
+        CorrectTheSelection.Dismiss();
         _watch.Stop();
         _workWatch.Stop();
 
@@ -354,6 +360,7 @@ public sealed partial class ReadingAMeeting : UserControl
     /// </remarks>
     public void Close()
     {
+        CorrectTheSelection.Dismiss();
         StopPlaying();
         _workWatch.Stop();
         _meeting = null;
@@ -361,13 +368,13 @@ public sealed partial class ReadingAMeeting : UserControl
         _filing = null;
         _voices = null;
         _turns = null;
-        _selected = null;
         _status.Nothing();
         _nameAsRead = string.Empty;
         NameBox.Text = string.Empty;
+        TitleText.Text = string.Empty;
+        SwapToTheTitle();
         TheTranscriptLines.ItemsSource = null;
         TheTranscriptCard.Visibility = Visibility.Collapsed;
-        CorrectAWordButton.Visibility = Visibility.Collapsed;
         WhoMadeWhat.Visibility = Visibility.Collapsed;
         SummaryFailedText.Visibility = Visibility.Collapsed;
         TheSections.Children.Clear();
@@ -418,16 +425,16 @@ public sealed partial class ReadingAMeeting : UserControl
         TheSummariesCard.Visibility = Visibility.Collapsed;
         TheFiling.Children.Clear();
         TheVoices.Children.Clear();
-        _selected = null;
-        CorrectAWordButton.Visibility = Visibility.Collapsed;
 
         if (_read is not { } read)
         {
             _workWatch.Stop();
             NameBox.Text = string.Empty;
             NameBox.IsEnabled = false;
-            WhenText.Text = string.Empty;
-            StageText.Text = _status.In(_language);
+            RenameButton.IsEnabled = false;
+            TitleText.Text = string.Empty;
+            SwapToTheTitle();
+            ShowTheDataLine();
             WhoMadeWhat.Visibility = Visibility.Collapsed;
             SummaryFailedText.Visibility = Visibility.Collapsed;
             TheTranscriptLines.ItemsSource = null;
@@ -445,16 +452,19 @@ public sealed partial class ReadingAMeeting : UserControl
         }
 
         _nameAsRead = read.Meeting.Title ?? string.Empty;
-        NameBox.Text = _nameAsRead;
         NameBox.IsEnabled = read.Screen.TheNameMayBeTyped;
+        RenameButton.IsEnabled = read.Screen.TheNameMayBeTyped;
 
-        WhenText.Text = ScreenNumbers.When(read.Meeting);
+        // Somebody typing a name keeps the field they are typing in: a summary landing is a redraw
+        // of everything else, and swapping the field for text under their cursor would throw away
+        // what they had written.
+        if (!_renaming)
+        {
+            NameBox.Text = _nameAsRead;
+            SwapToTheTitle();
+        }
 
-        // What the meeting is, in the one word the list says; or what a read just refused, which a
-        // word saying the meeting is fine would otherwise hide.
-        StageText.Text = _status.IsSaying
-            ? _status.In(_language)
-            : In(MeetingWords.Status(read.Screen.Owed.Status));
+        ShowTheDataLine();
 
         // The standing decides whether something is under way, and the status is read off the same
         // standing, so asking again while it holds and stopping when it does not cannot part.
@@ -479,6 +489,59 @@ public sealed partial class ReadingAMeeting : UserControl
             // more marks along a track that is still running.
             DrawTheMarks();
         }
+    }
+
+    /// <summary>
+    /// The one data line under the title: when the meeting was, how long it ran, and what it is
+    /// doing now in the one word the list says — or what a read or a press just refused, which a
+    /// word saying the meeting is fine would otherwise hide.
+    /// </summary>
+    private void ShowTheDataLine()
+    {
+        var when = _read is { } read ? ScreenNumbers.When(read.Meeting) : string.Empty;
+
+        var status = _status.IsSaying
+            ? _status.In(_language)
+            : _read is { } drawn ? In(MeetingWords.Status(drawn.Screen.Owed.Status)) : string.Empty;
+
+        WhenText.Text = when.Length == 0 ? status
+            : status.Length == 0 ? when
+            : ScreenNumbers.Beside(when, status);
+    }
+
+    /// <summary>
+    /// Shows the name as a line of text: the name, or <em>Sin nombre</em> in secondary ink when
+    /// nobody has named the meeting, with <em>Renombrar</em> beside it.
+    /// </summary>
+    private void SwapToTheTitle()
+    {
+        _renaming = false;
+
+        var named = _nameAsRead.Length > 0;
+        TitleText.Text = named ? _nameAsRead : _read is null ? string.Empty : In(UiTexts.AMeetingNobodyHasNamed);
+        TitleText.Style = Chrome(named ? "TheTitle" : "TheTitleNobodyNamed");
+
+        NameBox.Visibility = Visibility.Collapsed;
+        TitleText.Visibility = Visibility.Visible;
+        RenameButton.Visibility = Visibility.Visible;
+    }
+
+    /// <summary><em>Renombrar</em>: the line of text becomes the field holding the name, selected.</summary>
+    private void OnRename(object sender, RoutedEventArgs e)
+    {
+        if (_read is null)
+        {
+            return;
+        }
+
+        _renaming = true;
+        NameBox.Text = _nameAsRead;
+        TitleText.Visibility = Visibility.Collapsed;
+        RenameButton.Visibility = Visibility.Collapsed;
+        NameBox.Visibility = Visibility.Visible;
+        NameBox.UpdateLayout();
+        _ = NameBox.Focus(FocusState.Programmatic);
+        NameBox.SelectAll();
     }
 
     /// <summary>
@@ -971,7 +1034,7 @@ public sealed partial class ReadingAMeeting : UserControl
 
     /// <summary>
     /// One line of the transcript: who said it and the minute as a press that seeks the player, and
-    /// under them the words, selectable and offering <em>Corregir</em> on a right-click.
+    /// under them the words, selectable and offering <em>Corregir</em> beside a selection.
     /// </summary>
     private UIElement ATurn(TranscriptLine line)
     {
@@ -998,104 +1061,12 @@ public sealed partial class ReadingAMeeting : UserControl
         heading.Children.Add(minute);
 
         var said = new TextBlock { Text = line.Text, Style = Chrome("Spoken") };
-        said.SelectionChanged += (_, _) => OnSelectionChanged(said);
-        said.ContextFlyout = CorrectingAWord.OfferedOver(
-            said, In(UiTexts.CorrectThisWord), words => _ = CorrectAsync(words));
+        CorrectTheSelection.OfferOver(said, Chrome("TheSelectionsPress"), In(UiTexts.CorrectThisWord), AskToCorrect);
 
         var turn = new StackPanel { Spacing = 2 };
         turn.Children.Add(heading);
         turn.Children.Add(said);
         return turn;
-    }
-
-    /// <summary>
-    /// A line scrolled out of view lets go of what it held selected: the repeater reuses the
-    /// words' place for another line, and a button still offering to correct words nobody can see
-    /// would be correcting what the reader no longer has in front of them.
-    /// </summary>
-    private void Recycled(UIElement turn)
-    {
-        if (_selected is { } held && turn is StackPanel { Children.Count: 2 } panel
-            && ReferenceEquals(panel.Children[1], held.Line))
-        {
-            _selected = null;
-            CorrectAWordButton.Visibility = Visibility.Collapsed;
-        }
-    }
-
-    /// <summary>
-    /// Keeps the words selected on a line, and shows the press on the heading while there are some.
-    /// </summary>
-    private void OnSelectionChanged(TextBlock line)
-    {
-        var words = line.SelectedText;
-
-        if (CorrectingAWord.TheWordIn(words) is not null)
-        {
-            _selected = (line, words);
-        }
-        else if (_selected is { } held && ReferenceEquals(held.Line, line))
-        {
-            _selected = null;
-        }
-
-        CorrectAWordButton.Visibility = _selected is null ? Visibility.Collapsed : Visibility.Visible;
-    }
-
-    /// <summary>The press on the heading: corrects the words selected last on a line.</summary>
-    private void OnCorrectTheSelection(object sender, RoutedEventArgs e)
-    {
-        if (_selected is { } held)
-        {
-            _ = CorrectAsync(held.Words);
-        }
-    }
-
-    /// <summary>
-    /// Opens the dialogue over the one word a selection stands for, and reads the transcript again
-    /// when it saved.
-    /// </summary>
-    /// <remarks>
-    /// The corrections are <see cref="CorrectingAWord"/>'s to write, through
-    /// <c>CorrectingWords.Correct</c> and nowhere else. What is read again is the meeting, which
-    /// draws the transcript from the rendered words and so shows the correction; the player is not
-    /// touched, because correcting a word says nothing about the recording under it.
-    /// </remarks>
-    private async Task CorrectAsync(string selection)
-    {
-        if (CorrectingAWord.TheWordIn(selection) is not { } word || _meeting is not { } meeting)
-        {
-            return;
-        }
-
-        bool saved;
-
-        try
-        {
-            saved = await AskingHowAWordGoes.AskAsync(Corpus(), meeting, word, _language, Root.XamlRoot);
-        }
-        catch (Exception refused) when (ScreenFailures.Reportable(refused))
-        {
-            // Said and not dropped: the press that opened this was fired and forgotten, so a
-            // dialogue that could not open would otherwise be a press that did nothing.
-            _status.Says(UiTexts.ThatDidNotGoThrough, refused.Message);
-            StageText.Text = _status.In(_language);
-            return;
-        }
-
-        // The screen moved to another meeting, or was let go of, while the dialogue was open.
-        if (!saved || _meeting != meeting)
-        {
-            return;
-        }
-
-        Draw(theRecordingToo: false);
-
-        if (AskingHowAWordGoes.Afterwards is { } afterwards)
-        {
-            _status.Says(afterwards);
-            StageText.Text = _status.In(_language);
-        }
     }
 
     // ── What is under way ─────────────────────────────────────────────────────────────────────
@@ -1119,13 +1090,16 @@ public sealed partial class ReadingAMeeting : UserControl
     private void OnWorkWatch(object? sender, object e) => _ = AskTheWorkAsync();
 
     /// <summary>
-    /// Asks what is owed on the meeting, off the UI thread, and draws it again only when its status
-    /// changed.
+    /// Asks what is owed on the meeting, off the UI thread, and draws it again only when its stage or
+    /// its status changed.
     /// </summary>
     /// <remarks>
     /// Without touching the player: a summary that lands while somebody is listening is more of the
     /// screen, and the recording is exactly where it was. A status that did not change draws
-    /// nothing, so a minute of waiting is not a minute of the screen blinking.
+    /// nothing, so a minute of waiting is not a minute of the screen blinking. The stage is compared
+    /// with it: a transcription that lands while another is queued leaves the status at
+    /// <em>queued</em>, and a screen that compared the status alone would not show the transcript
+    /// until the summary started.
     /// </remarks>
     private async Task AskTheWorkAsync()
     {
@@ -1145,7 +1119,7 @@ public sealed partial class ReadingAMeeting : UserControl
             });
 
             // Another meeting was opened, or this one let go of, while the corpus was being asked.
-            if (_workWatch.IsEnabled && _meeting == meeting && _read is { } read && owed.Status != read.Screen.Owed.Status && CommitTheName())
+            if (_workWatch.IsEnabled && _meeting == meeting && _read is { } read && (owed.Stage, owed.Status) != (read.Screen.Owed.Stage, read.Screen.Owed.Status) && CommitTheName())
             {
                 Draw(theRecordingToo: false);
             }
@@ -1154,13 +1128,13 @@ public sealed partial class ReadingAMeeting : UserControl
         {
             _workWatch.Stop();
             _status.Says(UiTexts.ThatIsNoLongerHowItWas, gone.Message);
-            StageText.Text = _status.In(_language);
+            ShowTheDataLine();
         }
         catch (Exception unreadable) when (ScreenFailures.Reportable(unreadable))
         {
             _workWatch.Stop();
             _status.Says(UiTexts.ThatDidNotGoThrough, unreadable.Message);
-            StageText.Text = _status.In(_language);
+            ShowTheDataLine();
         }
         finally
         {
@@ -1180,23 +1154,34 @@ public sealed partial class ReadingAMeeting : UserControl
     /// </remarks>
     private void TheActOnOffer(MeetingScreen screen)
     {
-        if (screen.TheActMayBeLeft)
+        if (screen.WorkIsUnderWay)
         {
-            var leave = new Button { Content = In(UiTexts.Ignore) };
-            leave.Click += (_, _) => Answer(decline: true);
-            Presses.Children.Add(leave);
+            // Where the press was, and not under it: somebody who pressed *Resumir* looks here
+            // for what happened, and a press that goes quiet with nothing in its place reads as
+            // one that did nothing. *Detener* and *Resumir de nuevo* are not this press and keep
+            // their own conditions below.
+            Presses.Children.Add(WorkUnderWay(screen));
         }
-
-        if (screen.TheActOffered is { } next)
+        else
         {
-            var take = new Button
+            if (screen.TheActMayBeLeft)
             {
-                Content = In(MeetingWords.Action(next)),
-                Style = Chrome("TakeTheStage"),
-            };
+                var leave = new Button { Content = In(UiTexts.Ignore), Style = Chrome("TheNeutralOne") };
+                leave.Click += (_, _) => Answer(decline: true);
+                Presses.Children.Add(leave);
+            }
 
-            take.Click += (_, _) => Answer(decline: false);
-            Presses.Children.Add(take);
+            if (screen.TheActOffered is { } next)
+            {
+                var take = new Button
+                {
+                    Content = In(MeetingWords.Action(next)),
+                    Style = Chrome("TakeTheStage"),
+                };
+
+                take.Click += (_, _) => Answer(decline: false);
+                Presses.Children.Add(take);
+            }
         }
 
         if (screen.TheSummaryMayBeStopped)
@@ -1222,6 +1207,30 @@ public sealed partial class ReadingAMeeting : UserControl
             again.Click += (_, _) => SummariseAgain();
             Presses.Children.Add(again);
         }
+    }
+
+    /// <summary>
+    /// The word for what the meeting is doing, in olivo while it runs and in secondary ink while it
+    /// waits, and a ring that turns for as long as either holds.
+    /// </summary>
+    private StackPanel WorkUnderWay(MeetingScreen screen)
+    {
+        var running = screen.Owed.Standing is StageStanding.Running;
+
+        var says = new TextBlock
+        {
+            Text = In(MeetingWords.Status(screen.Owed.Status)),
+            Style = Chrome(running ? "TheWorkRuns" : "TheWorkWaits"),
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+
+        var ring = new ProgressRing { IsActive = true, Style = Chrome("TheWorkRing"), VerticalAlignment = VerticalAlignment.Center };
+        AutomationProperties.SetAutomationId(ring, "work-ring");
+
+        var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        row.Children.Add(ring);
+        row.Children.Add(says);
+        return row;
     }
 
     /// <summary>
@@ -1324,13 +1333,21 @@ public sealed partial class ReadingAMeeting : UserControl
 
         if (_status.IsSaying)
         {
-            StageText.Text = _status.In(_language);
+            ShowTheDataLine();
         }
     }
 
     // ── The name ──────────────────────────────────────────────────────────────────────────────
 
-    private void OnNameLeft(object sender, RoutedEventArgs e) => CommitTheName();
+    private void OnNameLeft(object sender, RoutedEventArgs e)
+    {
+        // A field that was never shown is not being left; and one whose write was refused stays,
+        // with the refusal on the data line, rather than losing what was typed.
+        if (_renaming && CommitTheName())
+        {
+            SwapToTheTitle();
+        }
+    }
 
     /// <summary>Whether the name on screen is the name in the corpus.</summary>
     private bool TheNameIsWritten => _read is null
@@ -1343,7 +1360,19 @@ public sealed partial class ReadingAMeeting : UserControl
         if (e.Key is VirtualKey.Enter)
         {
             e.Handled = true;
-            CommitTheName();
+
+            if (CommitTheName())
+            {
+                SwapToTheTitle();
+            }
+        }
+        else if (e.Key is VirtualKey.Escape)
+        {
+            // Back to what was there, written nowhere: the field is put back first, so the leave
+            // that swapping it out raises finds nothing changed.
+            e.Handled = true;
+            NameBox.Text = _nameAsRead;
+            SwapToTheTitle();
         }
     }
 
@@ -1383,11 +1412,13 @@ public sealed partial class ReadingAMeeting : UserControl
         }
         catch (MeetingStageException gone)
         {
-            StageText.Text = TextLine.Says(UiTexts.ThatIsNoLongerHowItWas, gone.Message).In(_language);
+            _status.Says(UiTexts.ThatIsNoLongerHowItWas, gone.Message);
+            ShowTheDataLine();
         }
         catch (Exception refused) when (ScreenFailures.Reportable(refused))
         {
-            StageText.Text = TextLine.Says(UiTexts.ThatDidNotGoThrough, refused.Message).In(_language);
+            _status.Says(UiTexts.ThatDidNotGoThrough, refused.Message);
+            ShowTheDataLine();
         }
 
         return false;
@@ -1435,6 +1466,10 @@ public sealed partial class ReadingAMeeting : UserControl
         }
 
         ShowThePlayer(playable: true);
+
+        // The slider outlives the recordings it is set for, so a meeting opened after one turned
+        // down is not played at full volume while the slider says otherwise.
+        _playing.Volume = (float)(VolumeSlider.Value / 100);
 
         _movingTheTrack = true;
         Track.Maximum = Math.Max(1, _playing.Length.Milliseconds);
@@ -1518,12 +1553,25 @@ public sealed partial class ReadingAMeeting : UserControl
             return;
         }
 
-        PlayButton.Content = In(playing.IsPlaying ? UiTexts.Pause : UiTexts.Play);
+        var says = In(playing.IsPlaying ? UiTexts.Pause : UiTexts.Play);
+        PlayGlyph.Glyph = playing.IsPlaying ? "\uE769" : "\uE768";
+        AutomationProperties.SetName(PlayButton, says);
+        ToolTipService.SetToolTip(PlayButton, says);
         AtText.Text = ScreenNumbers.Long(playing.At);
 
         _movingTheTrack = true;
         Track.Value = Math.Clamp(playing.At.Milliseconds, Track.Minimum, Track.Maximum);
         _movingTheTrack = false;
+    }
+
+    private void OnVolumeMoved(object sender, RangeBaseValueChangedEventArgs e)
+    {
+        ArgumentNullException.ThrowIfNull(e);
+
+        if (_playing is { } playing)
+        {
+            playing.Volume = (float)(e.NewValue / 100);
+        }
     }
 
     private void OnTrackMoved(object sender, RangeBaseValueChangedEventArgs e)
@@ -1658,8 +1706,15 @@ public sealed partial class ReadingAMeeting : UserControl
         }
     }
 
-    /// <summary>Somebody asked to correct the words on this meeting. <see cref="OnNameTheVoices"/>'s order.</summary>
-    private void OnCorrectWords(object sender, RoutedEventArgs e)
+    /// <summary>Somebody asked for the screen that corrects words. <see cref="OnNameTheVoices"/>'s order.</summary>
+    private void OnCorrectWords(object sender, RoutedEventArgs e) => AskToCorrect(null);
+
+    /// <summary>
+    /// Asks the window to open the corrections screen over this meeting, with the words that were
+    /// selected in its field or with none. <see cref="OnNameTheVoices"/>'s order: the name first,
+    /// then the recording stopped where it is.
+    /// </summary>
+    private void AskToCorrect(string? asWritten)
     {
         if (!CommitTheName())
         {
@@ -1670,7 +1725,7 @@ public sealed partial class ReadingAMeeting : UserControl
 
         if (_meeting is { } meeting)
         {
-            CorrectWords?.Invoke(this, meeting);
+            CorrectWords?.Invoke(this, new WordsToCorrect(meeting, asWritten));
         }
     }
 }

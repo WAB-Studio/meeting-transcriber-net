@@ -372,7 +372,9 @@ public class SayingWhoIsWhoTests
         var ask = Body(source, "private async Task AskWhoTheyAre(");
         var reading = Body(source, "private void ReadThePeopleAgain(");
 
-        reading.ShouldContain("new MeetingVoices(");
+        // Through the one method that reads the voices and the turns beside them.
+        reading.ShouldContain("ReadTheVoices(context, meetingId)");
+        Body(source, "private void ReadTheVoices(").ShouldContain("new MeetingVoices(");
 
         var asked = ask.IndexOf("AskingWhoTheyAre.AskAsync(", StringComparison.Ordinal);
         var read = ask.IndexOf("ReadThePeopleAgain(", StringComparison.Ordinal);
@@ -432,12 +434,22 @@ public class SayingWhoIsWhoTests
         beside.ShouldContain("UiTexts.CorrectThisName");
         beside.ShouldContain("AskWhoTheyAre(read, voice, them)");
 
-        File.ReadAllText(AppSources.At(Markup).FullName).ShouldContain("x:Key=\"CorrectTheirName\"");
+        // Beside it and not under it, in a row at the picker's own height: the one act drawn the way
+        // `ClassifyingAMeeting.xaml` draws its `TheCorrection`.
+        beside.ShouldContain("new StackPanel { Orientation = Orientation.Horizontal, Spacing = 7 }");
+
+        var markup = File.ReadAllText(AppSources.At(Markup).FullName);
+        var style = Regex.Match(markup, @"<Style x:Key=""CorrectTheirName""[^>]*>(?<body>.*?)</Style>", RegexOptions.Singleline);
+
+        style.Success.ShouldBeTrue("the markup declares no `CorrectTheirName`.");
+        style.Groups["body"].Value.ShouldContain("Property=\"Height\" Value=\"{StaticResource ControlHeight}\"");
+        style.Groups["body"].Value.ShouldContain("Property=\"MinHeight\" Value=\"{StaticResource ControlHeight}\"");
     }
 
     /// <summary>
-    /// A voice's quotation is selectable and offers the dialogue that corrects the word selected in
-    /// it, which is where a wrong word is seen.
+    /// A voice's quotation is selectable and offers <em>Corregir</em> beside the words selected in
+    /// it, which is where a wrong word is seen, and asks the window to open the corrections screen
+    /// with them.
     /// </summary>
     [Fact]
     public void A_voice_s_quotation_is_selectable_and_offers_to_correct_a_word()
@@ -447,8 +459,21 @@ public class SayingWhoIsWhoTests
         File.ReadAllText(AppSources.At(Markup).FullName)
             .ShouldContain("<Setter Property=\"IsTextSelectionEnabled\" Value=\"True\" />");
 
-        source.ShouldContain("CorrectingAWord.OfferedOver(");
-        Body(source, "private async Task CorrectAWordAsync(").ShouldContain("AskingHowAWordGoes.AskAsync(");
+        File.ReadAllText(AppSources.At(Markup).FullName).ShouldContain("x:Key=\"TheSelectionsPress\"");
+
+        source.ShouldContain("CorrectTheSelection.OfferOver(");
+        source.ShouldContain("public event EventHandler<WordsToCorrect>? CorrectWords");
+        source.ShouldContain("new WordsToCorrect(meeting, words)");
+        source.ShouldNotContain("CorrectingAWord");
+        source.ShouldNotContain("ContextFlyout");
+
+        // The clip stops first, and the draft is kept: coming back reads the quotations again.
+        var ask = Body(source, "private void AskToCorrect(");
+
+        ask.IndexOf("StopClip()", StringComparison.Ordinal)
+            .ShouldBeLessThan(ask.IndexOf("CorrectWords?.Invoke", StringComparison.Ordinal));
+        Body(source, "public void ReadTheQuotationsAgain()").ShouldNotContain("_draft.Clear()");
+        File.ReadAllText(AppSources.At(Markup).FullName).ShouldNotContain("CorrectingAWord");
     }
 
     /// <summary>
@@ -464,5 +489,29 @@ public class SayingWhoIsWhoTests
 
         found.Success.ShouldBeTrue($"the file no longer has a `{signature}`.");
         return found.Value;
+    }
+
+
+    /// <summary>
+    /// A quotation shows the words as the rendered files say them, so a correction saved from it is
+    /// on it when the way back returns and the already-corrected check can see it (O-20261005-03).
+    /// </summary>
+    [Fact]
+    public void The_quotation_reads_the_corrected_words()
+    {
+        var source = File.ReadAllText(AppSources.At(Screen).FullName);
+
+        source.ShouldContain("Text = QuotedWords(voice)");
+        source.ShouldNotContain("Text = voice.Quoted.Text");
+
+        // At the ordinal of the turn the voice quotes, through the render's own reading.
+        Body(source, "private string QuotedWords(Voice voice)").ShouldContain("turn.Ordinal == voice.Quoted.Ordinal");
+        SourceLines.Occurrences(source, "MeetingRenderer.AsRead(context, meetingId)").Count().ShouldBe(
+            2,
+            "the voices are read in one place and the quotations again after the corrections, and both through the render.");
+
+        // Both reads of the voices go through the one method that reads the turns beside them.
+        SourceLines.Occurrences(source, "ReadTheVoices(context, meetingId)").Count().ShouldBe(2);
+        SourceLines.Occurrences(source, ".Of(meetingId)").Count().ShouldBe(1);
     }
 }

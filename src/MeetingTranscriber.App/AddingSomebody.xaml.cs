@@ -152,6 +152,14 @@ public sealed partial class AddingSomebody : ContentDialog
             XamlRoot = over;
         }
 
+        // A dialogue is hosted apart from the content a theme was put on, so it does not inherit
+        // it: it is told the theme the window it opens over is actually drawn in, which is the one
+        // a chosen theme or Windows' own settled.
+        if (over.Content is FrameworkElement root)
+        {
+            RequestedTheme = root.ActualTheme;
+        }
+
         await ShowAsync();
         return _made;
     }

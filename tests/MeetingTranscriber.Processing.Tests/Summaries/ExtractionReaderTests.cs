@@ -48,6 +48,51 @@ public class ExtractionReaderTests
     }
 
     [Fact]
+    public void A_title_is_read_when_there_is_one()
+    {
+        var node = Valid(Guid.NewGuid());
+        Set(node, "title", JsonValue.Create("  Lanzamiento de la campana "));
+
+        var read = ExtractionReader.Read(Utf8(node));
+
+        read.Refusals.ShouldBeEmpty();
+        read.Document.ShouldNotBeNull().Title.ShouldBe("Lanzamiento de la campana");
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_document_with_no_title_still_reads(bool nullTitle)
+    {
+        var node = Valid(Guid.NewGuid());
+
+        if (nullTitle)
+        {
+            Set(node, "title", null);
+        }
+
+        var read = ExtractionReader.Read(Utf8(node));
+
+        read.Refusals.ShouldBeEmpty();
+        read.Document.ShouldNotBeNull().Title.ShouldBeNull();
+    }
+
+    [Fact]
+    public void A_title_that_is_blank_or_not_a_string_reads_as_none_and_never_refuses_the_summary()
+    {
+        foreach (var bad in new JsonNode?[] { JsonValue.Create(""), JsonValue.Create("   "), JsonValue.Create(7) })
+        {
+            var node = Valid(Guid.NewGuid());
+            Set(node, "title", bad);
+
+            var read = ExtractionReader.Read(Utf8(node));
+
+            read.Refusals.ShouldBeEmpty();
+            read.Document.ShouldNotBeNull().Title.ShouldBeNull();
+        }
+    }
+
+    [Fact]
     public void Output_that_is_not_json_is_refused_as_not_the_schema_at_the_top()
     {
         var read = ExtractionReader.Read("not json at all"u8);

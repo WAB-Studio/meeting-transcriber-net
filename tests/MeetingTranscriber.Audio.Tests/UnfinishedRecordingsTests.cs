@@ -1217,6 +1217,13 @@ public sealed partial class UnfinishedRecordingsTests : IDisposable
             (Path.Combine("MeetingTranscriber.Processing", "Export", "CorpusExport.cs"),
                 [DirectoryMove]),
 
+            // Moving the meetings to another folder: what a copy wrote is taken away again when it
+            // did not arrive whole, and the old corpus goes only when somebody ticked it and the new
+            // one was found whole a second time. It refuses a spool holding a recording before it
+            // writes anything, so it is never a recording somebody is still owed a decision about.
+            (Path.Combine("MeetingTranscriber.Infrastructure", "Storage", "CorpusMove.cs"),
+                [DirectoryDelete, DirectoryMove]),
+
             // A Claude Code run's own scratch workspace, deleted once the process that used it has
             // exited, killed or not. It lives under `%TEMP%\meeting-transcriber-summaries\`, never
             // under `spool/`, and holds nothing but the one run's own prompt files.

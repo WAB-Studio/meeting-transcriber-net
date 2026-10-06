@@ -45,7 +45,7 @@ public class MeetingShapesTests
     }
 
     /// <summary>
-    /// The four stories that put somebody on the meeting, and how each of them is named.
+    /// The seven stories that put somebody on the meeting, and how each of them is named.
     /// </summary>
     /// <remarks>
     /// Row 10 is the one worth having a row for: the person a dismissal is about was not in the
@@ -54,7 +54,10 @@ public class MeetingShapesTests
     /// deliberately kept out of.
     /// </remarks>
     [Theory]
+    [InlineData(MeetingShape.Class, true, false)]
+    [InlineData(MeetingShape.InterviewAsCandidate, true, false)]
     [InlineData(MeetingShape.InterviewAsInterviewer, true, false)]
+    [InlineData(MeetingShape.SellingToAClient, true, false)]
     [InlineData(MeetingShape.TeamMeeting, true, false)]
     [InlineData(MeetingShape.HumanResources, false, true)]
     [InlineData(MeetingShape.RecurringOneToOne, true, true)]
@@ -104,6 +107,124 @@ public class MeetingShapesTests
         carries.ShouldBeEmpty(
             "a shape opens places and never fills one, so nothing it hands back has room for the "
             + "id of a node or a person: " + string.Join("; ", carries));
+    }
+
+    /// <summary>
+    /// Every kind of meeting says what it calls each level it opens and each person it puts on, and
+    /// the two agree with <see cref="MeetingShapes.Opens"/> on how many.
+    /// </summary>
+    /// <remarks>
+    /// Names that fell behind the places they name are a pill drawn with the generic word over a
+    /// level the meeting has its own for, or a place for somebody called by no name at all.
+    /// </remarks>
+    [Fact]
+    public void Every_shape_names_every_level_it_opens_and_every_place_for_somebody()
+    {
+        foreach (var shape in Enum.GetValues<MeetingShape>().Where(shape => shape is not MeetingShape.FilledByHand))
+        {
+            var opens = MeetingShapes.Opens(shape);
+            var names = MeetingShapes.Names(shape);
+
+            foreach (var role in Enum.GetValues<MeetingNodeRole>())
+            {
+                names.Levels.ContainsKey(role).ShouldBe(opens.Paths(role) > 0, $"{shape} {role}");
+
+                if (names.Levels.TryGetValue(role, out var levels))
+                {
+                    levels.ShouldNotBeEmpty($"{shape} {role}");
+                    levels.ShouldBeUnique($"{shape} {role}");
+                }
+            }
+
+            names.Somebody.ShouldBe(opens.Somebody.Select(slot => slot.Name), $"{shape}");
+        }
+    }
+
+    /// <summary>
+    /// A name that is somebody is never a class of node, and every other name is one.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="MeetingShapes.Holds"/> is the only thing that turns a word on the screen into what
+    /// naming a new one there would write, and a person's name answering with a node class would put
+    /// a <em>Profesor</em> into the tree.
+    /// </remarks>
+    [Fact]
+    public void A_name_for_somebody_is_never_a_node()
+    {
+        PlaceName[] somebody =
+            [PlaceName.Person, PlaceName.Teacher, PlaceName.Interviewer, PlaceName.Candidate, PlaceName.Contact];
+
+        foreach (var name in Enum.GetValues<PlaceName>())
+        {
+            if (somebody.Contains(name))
+            {
+                Should.Throw<ArgumentOutOfRangeException>(() => MeetingShapes.Holds(name), name.ToString());
+            }
+            else
+            {
+                Should.NotThrow(() => MeetingShapes.Holds(name), name.ToString());
+            }
+        }
+
+        Should.Throw<ArgumentOutOfRangeException>(() => MeetingShapes.Holds((PlaceName)99));
+    }
+
+    /// <summary>
+    /// Nothing lit, or <em>Ninguna — la lleno yo</em>, names every level with the generic words.
+    /// </summary>
+    [Theory]
+    [InlineData(null)]
+    [InlineData(MeetingShape.FilledByHand)]
+    public void With_no_shape_lit_the_generic_names_stand(MeetingShape? shape)
+    {
+        var names = MeetingShapes.Names(shape);
+
+        names.Levels[MeetingNodeRole.WorkOf].ShouldBe([PlaceName.Organization, PlaceName.Project, PlaceName.Topic]);
+        names.Levels[MeetingNodeRole.About].ShouldBe([PlaceName.Organization, PlaceName.Project, PlaceName.Topic]);
+        names.Levels[MeetingNodeRole.Counterpart]
+            .ShouldBe([PlaceName.OtherOrganization, PlaceName.Project, PlaceName.Topic]);
+        names.Somebody.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void A_shape_that_is_not_one_of_the_fourteen_has_no_names() =>
+        Should.Throw<InvalidOperationException>(() => MeetingShapes.Names((MeetingShape)99));
+
+    /// <summary>
+    /// What each of the thirteen stories stores, and the two crossings, written out: the shape that
+    /// is lit, the role of a link, how deep in its path the node is, and what class it is.
+    /// </summary>
+    /// <remarks>
+    /// The rows are read off <c>ClassificationStoriesTests</c>' <c>Links</c> and <c>CrossedLinks</c>
+    /// against its <c>Tree</c> — that project is not one this can reference, so they are written
+    /// here, and the thing they hold the table to is the one that matters: every node a story stores
+    /// is offered at a level whose name holds its class. A crossing is filed by hand, so it is read
+    /// against the generic names.
+    /// </remarks>
+    [Theory]
+    [InlineData(MeetingShape.Class, MeetingNodeRole.WorkOf, 1, NodeKind.Initiative)]
+    [InlineData(MeetingShape.InterviewAsCandidate, MeetingNodeRole.Counterpart, 0, NodeKind.Organization)]
+    [InlineData(MeetingShape.InterviewAsInterviewer, MeetingNodeRole.WorkOf, 0, NodeKind.Organization)]
+    [InlineData(MeetingShape.TwoProjects, MeetingNodeRole.WorkOf, 1, NodeKind.Initiative)]
+    [InlineData(MeetingShape.SellingToAClient, MeetingNodeRole.WorkOf, 1, NodeKind.Initiative)]
+    [InlineData(MeetingShape.SellingToAClient, MeetingNodeRole.Counterpart, 0, NodeKind.Organization)]
+    [InlineData(MeetingShape.TeamMeeting, MeetingNodeRole.WorkOf, 1, NodeKind.Initiative)]
+    [InlineData(MeetingShape.Conference, MeetingNodeRole.About, 1, NodeKind.Initiative)]
+    [InlineData(MeetingShape.BetweenTwoCompanies, MeetingNodeRole.Counterpart, 0, NodeKind.Organization)]
+    [InlineData(MeetingShape.HumanResources, MeetingNodeRole.WorkOf, 0, NodeKind.Organization)]
+    [InlineData(MeetingShape.RecurringOneToOne, MeetingNodeRole.WorkOf, 0, NodeKind.Organization)]
+    [InlineData(MeetingShape.Daily, MeetingNodeRole.WorkOf, 1, NodeKind.Initiative)]
+    [InlineData(MeetingShape.AfterSalesSupport, MeetingNodeRole.WorkOf, 2, NodeKind.Topic)]
+    [InlineData(MeetingShape.AfterSalesSupport, MeetingNodeRole.Counterpart, 0, NodeKind.Organization)]
+    [InlineData(MeetingShape.FilledByHand, MeetingNodeRole.WorkOf, 1, NodeKind.Initiative)]
+    [InlineData(MeetingShape.FilledByHand, MeetingNodeRole.About, 1, NodeKind.Initiative)]
+    [InlineData(MeetingShape.FilledByHand, MeetingNodeRole.Counterpart, 0, NodeKind.Organization)]
+    public void Every_stored_story_is_offered_at_its_level(
+        MeetingShape shape, MeetingNodeRole role, int depth, NodeKind stored)
+    {
+        var level = MeetingShapes.Names(shape).Levels[role][depth];
+
+        MeetingShapes.Holds(level).ShouldBe(stored, $"{shape} {role} level {depth} is called {level}");
     }
 
     /// <summary>Whether a type is a <see cref="Guid"/> or is built out of them.</summary>

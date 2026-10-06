@@ -55,11 +55,12 @@ public sealed class ClaudeCodeSummaries : ISummaryProvider
     /// than was asked. The model is the one the request asks for, or <see cref="Model"/> when it
     /// asks for none.
     /// </summary>
-    private static IReadOnlyList<string> ArgumentsForARun(string model) =>
+    private static IReadOnlyList<string> ArgumentsForARun(string model, string? effort) =>
     [
         "-p",
         "--output-format", "json",
         "--model", model,
+        .. effort is null ? Array.Empty<string>() : ["--effort", effort],
         "--tools", string.Empty,
         "--strict-mcp-config",
         "--setting-sources", "project",
@@ -155,7 +156,7 @@ public sealed class ClaudeCodeSummaries : ISummaryProvider
             try
             {
                 result = await RunAsync(
-                    executable, ArgumentsForARun(model), workspace.Folder, workspace.Prompt, timeout.Token)
+                    executable, ArgumentsForARun(model, request.Effort), workspace.Folder, workspace.Prompt, timeout.Token)
                     .ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (!stopping.IsCancellationRequested)

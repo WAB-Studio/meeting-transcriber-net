@@ -59,14 +59,8 @@ public static partial class UiTexts
         "Guardado; {0} aún no lo muestran.",
         "Saved; {0} do not show it yet.");
 
-    // The title of the dialogue that corrects one word where it is read, over a line of the
-    // transcript or a voice's quotation: the third dialogue docs/design.md §Notices lists. Its
-    // two labels are `HowItCameOutWritten` over the word as it stands and `TheWordAsItShouldBe`
-    // over the field, the same two the screen of every word that comes out wrong carries.
-    public static UiText FixAWord { get; } = new("Corregir palabra", "Fix a word");
-
-    // Said in the dialogue in place of its field when the word selected is the one a correction
-    // already reaching the meeting wrote: a correction keyed on it would leave the transcript as it
-    // is and close as though it had saved.
+    // Said on the screen of every word that comes out wrong when the words brought from a selection
+    // are the ones a correction already reaching the meeting wrote: a correction keyed on them
+    // would leave the transcript as it is and read as though it had saved.
     public static UiText AlreadyCorrected { get; } = new("Ya está corregida", "Already corrected");
 }

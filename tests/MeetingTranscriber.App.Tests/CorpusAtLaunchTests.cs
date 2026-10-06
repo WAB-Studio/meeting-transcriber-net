@@ -69,13 +69,14 @@ public sealed class CorpusAtLaunchTests
     [Fact]
     public void Nothing_starts_the_launch_work_but_the_one_method_that_says_what_order_it_is_in()
     {
-        // Three and not two: the method's own declaration is one occurrence of its name, and
-        // OnLaunched and OnCorpusChosen each call it once more.
+        // Four and not two: the method's own declaration is one occurrence of its name,
+        // OnLaunched and OnCorpusChosen each call it once more, and so does what StopTheRunner
+        // hands back to start the runner again when a move of the meetings did not happen.
         Occurrences("StartWhatThisLaunchOwesTheCorpus(").Count().ShouldBe(
-            3,
+            4,
             "App.xaml.cs declares or calls StartWhatThisLaunchOwesTheCorpus a number of times "
-            + "other than its own declaration plus the one call each OnLaunched and OnCorpusChosen "
-            + "make.");
+            + "other than its own declaration plus the one call each OnLaunched, OnCorpusChosen "
+            + "and the runner StopTheRunner hands back make.");
     }
 
     /// <summary>

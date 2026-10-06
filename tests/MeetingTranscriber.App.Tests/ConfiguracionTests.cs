@@ -136,16 +136,124 @@ public class ConfiguracionTests
     }
 
     /// <summary>
-    /// The press that changes the corpus folder is drawn only when the corpus was refused, which
-    /// is the one state it exists to answer.
+    /// The press that changes the corpus folder is always drawn: a folder that opened is moved from
+    /// here too, so it is no longer the one answer to a refused corpus.
     /// </summary>
+    /// <remarks>
+    /// Goes red with the visibility put back over the refusal: the press is then on screen for a
+    /// corpus that did not open and nowhere else, which is the only state the move cannot start in.
+    /// </remarks>
     [Fact]
-    public void The_press_that_changes_the_corpus_folder_is_drawn_only_when_the_corpus_was_refused()
+    public void The_press_that_changes_the_corpus_folder_is_always_drawn()
     {
         var screen = File.ReadAllText(AppSources.At(Screen).FullName);
 
-        screen.ShouldContain("ChangeWhereItIsKept.Visibility = Corpus().Refusal is null");
+        screen.ShouldNotContain("ChangeWhereItIsKept.Visibility");
+
+        Handler("private async void OnChangeWhereItIsKept(").ShouldNotContain("Corpus().Refusal is null");
     }
+
+    /// <summary>
+    /// An empty folder is offered a move, with the old copy's removal unticked, and one that holds
+    /// meetings is switched to as it always was.
+    /// </summary>
+    [Fact]
+    public void An_empty_folder_is_offered_a_move_and_one_with_meetings_is_switched_to()
+    {
+        var markup = File.ReadAllText(
+            AppSources.At(Path.Combine("MeetingTranscriber.App", "Configuracion.xaml")).FullName);
+        var handler = Handler("private async void OnChangeWhereItIsKept(");
+
+        // The offer is for a folder with no corpus in it that holds nothing at all, over a corpus
+        // that opened.
+        handler.ShouldContain("refusal == CorpusRefusal.NoCorpusInTheFolder && ThereAreMeetingsToMoveInto(folder)");
+        handler.ShouldContain("OfferTheMove(folder)");
+        Handler("private bool ThereAreMeetingsToMoveInto(").ShouldContain("Directory.EnumerateFileSystemEntries(folder.FullName).Any()");
+
+        // The switch is the line it always was, after the folder passed its inspection.
+        handler.ShouldContain("CorpusLocation.OfThisUser().Choose(folder)");
+        handler.ShouldContain("CorpusChosen?.Invoke(this, EventArgs.Empty)");
+
+        // The line, the tick (never ticked for the person), the way out and the act.
+        markup.ShouldContain("x:Name=\"RemoveTheOldCopyTick\"");
+        markup.ShouldContain("IsChecked=\"False\"");
+        markup.ShouldContain("Click=\"OnCancelTheMove\"");
+        markup.ShouldContain("Click=\"OnMoveTheMeetings\"");
+        markup.ShouldContain("In(loc:UiTexts.WhatTheFolderKeeps)");
+        Handler("private void OfferTheMove(").ShouldContain("RemoveTheOldCopyTick.IsChecked = false");
+    }
+
+    /// <summary>
+    /// The move copies and then records the folder, in that order and refused while a meeting is
+    /// recorded, and the old copy's removal travels to the application with the choice made.
+    /// </summary>
+    [Fact]
+    public void The_move_copies_then_records_and_hands_the_choice_to_the_application()
+    {
+        var handler = Handler("private async void OnMoveTheMeetings(");
+        var app = File.ReadAllText(AppSources.At(Path.Combine("MeetingTranscriber.App", "App.xaml.cs")).FullName);
+        var window = File.ReadAllText(
+            AppSources.At(Path.Combine("MeetingTranscriber.App", "MainWindow.xaml.cs")).FullName);
+
+        // The runner is stopped before the copy, and the folder is recorded inside the copy's own
+        // rollback, after it was found whole.
+        handler.ShouldContain("await stop()");
+        handler.IndexOf("await stop()", StringComparison.Ordinal)
+            .ShouldBeLessThan(handler.IndexOf("CorpusMove.Copy(", StringComparison.Ordinal));
+        handler.ShouldContain("whenWhole: () => CorpusLocation.OfThisUser().Choose(to)");
+        handler.ShouldContain("carryOn?.Invoke()");
+        handler.ShouldContain("if (ARecordingIsUnderWay)");
+        handler.ShouldContain("new MeetingsMoved(from, to, removeTheOldCopy)");
+
+        window.ShouldContain("Settings.ARecordingIsUnderWay =");
+        window.ShouldContain("Settings.MeetingsMoved += OnMeetingsMovedInTheSettings");
+        app.ShouldContain("window.MeetingsMoved += OnMeetingsMoved");
+        app.ShouldContain("CorpusMove.RemoveTheOldCopyAsync(moved.From, moved.To)");
+
+        // Only when the tick was set.
+        Handler("private async void OnMeetingsMoved(", Path.Combine("MeetingTranscriber.App", "App.xaml.cs"))
+            .ShouldContain("if (!moved.RemoveTheOld)");
+        app.ShouldContain("window.StopTheRunner = StopTheRunner;");
+    }
+
+    /// <summary>
+    /// The screen refuses to be left while the meetings are copied, and the bar's back press is drawn
+    /// dead on it.
+    /// </summary>
+    /// <remarks>
+    /// Goes red with <c>GoBack</c> raising <c>Left</c> while moving: the press that is dead on the
+    /// bar is then alive through Alt+Left, and a window put back over a corpus about to be replaced.
+    /// </remarks>
+    [Fact]
+    public void The_screen_refuses_to_be_left_while_moving()
+    {
+        var screen = File.ReadAllText(AppSources.At(Screen).FullName);
+        var window = File.ReadAllText(
+            AppSources.At(Path.Combine("MeetingTranscriber.App", "MainWindow.xaml.cs")).FullName);
+
+        var goBack = Handler("public void GoBack()");
+        goBack.IndexOf("if (_moving)", StringComparison.Ordinal)
+            .ShouldBeLessThan(goBack.IndexOf("Left?.Invoke", StringComparison.Ordinal));
+
+        screen.ShouldContain("public bool MayGoBack => !_moving;");
+        Handler("private void Moving(bool value)").ShouldContain("IsEnabled = !value");
+        Handler("private void Moving(bool value)").ShouldContain("MayGoBackChanged?.Invoke");
+
+        window.ShouldContain("new(Settings, Settings.IsOpen, Settings.GoBack, Settings.MayGoBack)");
+        window.ShouldContain("Settings.MayGoBackChanged += OnMayGoBackChanged");
+        window.ShouldContain("private bool TheRoomMayBeLeft() =>");
+        window.ShouldContain("|| room.MayBeLeft;");
+    }
+
+    /// <summary>Every way a move can be refused has a sentence on this screen, and no other does.</summary>
+    [Fact]
+    public void Every_refusal_of_a_move_has_a_sentence_on_this_screen() =>
+        EnumTable.Read(
+                Screen,
+                "refusal",
+                "CorpusMoveRefusal",
+                Path.Combine("MeetingTranscriber.Infrastructure", "Storage", "CorpusMove.cs"))
+            .ShouldNameItsWholeEnum("CorpusMoveRefusal");
 
     /// <summary>
     /// The folder picker this screen opens is the Windows App SDK one, which does not need a window
@@ -292,7 +400,12 @@ public class ConfiguracionTests
         markup.ShouldContain("Style=\"{StaticResource Tick}\"");
         markup.ShouldContain("Click=\"OnExport\"");
         markup.ShouldContain("In(loc:UiTexts.Export)");
-        markup.ShouldContain("AutomationProperties.Name=\"{x:Bind In(loc:UiTexts.ExportTheCorpusToAFolder)}\"");
+
+        // The press is a glyph: its name and its tooltip are set where it is drawn, and say what it
+        // exports and what an export is for.
+        markup.ShouldContain("Style=\"{StaticResource TheExportGlyph}\"");
+        Handler("private void ShowTheExport(").ShouldContain("UiTexts.ExportTheCorpusToAFolder");
+        Handler("private void ShowTheExport(").ShouldContain("UiTexts.WhatAnExportIsFor");
 
         screen.ShouldContain("CorpusExport.Into(");
 
@@ -450,9 +563,10 @@ public class ConfiguracionTests
     /// them are never two migrations of a folder with no schema racing for one write lock.
     /// </summary>
     /// <remarks>
-    /// The four writes are the name, what happens after a recording, the summary model and an
-    /// export. The count of <c>OpenMigrated</c> is the other half: a fifth write added beside them
-    /// that skipped the line would be found here and not by somebody's first install.
+    /// The five writes are the name, what happens after a recording, the summary model, the
+    /// summary effort and an export. The count of <c>OpenMigrated</c> is the other half: a sixth
+    /// write added beside them that skipped the line would be found here and not by somebody's
+    /// first install. The line itself is <c>WritesInTurn</c>'s, which has facts of its own.
     /// </remarks>
     [Fact]
     public void The_screen_writes_one_thing_at_a_time()
@@ -462,15 +576,18 @@ public class ConfiguracionTests
             "private async void OnKeepWhoIsUsingThis(",
             "private async void OnAfterARecordingChosen(",
             "private async void OnSummaryModelChosen(",
+            "private async void OnSummaryEffortChosen(",
             "private async void OnExport(",
         })
         {
-            Handler(handler).ShouldContain("OneWriteAtATime(", customMessage: handler);
+            Handler(handler).ShouldContain("_writes.Run(", customMessage: handler);
         }
 
         var screen = File.ReadAllText(AppSources.At(Screen).FullName);
+        screen.ShouldContain("private readonly WritesInTurn _writes = new();");
+        screen.ShouldNotContain("OneWriteAtATime(");
         Regex.Matches(screen, Regex.Escape("CorpusDatabase.OpenMigrated(")).Count
-            .ShouldBe(4, "a write to the corpus that does not go through the line of writes");
+            .ShouldBe(5, "a write to the corpus that does not go through the line of writes");
     }
 
     /// <summary>
@@ -503,14 +620,119 @@ public class ConfiguracionTests
             .ShouldNameItsWholeEnum("SummaryModel");
 
     /// <summary>
+    /// Every effort a summary can be asked with has a name on this screen, for the reason a model
+    /// has.
+    /// </summary>
+    [Fact]
+    public void Every_summary_effort_has_a_name_on_this_screen() =>
+        EnumTable.Read(
+                Screen,
+                "effort",
+                "SummaryEffort",
+                Path.Combine("MeetingTranscriber.Domain", "Meetings", "SummaryEffort.cs"))
+            .ShouldNameItsWholeEnum("SummaryEffort");
+
+    /// <summary>
+    /// Every theme the application can be drawn in has a name on this screen, which is what makes
+    /// it a thing a person can choose.
+    /// </summary>
+    [Fact]
+    public void Every_theme_has_a_name_on_this_screen() =>
+        EnumTable.Read(
+                Screen,
+                "theme",
+                "AppTheme",
+                Path.Combine("MeetingTranscriber.Presentation", "ThemeChoice.cs"))
+            .ShouldNameItsWholeEnum("AppTheme");
+
+    /// <summary>
+    /// The row about who is using the application holds the name and its press and nothing else:
+    /// the language and the theme are on a card of their own, so a press beside a field is the
+    /// field's height and the row is not two questions.
+    /// </summary>
+    [Fact]
+    public void The_name_row_holds_the_name_and_its_save_only()
+    {
+        var markup = Markup();
+        var name = markup.IndexOf("x:Name=\"WhoIsUsingThisBox\"", StringComparison.Ordinal);
+        var card = markup.IndexOf("x:Name=\"AppCard\"", StringComparison.Ordinal);
+        var language = markup.IndexOf("x:Name=\"LanguagePicker\"", StringComparison.Ordinal);
+        var theme = markup.IndexOf("x:Name=\"ThemePicker\"", StringComparison.Ordinal);
+
+        name.ShouldBeGreaterThan(-1);
+        card.ShouldBeGreaterThan(name);
+        language.ShouldBeGreaterThan(card, "the language picker is back on the name's card");
+        theme.ShouldBeGreaterThan(card);
+
+        markup[name..card].ShouldContain("Style=\"{StaticResource ButtonBesideAField}\"");
+        markup[name..card].ShouldNotContain("<ComboBox");
+        markup.ShouldContain("x:Key=\"ButtonBesideAField\"");
+        markup.ShouldContain("<Setter Property=\"Height\" Value=\"{StaticResource ControlHeight}\" />");
+    }
+
+    /// <summary>
+    /// The first step shows the two engine cards and what the second is paid with, so the answer
+    /// about what happens after a recording is never given without the engines in view.
+    /// </summary>
+    [Fact]
+    public void The_first_step_shows_the_engines()
+    {
+        Handler("private void Arrange(").ShouldNotContain("EnginesRow");
+        Handler("public void Open(").ShouldContain("Arrange();");
+
+        var markup = Markup();
+        markup.ShouldContain("x:Name=\"EnginesRow\"");
+        markup.ShouldContain("In(loc:UiTexts.OnYourClaudePlan)");
+        markup.IndexOf("In(loc:UiTexts.OnYourClaudePlan)", StringComparison.Ordinal)
+            .ShouldBeLessThan(markup.IndexOf("x:Name=\"SummaryModelPicker\"", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// The export press says what an export is for on hover, and the key's removal is drawn as a
+    /// press with a rule rather than as a word.
+    /// </summary>
+    [Fact]
+    public void Export_says_what_it_does_on_hover()
+    {
+        var markup = Markup();
+
+        markup.ShouldContain("x:Key=\"TheExportGlyph\"");
+        markup.ShouldContain("BasedOn=\"{StaticResource IconButton}\"");
+        Handler("private void ShowTheExport(")
+            .ShouldContain("ToolTipService.SetToolTip(ExportButton, In(UiTexts.WhatAnExportIsFor))");
+
+        markup.ShouldContain("Style=\"{StaticResource TheKeysRemovePress}\"");
+        markup.ShouldContain("<Setter Property=\"BorderBrush\" Value=\"{ThemeResource EmptyControlRingBrush}\" />");
+    }
+
+    /// <summary>
+    /// A pick of the theme is applied to this window, written down, and never taken for a pick when
+    /// the picker was only being filled.
+    /// </summary>
+    [Fact]
+    public void A_theme_pick_is_applied_written_and_not_a_pick_when_the_picker_is_filled()
+    {
+        var pick = Handler("private void OnThemeChosen(");
+
+        pick.ShouldContain("if (_filling");
+        pick.ShouldContain("chosen == _theme");
+        pick.ShouldContain("ShownInTheme.Apply(");
+        pick.ShouldContain("ThemeChoice.OfThisUser().Write(chosen)");
+    }
+
+    private static string Markup() => File.ReadAllText(
+        AppSources.At(Path.Combine("MeetingTranscriber.App", "Configuracion.xaml")).FullName);
+
+    /// <summary>
     /// The handler's own body, from its signature to the closing brace that balances it, so a
     /// negative assertion over it says nothing about the rest of the screen.
     /// </summary>
-    private static string Handler(string signature)
+    private static string Handler(string signature, string? file = null)
     {
-        var screen = File.ReadAllText(AppSources.At(Screen).FullName);
+        file ??= Screen;
+        var screen = File.ReadAllText(AppSources.At(file).FullName);
         var start = screen.IndexOf(signature, StringComparison.Ordinal);
-        start.ShouldBeGreaterThanOrEqualTo(0, $"{Screen} no longer has '{signature}'.");
+        start.ShouldBeGreaterThanOrEqualTo(0, $"{file} no longer has '{signature}'.");
 
         var opens = screen.IndexOf('{', start);
         var depth = 0;

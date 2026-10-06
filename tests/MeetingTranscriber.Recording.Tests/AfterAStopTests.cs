@@ -40,7 +40,7 @@ public sealed class AfterAStopTests : IDisposable
     }
 
     [Fact]
-    public async Task A_recording_stopped_asking_for_a_summary_is_transcribed_and_nothing_more()
+    public async Task A_recording_stopped_asking_for_a_summary_is_transcribed_and_the_summary_queued()
     {
         var meeting = Stopped(AfterARecording.TranscribeAndSummarise);
 
@@ -51,9 +51,12 @@ public sealed class AfterAStopTests : IDisposable
 
         using var reopened = corpus.Open();
         var jobs = reopened.ProcessingJobs.Where(row => row.MeetingId == meeting).ToList();
-        jobs.ShouldHaveSingleItem();
-        jobs[0].Kind.ShouldBe(JobKind.Transcribe);
-        jobs[0].State.ShouldBe(JobState.Succeeded);
+        jobs.Count.ShouldBe(2);
+        jobs.Single(row => row.Kind == JobKind.Transcribe).State.ShouldBe(JobState.Succeeded);
+
+        // Queued by the settle that filed the transcription, and not run by this pass, which was
+        // handed no summariser.
+        jobs.Single(row => row.Kind == JobKind.Extract).State.ShouldBe(JobState.Pending);
     }
 
     [Fact]

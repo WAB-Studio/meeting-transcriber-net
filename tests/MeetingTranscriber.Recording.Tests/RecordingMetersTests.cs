@@ -404,6 +404,53 @@ public class RecordingMetersTests
         kept.Level.ShouldBe(Speech);
     }
 
+    /// <summary>
+    /// ISC-218. What the chosen sources are hearing is on the meters before any meeting runs, which
+    /// is what lets the right program and microphone be picked by ear. <see cref="RecordingMeters.Of"/>
+    /// still reads a state with no meeting as nothing, and that is the other half of the claim.
+    /// </summary>
+    [Fact]
+    public void Before_a_meeting_the_chosen_sources_are_metered()
+    {
+        var heard = new[]
+        {
+            Reading(AudioChannel.Loopback, Speech),
+            Reading(AudioChannel.Microphone, Nothing),
+        };
+
+        var meters = RecordingMeters.BeforeAMeeting(heard);
+
+        meters.On(AudioChannel.Loopback).ShouldNotBeNull().IsSilent.ShouldBeFalse();
+        meters.On(AudioChannel.Microphone).ShouldNotBeNull().IsSilent.ShouldBeTrue();
+        RecordingMeters.Of(RecorderState.Choosing, heard).Channels.ShouldBeEmpty();
+    }
+
+    /// <summary>
+    /// A stream that ended before a meeting has cut no recording short, so no reading handed to the
+    /// meters says it stopped, however it arrived.
+    /// </summary>
+    [Fact]
+    public void A_channel_listened_to_before_a_meeting_is_never_said_to_have_stopped()
+    {
+        var meters = RecordingMeters.BeforeAMeeting(
+        [
+            Reading(AudioChannel.Loopback, Speech, WentQuiet),
+            Reading(AudioChannel.Microphone, Nothing, WentQuiet),
+        ]);
+
+        meters.Channels.ShouldAllBe(reading => !reading.Stopped);
+    }
+
+    /// <summary>
+    /// What a screen offers to open again is a microphone that died in a meeting; one that went
+    /// quiet while somebody was choosing has nothing to be opened again for.
+    /// </summary>
+    [Fact]
+    public void The_microphone_is_never_offered_again_before_a_meeting() =>
+        RecordingMeters.BeforeAMeeting(
+            [Reading(AudioChannel.Microphone, Nothing, WentQuiet)])
+            .TheMicrophoneDied.ShouldBeFalse();
+
     private static RecorderState[] States() => Enum.GetValues<RecorderState>();
 
     private static RecordingMeters Metered(

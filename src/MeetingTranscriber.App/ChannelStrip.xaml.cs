@@ -43,7 +43,16 @@ public sealed partial class ChannelStrip : UserControl
     /// <summary>True while <see cref="Offer"/> is filling the picker, so refilling is not a pick.</summary>
     private bool _filling;
 
-    public ChannelStrip() => InitializeComponent();
+    private bool _wantsAnAnswer;
+
+    /// <summary>The picker's own style, which it goes back to once its question is answered.</summary>
+    private readonly Style _theStyleItHad;
+
+    public ChannelStrip()
+    {
+        InitializeComponent();
+        _theStyleItHad = Picker.Style;
+    }
 
     /// <summary>
     /// What a test or a tool finds this strip's three elements by. It stays the same in every
@@ -73,6 +82,38 @@ public sealed partial class ChannelStrip : UserControl
         get => Picker.IsEnabled;
         set => Picker.IsEnabled = value;
     }
+
+    /// <summary>
+    /// How the picker is drawn while the question it answers is waiting on somebody. Handed in once
+    /// by the window, which declares it, because the other picker on the card needs the same one and
+    /// two copies are two chances to disagree about what an unanswered question looks like.
+    /// </summary>
+    public Style? StyleWantingAnAnswer { get; set; }
+
+    /// <summary>
+    /// Whether this strip's question has no answer yet, so its picker says so in <c>pico</c> while
+    /// it waits. Read off <c>RecorderScreen.Unanswered</c> by the window and never worked out here.
+    /// </summary>
+    public bool WantsAnAnswer
+    {
+        get => _wantsAnAnswer;
+        set
+        {
+            if (value == _wantsAnAnswer || StyleWantingAnAnswer is not { } wanting)
+            {
+                return;
+            }
+
+            _wantsAnAnswer = value;
+            Picker.Style = value ? wanting : _theStyleItHad;
+        }
+    }
+
+    /// <summary>
+    /// Opens the picker's list, which is what <em>Cambiar</em> on the notice does: the same list a
+    /// press on the pill would, with the programs read again by the window as it opens.
+    /// </summary>
+    public void Open() => Picker.IsDropDownOpen = true;
 
     /// <summary>What the meter is showing, in the words the window worded them in.</summary>
     public string LoudnessSaid

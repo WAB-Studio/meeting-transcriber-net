@@ -436,7 +436,7 @@ public sealed class CorpusLocation
     }
 
     /// <summary>Whether this path is that folder or inside it.</summary>
-    private static bool IsAtOrUnder(string path, string root)
+    internal static bool IsAtOrUnder(string path, string root)
     {
         var relative = Path.GetRelativePath(root, path);
 

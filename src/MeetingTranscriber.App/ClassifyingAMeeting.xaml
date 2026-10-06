@@ -136,16 +136,6 @@
                 <Setter Property="MinHeight" Value="{StaticResource ControlHeight}" />
             </Style>
 
-            <!-- The `+` at the end of a path: the same optional control, square, carrying a glyph
-                 instead of a word. What it is called is its automation name, because a glyph with
-                 no name is nothing to a screen reader. -->
-            <Style x:Key="AddALevel" TargetType="Button" BasedOn="{StaticResource AnOptionalPress}">
-                <Setter Property="Width" Value="{StaticResource ControlHeight}" />
-                <Setter Property="MinWidth" Value="0" />
-                <Setter Property="Padding" Value="0" />
-                <Setter Property="HorizontalContentAlignment" Value="Center" />
-            </Style>
-
             <!-- One of the two ways a meeting can name somebody, off. Both are pressable and both
                  are there on every row: §5.3 row 10 is a person a meeting is about who was never in
                  the room, and with one badge nobody filing that meeting by hand could say so. -->

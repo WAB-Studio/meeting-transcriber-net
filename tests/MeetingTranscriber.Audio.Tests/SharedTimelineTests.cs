@@ -37,6 +37,39 @@ public class SharedTimelineTests
     }
 
     /// <summary>
+    /// A paused stretch is not written, and it is the same frames on both channels: what came after
+    /// it lands earlier on the one and on the other alike, so the two still describe one instant.
+    /// </summary>
+    [Fact]
+    public void A_stretch_left_out_is_cut_from_both_channels_at_the_same_frames()
+    {
+        Func<double, float> marks = at => at is >= 1.5 and < 1.6 or >= 3 and < 3.1 ? 0.9f : 0f;
+        var loopback = Fabricated.Packets(AudioChannel.Loopback, StereoFloat, 48_000, 0, 5, marks).ToArray();
+        var microphone = Fabricated.Packets(AudioChannel.Microphone, MonoFloat, 48_000, 0, 5, marks).ToArray();
+
+        // The fabricated counter does not start at zero, so a second into the meeting is read off the
+        // first packet and not spelled.
+        long At(double seconds) => loopback[0].CapturedAt.Ticks + (long)(seconds * MonotonicInstant.TicksPerSecond);
+
+        var collected = new Collected();
+        var timeline = SharedTimeline.Of(StereoFloat, MonoFloat, collected, [(At(1), At(2))]);
+
+        Feed(timeline, loopback, microphone);
+
+        var summary = timeline.Close();
+
+        summary.Length.Milliseconds.ShouldBeInRange(3_940, 4_060);
+        collected.Frames.ShouldBeInRange((4 * CapturedAudio.SampleRate) - 1_000, (4 * CapturedAudio.SampleRate) + 1_000);
+        foreach (var channel in new[] { AudioChannel.Loopback, AudioChannel.Microphone })
+        {
+            // The mark inside the pause is gone, and the one after it is a second earlier.
+            collected.Loudest(channel, 1.0, 1.9).ShouldBe(0f);
+            collected.Loudest(channel, 2.0, 2.1).ShouldBeGreaterThan(0.5f);
+            collected.Loudest(channel, 2.2, 3.9).ShouldBe(0f);
+        }
+    }
+
+    /// <summary>
     /// ISC-60. The gap between two devices being handed over is part of the recording. Closing it
     /// up would move one side of the conversation against the other for the whole meeting.
     /// </summary>

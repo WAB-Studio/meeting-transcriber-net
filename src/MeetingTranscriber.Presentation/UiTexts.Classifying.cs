@@ -15,23 +15,56 @@ public static partial class UiTexts
     // seen when it is chosen, which is what #105 settled.
     public static UiText WhichOneWasItLike { get; } = new("¿A cuál se pareció?", "Which one was it like?");
 
-    // The three columns. Plain Spanish about the meeting and never the name of a role: *es trabajo
-    // de*, *del otro lado*, *trata sobre*.
-    public static UiText ItIsWorkOf { get; } = new("Es trabajo de", "It is work of");
-
-    public static UiText TheOtherSide { get; } = new("Del otro lado", "The other side");
-
+    // The heading of the column for what a meeting was about without being work of. The other two
+    // columns are headed by the name of their first level, which is the meeting's own word for it
+    // (see the `Place…` entries below) and no longer a sentence about the role.
     public static UiText ItIsAbout { get; } = new("Trata sobre", "It is about");
+
+    // The two columns a person fills by hand reach through a press each, because with no kind of
+    // meeting lit nothing has opened them. They are said as what is being added.
+    public static UiText OpenOtherOrganization { get; } =
+        new("Otra organización…", "Other organization…");
+
+    public static UiText OpenItIsAbout { get; } = new("Trata sobre…", "It is about…");
+
+    // What a level of a path, or a place for somebody, is called for the meeting it is in. The
+    // names that already exist are used as they are — *Organización*, *Persona*, *Conferencia* —
+    // so the same word is one entry; these are the rest. Each is a plain word somebody says out
+    // loud and none is the name of what the corpus stores.
+    public static UiText PlaceProject { get; } = new("Proyecto", "Project");
+
+    public static UiText PlaceTopic { get; } = new("Asunto", "Topic");
+
+    public static UiText PlaceUniversity { get; } = new("Universidad", "University");
+
+    public static UiText PlaceCourse { get; } = new("Materia", "Course");
+
+    public static UiText PlaceTeacher { get; } = new("Profesor", "Teacher");
+
+    public static UiText PlaceCompany { get; } = new("Empresa", "Company");
+
+    public static UiText PlaceInterviewer { get; } = new("Entrevistador", "Interviewer");
+
+    public static UiText PlaceCandidate { get; } = new("Candidato", "Candidate");
+
+    public static UiText PlaceClient { get; } = new("Cliente", "Client");
+
+    public static UiText PlaceContact { get; } = new("Contacto", "Contact");
+
+    public static UiText PlaceOrganizer { get; } = new("Organizador", "Organizer");
+
+    public static UiText PlaceTeam { get; } = new("Equipo", "Team");
+
+    public static UiText PlaceCase { get; } = new("Caso", "Case");
+
+    public static UiText PlaceOtherOrganization { get; } =
+        new("Otra organización", "Other organization");
 
     // Where the pills would be while a column has none. *Agregar* stands under the column either
     // way, so a column a shape opened empty is still one somebody can fill by hand.
     public static UiText NothingElse { get; } = new("Nada más", "Nothing else");
 
     public static UiText Add { get; } = new("Agregar", "Add");
-
-    // The `+` at the end of a path. A glyph with no name is nothing to a screen reader, so this is
-    // what that press is called in the automation tree rather than on it.
-    public static UiText AddALevel { get; } = new("Agregar nivel", "Add level");
 
     public static UiText Who { get; } = new("Quiénes", "Who");
 
@@ -100,7 +133,8 @@ public static partial class UiTexts
     // what it is read against is another person's period and the meeting's own.
     public static UiText SinceTheYear { get; } = new("desde {0}", "since {0}");
 
-    // The fourteen shapes, by name only. What each one fills is seen when it is chosen.
+    // The fourteen shapes, by name. What each one fills is seen when it is chosen; what it is is
+    // said in a line under the pointer (see the `Describes…` entries below).
     public static UiText TheShapeClass { get; } = new("Clase", "Class");
 
     public static UiText TheShapeCasualCatchUp { get; } = new("Junta casual", "A casual catch-up");
@@ -138,4 +172,45 @@ public static partial class UiTexts
     // casual catch-up»; this one is «none of the thirteen fits and I will fill it in».
     public static UiText TheShapeFilledByHand { get; } =
         new("Ninguna — la lleno yo", "None — I will fill it in");
+
+    // One line for each of the fourteen, shown on hover: what kind of meeting it is, in words, and
+    // never what it will open.
+    public static UiText DescribesClass { get; } = new("Una clase o curso", "A class or course");
+
+    public static UiText DescribesCasualCatchUp { get; } =
+        new("Una charla sin tema fijo", "A chat with no set topic");
+
+    public static UiText DescribesInterviewAsCandidate { get; } =
+        new("Te entrevista una empresa", "A company interviews you");
+
+    public static UiText DescribesInterviewAsInterviewer { get; } =
+        new("Entrevistas a alguien", "You interview somebody");
+
+    public static UiText DescribesTwoProjects { get; } =
+        new("Trata dos proyectos a la vez", "Covers two projects at once");
+
+    public static UiText DescribesSellingToAClient { get; } =
+        new("Le vendes a un cliente", "You sell to a client");
+
+    public static UiText DescribesTeamMeeting { get; } = new("Tu propio equipo", "Your own team");
+
+    public static UiText DescribesConference { get; } =
+        new("Una charla o evento externo", "A talk or outside event");
+
+    public static UiText DescribesBetweenTwoCompanies { get; } =
+        new("Dos empresas, ninguna la tuya", "Two companies, neither yours");
+
+    public static UiText DescribesHumanResources { get; } =
+        new("Sobre alguien que no está", "About somebody who is not there");
+
+    public static UiText DescribesRecurringOneToOne { get; } =
+        new("Uno a uno con la misma persona", "One to one with the same person");
+
+    public static UiText DescribesDaily { get; } =
+        new("La reunión diaria del equipo", "The team's daily meeting");
+
+    public static UiText DescribesAfterSalesSupport { get; } =
+        new("Un caso de un cliente", "A client's case");
+
+    public static UiText DescribesFilledByHand { get; } = new("Lo llenas tú", "You fill it in");
 }

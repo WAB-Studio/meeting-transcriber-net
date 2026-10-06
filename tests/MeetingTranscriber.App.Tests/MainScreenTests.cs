@@ -72,12 +72,23 @@ public partial class MainScreenTests
     [Fact]
     public void The_back_button_goes_back_through_the_screen_that_has_the_room()
     {
-        var back = Method("private void GoBack(");
+        // One ordered list, read by the three questions about the sub-screens. The corrections come
+        // before the voices because they open over them and win while they are open.
+        var list = Method("private SubScreen[] TheSubScreens(");
+        var order = new[] { "Settings", "Classifying", "Corrections", "Voices", "NodeStory", "Reading" };
 
-        foreach (var screen in new[] { "Settings", "Classifying", "Voices", "Corrections", "NodeStory", "Reading" })
+        foreach (var screen in order)
         {
-            back.ShouldContain(screen + ".GoBack()", customMessage: $"the way back never leaves {screen}.");
+            list.ShouldContain(screen + ".GoBack", customMessage: $"the way back never leaves {screen}.");
         }
+
+        order.Select(screen => list.IndexOf("new(" + screen + ",", StringComparison.Ordinal))
+            .ShouldBe(order.Select(screen => list.IndexOf("new(" + screen + ",", StringComparison.Ordinal)).Order());
+
+        Method("private FrameworkElement? TheSubScreenWithTheRoom(").ShouldContain("TheSubScreens()");
+        Method("private void GoBack(").ShouldContain("TheSubScreens()");
+        Method("private void ShowWhatTheRoomIsShowing(").ShouldContain("TheSubScreens()");
+        Method("private void PlaceTheSubScreens(").ShouldContain("TheSubScreens()");
 
         var window = Read(Code);
 
@@ -118,6 +129,122 @@ public partial class MainScreenTests
 
         Method("private void ReadTheDevices(").ShouldContain("_words.Take(_channels,");
         Method("private void OnMeters(").ShouldContain("ReadTheDevices();");
+    }
+
+    /// <summary>
+    /// The bar is the title bar: the platform's is not drawn, the window is dragged by a region the
+    /// bar hands over that leaves the back button out, and the caption buttons' width is read off the
+    /// window rather than guessed.
+    /// </summary>
+    [Fact]
+    public void The_app_bar_is_the_title_bar()
+    {
+        var bar = Method("private void ExtendTheBarIntoTheTitleBar(");
+
+        bar.ShouldContain("ExtendsContentIntoTitleBar = true;");
+        bar.ShouldContain("TitleBarHeightOption.Tall");
+        bar.ShouldContain("SetTitleBar(TheDragRegion);");
+        Method("private void ReserveTheCaptionButtons(").ShouldContain("AppWindow.TitleBar.RightInset");
+
+        // The region is behind the mark and the name, in the columns after the back button's, and
+        // holds nothing pressable: a press inside a drag region is a drag.
+        var markup = Read(Markup);
+        Regex.IsMatch(markup, @"<Border x:Name=""TheDragRegion"" Grid.Column=""1"" Grid.ColumnSpan=""2"" />")
+            .ShouldBeTrue("the drag region is no longer an empty element over the mark and the name.");
+        markup.ShouldContain("x:Name=\"CaptionSpace\"");
+    }
+
+    [Fact]
+    public void The_accelerator_shows_no_tooltip() =>
+        Read(Code).ShouldContain(
+            "Content.KeyboardAcceleratorPlacementMode = KeyboardAcceleratorPlacementMode.Hidden;");
+
+    /// <summary>
+    /// Pausing and carrying on are one press, a glyph that is the state's: there is no second button
+    /// for carrying on to be dead beside while the first is live.
+    /// </summary>
+    [Fact]
+    public void Pause_and_carry_on_are_one_press()
+    {
+        Read(Markup).ShouldNotContain("ResumeButton");
+        Read(Code).ShouldNotContain("ResumeButton");
+        Read(Code).ShouldNotContain("OnResume");
+
+        var press = Method("private void ShowThePausePress(");
+        press.ShouldContain("screen.State == RecorderState.Paused");
+        press.ShouldContain("UiTexts.Resume : UiTexts.Pause");
+        press.ShouldContain("ToolTipService.SetToolTip(PauseButton");
+        press.ShouldContain("AutomationProperties.SetName(PauseButton");
+
+        // Which of the two it does is the screen's answer and never the glyph's.
+        var pressed = Method("private void OnPause(");
+        pressed.ShouldContain("screen.Allows(RecorderPress.Resume)");
+        pressed.ShouldContain("recording.Resume();");
+        pressed.ShouldContain("recording.Pause();");
+    }
+
+    /// <summary>
+    /// Both clocks on screen — the stopwatch and the strip — are the one <c>ClockAt</c>, which takes
+    /// the paused time off the stretch since the devices opened (ISC-222.3).
+    /// </summary>
+    [Fact]
+    public void The_clock_leaves_the_pause_out()
+    {
+        var clock = Method("private RecordingClock ClockAt(");
+
+        clock.ShouldContain("_recording?.PausedFor(now)");
+        clock.ShouldContain("RecordingClock.Of(");
+
+        Regex.Matches(Comments().Replace(Read(Code), string.Empty), @"RecordingClock\.Of\(").Count
+            .ShouldBe(1, "a second reading of the clock a line apart would be two numbers on one screen.");
+
+        Method("private void Refresh(").ShouldContain("ClockAt(screen.State)");
+        Method("private void OnWatch(").ShouldContain("ClockAt(screen.State)");
+    }
+
+    /// <summary>
+    /// What the meters listen to before a meeting is let go of — and waited for — before the meeting
+    /// opens the same devices, because two process loopbacks at once are not assumed to work.
+    /// </summary>
+    [Fact]
+    public void Listening_stops_before_the_devices_open()
+    {
+        var record = Method("private async void OnRecord(");
+
+        record.ShouldContain("await _listeningWork;");
+        record.IndexOf("await _listeningWork;", StringComparison.Ordinal)
+            .ShouldBeLessThan(
+                record.IndexOf("MeetingRecording.Start(", StringComparison.Ordinal),
+                "the meeting opens its devices before the listening has let go of them.");
+        record.IndexOf("_step = RecorderStep.Starting;", StringComparison.Ordinal)
+            .ShouldBeLessThan(
+                record.IndexOf("await _listeningWork;", StringComparison.Ordinal),
+                "the listening is waited on before the refresh that asks it to close.");
+
+        // Asked for while the screen is choosing, the recorder card is up and the window is in front.
+        var asks = Method("private void ListenAsTheScreenAsks(");
+        asks.ShouldContain("screen.State == RecorderState.Choosing");
+        asks.ShouldContain("screen.TheRecorderIsOnScreen");
+        asks.ShouldContain("_windowIsActive");
+        Method("private void Refresh(").ShouldContain("ListenAsTheScreenAsks(screen);");
+        Read(Code).ShouldContain("Activated += OnActivated;");
+    }
+
+    /// <summary>
+    /// Filing reads the meeting again before it opens the voices, so their way back returns to a
+    /// meeting that already says what was filed (fb-63).
+    /// </summary>
+    [Fact]
+    public void Filing_reads_the_meeting_again_before_the_voices_open()
+    {
+        var filed = Method("private void OnFiled(");
+
+        filed.ShouldContain("Reading.ReadAgain();");
+        filed.IndexOf("Reading.ReadAgain();", StringComparison.Ordinal)
+            .ShouldBeLessThan(
+                filed.IndexOf("Voices.Show(", StringComparison.Ordinal),
+                "the voices open over a meeting that has not been read again.");
+        Method("private bool SomebodyIsUnnamedOn(").ShouldContain("!voice.SettledByTheRecording");
     }
 
     private static string Read(string file) => File.ReadAllText(AppSources.At(file).FullName);

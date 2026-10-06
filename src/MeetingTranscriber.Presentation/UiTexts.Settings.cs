@@ -15,6 +15,39 @@ public static partial class UiTexts
 
     public static UiText Folder { get; } = new("Carpeta", "Folder");
 
+    // The card for how the application itself looks and reads, and its two pickers. The theme's
+    // three answers are one per member of `AppTheme`; *Sistema* is "whichever Windows is set to".
+    public static UiText App { get; } = new("Aplicación", "App");
+
+    public static UiText Theme { get; } = new("Tema", "Theme");
+
+    public static UiText ThemeSystem { get; } = new("Sistema", "System");
+
+    public static UiText ThemeLight { get; } = new("Claro", "Light");
+
+    public static UiText ThemeDark { get; } = new("Oscuro", "Dark");
+
+    // Said when the pick was applied to this window and could not be written down, so the next
+    // launch will not have it. The language's own sentence is the same shape.
+    public static UiText TheThemeWasNotRemembered { get; } = new(
+        "No se pudo recordar el tema; la próxima vez se abrirá con el de Windows.",
+        "The theme could not be remembered; next time it opens in Windows' theme.");
+
+    // Under *Resumir con*: how that engine is paid. Summaries run on the person's own Claude plan,
+    // because the application strips every API key before it starts one, so no card says a price.
+    public static UiText OnYourClaudePlan { get; } =
+        new("Con tu plan de Claude", "On your Claude plan");
+
+    // The picker for how much reasoning a summary is asked to spend, one answer per member of
+    // `SummaryEffort`.
+    public static UiText Effort { get; } = new("Esfuerzo", "Effort");
+
+    public static UiText EffortHigh { get; } = new("Alto", "High");
+
+    public static UiText EffortMedium { get; } = new("Medio", "Medium");
+
+    public static UiText EffortLow { get; } = new("Bajo", "Low");
+
     // The press that asks Claude Code whether it answers, and what it says when it does. Said only
     // after that press: opening the screen says nothing about an engine that is there.
     public static UiText Test { get; } = new("Probar", "Test");
@@ -54,6 +87,50 @@ public static partial class UiTexts
     /// </summary>
     public static UiText TheFolderPickerDidNotOpen { get; } = new(
         "Windows no abrió el selector de carpetas.", "Windows did not open the folder picker.");
+
+    // The folder card's tooltip: what is kept where the card says.
+    public static UiText WhatTheFolderKeeps { get; } = new(
+        "Aquí se guardan tus reuniones: audio, transcripciones y resúmenes.",
+        "Your meetings are kept here: audio, transcripts and summaries.");
+
+    // Moving the meetings to an empty folder: the line that offers it, the tick that also removes
+    // the old copy, the act, and what the screen says while it works.
+    public static UiText TheMeetingsMoveTo { get; } = new(
+        "Mover las reuniones a {0}", "Move the meetings to {0}");
+
+    public static UiText RemoveTheOldCopy { get; } = new("Borrar la copia anterior", "Delete the old copy");
+
+    public static UiText Move { get; } = new("Mover", "Move");
+
+    public static UiText Moving { get; } = new("Moviendo…", "Moving…");
+
+    // One sentence per member of `CorpusMoveRefusal`, said before anything is written.
+    public static UiText TheFolderIsNotEmpty { get; } = new(
+        "La carpeta no está vacía.", "The folder is not empty.");
+
+    public static UiText ThatFolderGoesOnUninstall { get; } = new(
+        "Esa carpeta se borra al desinstalar.", "That folder is deleted on uninstall.");
+
+    public static UiText OneFolderIsInsideTheOther { get; } = new(
+        "Una carpeta está dentro de la otra.", "One folder is inside the other.");
+
+    public static UiText WorkMustFinishFirst { get; } = new(
+        "Hay trabajo en curso; espere a que termine.", "Work is under way; wait for it to finish.");
+
+    public static UiText ARecordingIsWaitingToBeDecided { get; } = new(
+        "Hay una grabación sin decidir.", "A recording is waiting to be decided.");
+
+    // Said while a meeting is being recorded or saved, which the move waits out. The reason goes
+    // inside the second one: it is what the disk or SQLite said, the evidence somebody quotes.
+    public static UiText AMeetingIsBeingRecorded { get; } = new(
+        "Hay una reunión en curso; termina de grabarla antes de mover las reuniones.",
+        "A meeting is being recorded; finish it before moving the meetings.");
+
+    public static UiText TheMeetingsCouldNotBeMoved { get; } = new(
+        "No se pudieron mover las reuniones: {0}", "The meetings could not be moved: {0}");
+
+    public static UiText TheOldCopyWasNotRemoved { get; } = new(
+        "No se borró la copia anterior.", "The old copy was not deleted.");
 
     public static UiText WhoIsUsingTheApplication { get; } = new("Tu nombre", "Your name");
 
@@ -183,6 +260,11 @@ public static partial class UiTexts
     /// </summary>
     public static UiText ExportTheCorpusToAFolder { get; } =
         new("Exportar las reuniones a una carpeta", "Export the meetings to a folder");
+
+    // The tooltip of the export's glyph: the press shows no word, so what it does is said on hover.
+    public static UiText WhatAnExportIsFor { get; } = new(
+        "Guarda el audio en WAV y las transcripciones en una carpeta, por ejemplo para pasarlas a otra PC.",
+        "Saves the audio as WAV and the transcripts to a folder, for instance to move them to another PC.");
 
     // On the press while an export runs, and nowhere else: there is no success sentence, because
     // the line below it changing is what says it worked.

@@ -28,7 +28,7 @@ namespace MeetingTranscriber.Processing.Summaries;
 /// A required field missing or of the wrong JSON kind is refused where it stands, and nothing
 /// beneath it is asked about: an object that is not there has no fields of its own to be wrong, and
 /// an array that is a string has no elements to walk. Refusals are collected in the order this
-/// reader asks about each field — schema version, meeting id, abstract, summary, participants,
+/// reader asks about each field — schema version, meeting id, abstract, the optional title, summary, participants,
 /// decisions, actions, then open questions, each before its own children — and a key the shape does
 /// not name is reported last, in the order the document itself carries it.
 /// </para>
@@ -50,7 +50,7 @@ public static class ExtractionReader
 
     private static readonly HashSet<string> TopLevelKeys =
     [
-        "schema_version", "meeting_id", "abstract", "summary",
+        "schema_version", "meeting_id", "abstract", "title", "summary",
         "participants", "decisions", "actions", "open_questions",
     ];
 
@@ -92,6 +92,7 @@ public static class ExtractionReader
         var schemaVersion = RequireSchemaVersion(root, refusals);
         var meetingId = RequireGuid(root, "meeting_id", "meeting_id", refusals);
         var abstractText = RequireNonBlankString(root, "abstract", "abstract", refusals);
+        var title = ReadOptionalTitle(root);
         var summary = RequireString(root, "summary", "summary", refusals);
         var participants = RequireStringArray(root, "participants", "participants", refusals);
         var decisions = RequireObjectArray(root, "decisions", "decisions", refusals, ReadDecision);
@@ -108,7 +109,25 @@ public static class ExtractionReader
             participants,
             decisions,
             actions,
-            openQuestions);
+            openQuestions,
+            title);
+    }
+
+    /// <summary>
+    /// A title is a courtesy, so only a string with something in it is one: absent, <c>null</c>, blank
+    /// or of another kind all read as no title. Refusing a whole summary — a paid answer — because its
+    /// optional name was malformed would cost more than the name is worth.
+    /// </summary>
+    private static string? ReadOptionalTitle(JsonElement owner)
+    {
+        if (owner.TryGetProperty("title", out var value)
+            && value.ValueKind == JsonValueKind.String
+            && !string.IsNullOrWhiteSpace(value.GetString()))
+        {
+            return value.GetString()!.Trim();
+        }
+
+        return null;
     }
 
     private static ExtractedDecision ReadDecision(JsonElement item, string path, List<ExtractionRefusal> refusals)

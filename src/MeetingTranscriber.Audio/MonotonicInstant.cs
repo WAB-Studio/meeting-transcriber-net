@@ -1,3 +1,5 @@
+using System.Diagnostics;
+
 namespace MeetingTranscriber.Audio;
 
 /// <summary>
@@ -45,6 +47,20 @@ public readonly record struct MonotonicInstant : IComparable<MonotonicInstant>
 
         return new MonotonicInstant((long)Math.Round(milliseconds * (TicksPerSecond / 1000)));
     }
+
+    /// <summary>
+    /// The machine's monotonic clock right now, on the counter and in the unit WASAPI's
+    /// <c>qpcPosition</c> carries: the performance counter, scaled to 100 ns.
+    /// </summary>
+    /// <remarks>
+    /// Read from <see cref="Stopwatch.GetTimestamp"/>, which is <c>QueryPerformanceCounter</c> on
+    /// Windows — the very counter a packet is stamped with — and never from a <c>TimeProvider</c>,
+    /// whose own clock is free to disagree with it. A pause is cut out of the recording by comparing
+    /// its instants against the packets', so they have to be read off the same one. Scaled in 128 bits
+    /// because a counter in the tens of billions times ten million overflows 64.
+    /// </remarks>
+    public static MonotonicInstant Now() =>
+        new((long)((Int128)Stopwatch.GetTimestamp() * TicksPerSecond / Stopwatch.Frequency));
 
     /// <summary>
     /// How far this is after <paramref name="earlier"/>, in ticks. Signed, because a source whose

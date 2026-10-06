@@ -5,6 +5,7 @@ using System.Text.Json.Nodes;
 using MeetingTranscriber.Domain.Artifacts;
 using MeetingTranscriber.Domain.Audio;
 using MeetingTranscriber.Domain.Jobs;
+using MeetingTranscriber.Domain.Meetings;
 using MeetingTranscriber.Domain.Time;
 using MeetingTranscriber.Infrastructure.Artifacts;
 using MeetingTranscriber.Infrastructure.Meetings;
@@ -14,6 +15,8 @@ using MeetingTranscriber.Processing.Intake;
 using MeetingTranscriber.Processing.Jobs;
 using MeetingTranscriber.Processing.Summaries;
 using MeetingTranscriber.Processing.Tests.Summaries;
+
+using Microsoft.EntityFrameworkCore;
 
 namespace MeetingTranscriber.Processing.Tests.Jobs;
 
@@ -705,6 +708,120 @@ public sealed class JobRunnerTests
         reopened.ProcessingJobs.Single(row => row.Id == jobId).State.ShouldBe(JobState.Succeeded);
     }
 
+    /// <summary>Goes red with the queueing in <c>Settle</c> dropped: nothing then asks for the summary.</summary>
+    [Fact]
+    public async Task A_transcription_filed_under_transcribe_and_summarise_queues_the_summary()
+    {
+        using var corpus = new TemporaryCorpus();
+        var (meeting, transcription) = ArrangeTranscribable(corpus, AfterARecording.TranscribeAndSummarise);
+
+        var run = await RunTheTranscription(corpus);
+
+        run.Ran.ShouldBe([transcription]);
+        run.Left.ShouldBeEmpty();
+
+        using var reopened = corpus.Open();
+        reopened.ProcessingJobs.Single(row => row.Id == transcription).State.ShouldBe(JobState.Succeeded);
+        var queued = reopened.ProcessingJobs.Single(row => row.MeetingId == meeting && row.Kind == JobKind.Extract);
+        queued.State.ShouldBe(JobState.Pending);
+    }
+
+    [Fact]
+    public async Task A_transcription_filed_under_transcribe_only_queues_nothing()
+    {
+        using var corpus = new TemporaryCorpus();
+        var (meeting, _) = ArrangeTranscribable(corpus, AfterARecording.Transcribe);
+
+        var run = await RunTheTranscription(corpus);
+
+        run.Left.ShouldBeEmpty();
+
+        using var reopened = corpus.Open();
+        reopened.ProcessingJobs.Any(row => row.MeetingId == meeting && row.Kind == JobKind.Extract).ShouldBeFalse();
+    }
+
+    /// <summary>Goes red with the queueing outside its own catch: the transcription would not be settled.</summary>
+    [Fact]
+    public async Task A_summary_that_cannot_be_queued_leaves_the_transcription_filed()
+    {
+        using var corpus = new TemporaryCorpus();
+        var (meeting, transcription) = ArrangeTranscribable(corpus, AfterARecording.TranscribeAndSummarise);
+
+        using (var context = corpus.Open())
+        {
+            // A corpus that refuses exactly the row a summary needs, and nothing else.
+            context.Database.ExecuteSqlRaw(
+                "CREATE TRIGGER refuse_summaries BEFORE INSERT ON processing_jobs WHEN NEW.kind = 'extract' "
+                + "BEGIN SELECT RAISE(ABORT, 'no summaries here'); END;");
+        }
+
+        var run = await RunTheTranscription(corpus);
+
+        run.Ran.ShouldBe([transcription]);
+        run.Left.ShouldHaveSingleItem().ShouldContain("the summary could not be queued");
+
+        using var reopened = corpus.Open();
+        reopened.ProcessingJobs.Single(row => row.Id == transcription).State.ShouldBe(JobState.Succeeded);
+        reopened.ProcessingJobs.Any(row => row.MeetingId == meeting && row.Kind == JobKind.Extract).ShouldBeFalse();
+    }
+
+    /// <summary>Goes red with the naming dropped from <c>SettleSummary</c>'s filed arm.</summary>
+    [Fact]
+    public async Task An_accepted_summary_with_a_title_names_a_meeting_nobody_named()
+    {
+        using var corpus = new TemporaryCorpus();
+        var (meeting, _) = ArrangeSummarisable(corpus, When);
+        var provider = new FakeSummaries().Answering(new SummaryProviderAnswer.Extracted(
+            Utf8(Accepted(meeting, title: "Lanzamiento de la campana")), "1.0", "opus", null));
+
+        var run = await RunTheSummary(corpus, provider);
+
+        run.Left.ShouldBeEmpty();
+
+        using var reopened = corpus.Open();
+        reopened.Meetings.Single(row => row.Id == meeting).Title.ShouldBe("Lanzamiento de la campana");
+    }
+
+    /// <summary>Goes red with the title written whatever the meeting already reads as.</summary>
+    [Fact]
+    public async Task A_meeting_somebody_named_keeps_its_name()
+    {
+        using var corpus = new TemporaryCorpus();
+        var (meeting, _) = ArrangeSummarisable(corpus, When);
+
+        using (var context = corpus.Open())
+        {
+            new MeetingReading(context, TimeProvider.System).Name(meeting, "Mi nombre");
+        }
+
+        var provider = new FakeSummaries().Answering(new SummaryProviderAnswer.Extracted(
+            Utf8(Accepted(meeting, title: "Lanzamiento de la campana")), "1.0", "opus", null));
+
+        var run = await RunTheSummary(corpus, provider);
+
+        run.Left.ShouldBeEmpty();
+
+        using var reopened = corpus.Open();
+        reopened.Meetings.Single(row => row.Id == meeting).Title.ShouldBe("Mi nombre");
+    }
+
+    [Fact]
+    public async Task A_summary_with_no_title_names_nothing()
+    {
+        using var corpus = new TemporaryCorpus();
+        var (meeting, jobId) = ArrangeSummarisable(corpus, When);
+        var provider = new FakeSummaries().Answering(new SummaryProviderAnswer.Extracted(
+            Utf8(Accepted(meeting)), "1.0", "opus", null));
+
+        var run = await RunTheSummary(corpus, provider);
+
+        run.Ran.ShouldBe([jobId]);
+        run.Left.ShouldBeEmpty();
+
+        using var reopened = corpus.Open();
+        reopened.Meetings.Single(row => row.Id == meeting).Title.ShouldBeNull();
+    }
+
     /// <summary>Goes red with the runner or the door touching the earlier run's rows.</summary>
     [Fact]
     public async Task A_summary_asked_for_again_is_kept_beside_the_one_before()
@@ -1214,12 +1331,45 @@ public sealed class JobRunnerTests
         return (meeting, job.Id);
     }
 
-    private static JsonNode Accepted(Guid meetingId, string theAbstract = "Se decidio la fecha de lanzamiento.") =>
+    /// <summary>A recorded meeting with a transcription queued over it, under the setting given.</summary>
+    private static (Guid Meeting, Guid JobId) ArrangeTranscribable(TemporaryCorpus corpus, AfterARecording settled)
+    {
+        using var context = corpus.OpenMigrated();
+        var meeting = RecordedMeetings.Recorded(context, SourceProfile.Multichannel, When);
+        var job = new MeetingWork(context, When).Take(meeting);
+        new CorpusSettings(context).WhenARecordingEnds(settled, When);
+        context.SaveChanges();
+        return (meeting, job.Id);
+    }
+
+    private static async Task<JobsRun> RunTheTranscription(TemporaryCorpus corpus)
+    {
+        using var lease = RunnerLease.TryTake(corpus.Root);
+        lease.ShouldNotBeNull();
+
+        return await JobRunner.RunWhatIsDueAsync(
+            lease, TimeProvider.System, FixtureBody(DeepgramFixtures.TwoChannelShort),
+            TestContext.Current.CancellationToken);
+    }
+
+    private static async Task<JobsRun> RunTheSummary(TemporaryCorpus corpus, ISummaryProvider provider)
+    {
+        using var lease = RunnerLease.TryTake(corpus.Root);
+        lease.ShouldNotBeNull();
+
+        return await JobRunner.RunWhatIsDueAsync(
+            lease, TimeProvider.System, FixtureBody(DeepgramFixtures.TwoChannelShort),
+            TestContext.Current.CancellationToken, provider);
+    }
+
+    private static JsonNode Accepted(
+        Guid meetingId, string theAbstract = "Se decidio la fecha de lanzamiento.", string? title = null) =>
         JsonNode.Parse($$"""
         {
           "schema_version": "1",
           "meeting_id": "{{meetingId}}",
           "abstract": "{{theAbstract}}",
+          {{(title is null ? "" : $"\"title\": \"{title}\",")}}
           "summary": "",
           "participants": ["{{MeetingRows.SpeakerLabel}}"],
           "decisions": [

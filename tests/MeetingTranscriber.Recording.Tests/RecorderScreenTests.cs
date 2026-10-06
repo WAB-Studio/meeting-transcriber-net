@@ -83,7 +83,14 @@ public class RecorderScreenTests
     {
         var screen = Screen(RecorderState.Recording, Everything);
 
-        screen.Available.ShouldBe([RecorderPress.Pause, RecorderPress.Stop], ignoreOrder: true);
+        screen.Available.ShouldBe(
+            [
+                RecorderPress.Pause,
+                RecorderPress.Stop,
+                RecorderPress.ChangeTheMicrophone,
+                RecorderPress.ChangeTheSource,
+            ],
+            ignoreOrder: true);
     }
 
     [Fact]
@@ -91,7 +98,14 @@ public class RecorderScreenTests
     {
         var screen = Screen(RecorderState.Paused, Everything);
 
-        screen.Available.ShouldBe([RecorderPress.Resume, RecorderPress.Stop], ignoreOrder: true);
+        screen.Available.ShouldBe(
+            [
+                RecorderPress.Resume,
+                RecorderPress.Stop,
+                RecorderPress.ChangeTheMicrophone,
+                RecorderPress.ChangeTheSource,
+            ],
+            ignoreOrder: true);
     }
 
     [Fact]
@@ -454,25 +468,89 @@ public class RecorderScreenTests
 
     /// <summary>
     /// A paused meeting hears nothing by definition, for the reason the whole machine is refused
-    /// there: the state table, not the screen, is what says so for both new presses.
+    /// there: the state table, not the screen, is what says so for the notice's two presses.
     /// </summary>
     [Fact]
-    public void Another_program_is_never_offered_while_the_meeting_is_paused()
-    {
-        var paused = Silent(RecorderState.Paused) with { AnotherProgramIsBeingChosen = true };
+    public void Another_program_is_never_offered_while_the_meeting_is_paused() =>
+        Silent(RecorderState.Paused).Allows(RecorderPress.ChooseAnotherProgram).ShouldBeFalse();
 
-        paused.Allows(RecorderPress.ChooseAnotherProgram).ShouldBeFalse();
-        paused.Allows(RecorderPress.FollowAnotherProgram).ShouldBeFalse();
+    /// <summary>
+    /// ISC-219: both sources are changed from their own pickers while the meeting records, and
+    /// while it is paused, and at no other time.
+    /// </summary>
+    [Theory]
+    [InlineData(RecorderState.Choosing, false)]
+    [InlineData(RecorderState.Starting, false)]
+    [InlineData(RecorderState.Recording, true)]
+    [InlineData(RecorderState.Paused, true)]
+    [InlineData(RecorderState.Finishing, false)]
+    [InlineData(RecorderState.WithoutACorpus, false)]
+    public void The_microphone_and_the_source_change_while_a_meeting_records_or_is_paused(
+        RecorderState state, bool changes)
+    {
+        var screen = Screen(state, Everything);
+
+        screen.Allows(RecorderPress.ChangeTheMicrophone).ShouldBe(changes);
+        screen.Allows(RecorderPress.ChangeTheSource).ShouldBe(changes);
     }
 
     [Fact]
-    public void Channel_0_is_moved_only_onto_a_program_somebody_is_choosing()
+    public void Neither_changes_while_a_move_of_it_is_in_flight()
     {
-        var recording = Silent(RecorderState.Recording);
+        var recording = Screen(RecorderState.Recording, Everything);
 
-        recording.Allows(RecorderPress.FollowAnotherProgram).ShouldBeFalse();
-        (recording with { AnotherProgramIsBeingChosen = true })
-            .Allows(RecorderPress.FollowAnotherProgram).ShouldBeTrue();
+        var microphone = recording with { TheMicrophoneIsBeingChanged = true };
+        microphone.Allows(RecorderPress.ChangeTheMicrophone).ShouldBeFalse();
+        microphone.Allows(RecorderPress.ChangeTheSource).ShouldBeTrue();
+
+        var source = recording with { AnotherProgramIsBeingOpened = true };
+        source.Allows(RecorderPress.ChangeTheSource).ShouldBeFalse();
+        source.Allows(RecorderPress.ChangeTheMicrophone).ShouldBeTrue();
+    }
+
+    /// <summary>
+    /// The notice's own press moves channel 0 as a pick does, so neither starts while the other is
+    /// in flight, and a pick on channel 1 and opening it again are the same exclusion.
+    /// </summary>
+    [Fact]
+    public void One_move_of_a_channel_at_a_time_whichever_press_starts_it()
+    {
+        var taking = Silent(RecorderState.Recording) with { WholeMachineTaken = true };
+        taking.Allows(RecorderPress.ChangeTheSource).ShouldBeFalse();
+
+        var changing = Died(RecorderState.Recording) with { TheMicrophoneIsBeingChanged = true };
+        changing.Allows(RecorderPress.TryTheMicrophoneAgain).ShouldBeFalse();
+
+        var reopening = Died(RecorderState.Recording) with { TheMicrophoneIsBeingOpenedAgain = true };
+        reopening.Allows(RecorderPress.ChangeTheMicrophone).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void A_pick_in_a_picker_that_is_not_on_screen_moves_nothing()
+    {
+        var raised = Raised(RecorderState.Recording, Everything);
+
+        raised.Allows(RecorderPress.ChangeTheMicrophone).ShouldBeFalse();
+        raised.Allows(RecorderPress.ChangeTheSource).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void What_is_still_unanswered_is_named_while_choosing_and_nothing_after()
+    {
+        Screen(RecorderState.Choosing, RecorderChoices.Nothing).Unanswered.ShouldBe(
+            [RecorderQuestion.Source, RecorderQuestion.Microphone, RecorderQuestion.Spoken],
+            ignoreOrder: true);
+
+        Screen(RecorderState.Choosing, Everything with { Microphone = null }).Unanswered
+            .ShouldBe([RecorderQuestion.Microphone]);
+        Screen(RecorderState.Choosing, Everything with { Spoken = "  " }).Unanswered
+            .ShouldBe([RecorderQuestion.Spoken]);
+        Screen(RecorderState.Choosing, Everything).Unanswered.ShouldBeEmpty();
+
+        foreach (var state in Enum.GetValues<RecorderState>().Where(state => state != RecorderState.Choosing))
+        {
+            Screen(state, RecorderChoices.Nothing).Unanswered.ShouldBeEmpty(state.ToString());
+        }
     }
 
     /// <summary>
@@ -481,33 +559,17 @@ public class RecorderScreenTests
     [Fact]
     public void Nothing_moves_channel_0_while_a_program_is_being_opened()
     {
-        var opening = Silent(RecorderState.Recording) with
-        {
-            AnotherProgramIsBeingChosen = true,
-            AnotherProgramIsBeingOpened = true,
-        };
+        var opening = Silent(RecorderState.Recording) with { AnotherProgramIsBeingOpened = true };
 
         opening.Allows(RecorderPress.RecordTheWholeMachine).ShouldBeFalse();
         opening.Allows(RecorderPress.ChooseAnotherProgram).ShouldBeFalse();
-        opening.Allows(RecorderPress.FollowAnotherProgram).ShouldBeFalse();
+        opening.Allows(RecorderPress.ChangeTheSource).ShouldBeFalse();
     }
 
     [Fact]
     public void The_whole_machine_taken_ends_the_offer_of_another_program() =>
         (Silent(RecorderState.Recording) with { WholeMachineTaken = true })
             .Allows(RecorderPress.ChooseAnotherProgram).ShouldBeFalse();
-
-    /// <summary>
-    /// The list the picker was offering is stale once the whole machine is taken, so a pick left in
-    /// it moves nothing even while it is still open.
-    /// </summary>
-    [Fact]
-    public void No_program_is_followed_once_the_whole_machine_is_taken() =>
-        (Silent(RecorderState.Recording) with
-        {
-            AnotherProgramIsBeingChosen = true,
-            WholeMachineTaken = true,
-        }).Allows(RecorderPress.FollowAnotherProgram).ShouldBeFalse();
 
     [Theory]
     [InlineData(RecorderState.Choosing, false)]
@@ -609,11 +671,10 @@ public class RecorderScreenTests
     [Fact]
     public void A_program_that_went_away_is_moved_from_only_once_the_meeting_is_recording()
     {
-        var paused = Gone(RecorderState.Paused) with { AnotherProgramIsBeingChosen = true };
+        var paused = Gone(RecorderState.Paused);
 
         paused.Allows(RecorderPress.RecordTheWholeMachine).ShouldBeFalse();
         paused.Allows(RecorderPress.ChooseAnotherProgram).ShouldBeFalse();
-        paused.Allows(RecorderPress.FollowAnotherProgram).ShouldBeFalse();
         (paused with { State = RecorderState.Recording })
             .Allows(RecorderPress.RecordTheWholeMachine).ShouldBeTrue();
     }

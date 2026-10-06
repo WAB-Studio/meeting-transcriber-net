@@ -114,6 +114,7 @@ public static class SummarisingAMeeting
 
         MeetingInput prepared;
         string model;
+        string effort;
         using (var context = CorpusDatabase.Open(root))
         {
             var job = context.ProcessingJobs.FirstOrDefault(row => row.Id == jobId);
@@ -126,7 +127,9 @@ public static class SummarisingAMeeting
             try
             {
                 prepared = MeetingInput.Prepare(context, job.MeetingId);
-                model = WireNames<SummaryModel>.Of(new CorpusSettings(context).SummaryModel());
+                var settings = new CorpusSettings(context);
+                model = WireNames<SummaryModel>.Of(settings.SummaryModel());
+                effort = WireNames<SummaryEffort>.Of(settings.SummaryEffort());
             }
             catch (InvalidOperationException exception)
             {
@@ -140,11 +143,12 @@ public static class SummarisingAMeeting
                 prepared, ExtractionInstructions.ToExtract, ExtractionInstructions.Schema, null)
             {
                 Model = model,
+                Effort = effort,
             };
             var answer = await provider.ExtractAsync(request, stopping).ConfigureAwait(false);
 
             return answer is SummaryProviderAnswer.Extracted extracted
-                ? await FileAsync(root, jobId, prepared, model, extracted, provider, clock, stopping).ConfigureAwait(false)
+                ? await FileAsync(root, jobId, prepared, model, effort, extracted, provider, clock, stopping).ConfigureAwait(false)
                 : NotExtracted(answer);
         }
         catch (OperationCanceledException) when (stopping.IsCancellationRequested)
@@ -166,6 +170,7 @@ public static class SummarisingAMeeting
         Guid jobId,
         MeetingInput prepared,
         string model,
+        string effort,
         SummaryProviderAnswer.Extracted extracted,
         ISummaryProvider provider,
         TimeProvider clock,
@@ -188,6 +193,7 @@ public static class SummarisingAMeeting
             new SummaryCorrection(extracted.Output, ExtractionCorrection.WhatWasWrong(received.Refusals)))
         {
             Model = model,
+            Effort = effort,
         };
 
         var correctionAnswer = await provider.ExtractAsync(correctionRequest, stopping).ConfigureAwait(false);

@@ -1,5 +1,8 @@
 using MeetingTranscriber.Domain.Jobs;
+using MeetingTranscriber.Domain.Meetings;
 using MeetingTranscriber.Domain.Time;
+using MeetingTranscriber.Infrastructure.Artifacts;
+using MeetingTranscriber.Infrastructure.Meetings;
 using MeetingTranscriber.Infrastructure.Storage;
 using MeetingTranscriber.Processing.Intake;
 using MeetingTranscriber.Processing.Summaries;
@@ -438,6 +441,23 @@ public static class JobRunner
     /// Turns what a call came to into the job's own terminal move, guarded on the attempt that made
     /// the call, and answers what is left to say about it.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>A filed transcription queues the summary right after the job's own move commits</b> when
+    /// the corpus says <see cref="AfterARecording.TranscribeAndSummarise"/>, through
+    /// <see cref="MeetingWork.TakeIfItIsOffered"/>. The setting is read here, when the transcription
+    /// settles, so a change made between the stop and this moment applies.
+    /// </para>
+    /// <para>
+    /// A transaction of its own and a <c>catch</c> of its own, after the move is committed: the
+    /// transcription was paid for and is filed, and nothing a summary's row does may take its move
+    /// back. A summary that could not be queued is a line in the result, and the meeting offers
+    /// <em>Resumir</em> on its own row as it would have. A meeting that does not offer one — asked
+    /// for already, or ignored — answers nothing, which is not a failure and not a line. Only
+    /// <see cref="TranscriptionOutcome.Filed"/> queues one: a meeting already transcribed was
+    /// settled by whoever transcribed it.
+    /// </para>
+    /// </remarks>
     private static IReadOnlyList<string> Settle(
         DirectoryInfo root, Guid jobId, Guid meetingId, int attempt, TranscriptionEnded ended, UtcTimestamp now)
     {
@@ -455,14 +475,31 @@ public static class JobRunner
 
         Apply(fresh, ended, now);
         var left = new List<string>();
+        var moved = false;
 
         try
         {
             writing.SaveChanges();
+            moved = true;
         }
         catch (Exception refused) when (refused is not OutOfMemoryException)
         {
             left.Add($"{meetingId}: the job's own move could not be written: {refused.Message}");
+        }
+
+        if (moved && ended.Outcome == TranscriptionOutcome.Filed)
+        {
+            try
+            {
+                if (new CorpusSettings(writing).WhenARecordingEnds() == AfterARecording.TranscribeAndSummarise)
+                {
+                    _ = new MeetingWork(writing, now).TakeIfItIsOffered(meetingId, JobKind.Extract);
+                }
+            }
+            catch (Exception refused) when (refused is not OutOfMemoryException)
+            {
+                left.Add($"{meetingId}: the summary could not be queued: {refused.Message}");
+            }
         }
 
         if (ended.Said is not null)
@@ -536,7 +573,7 @@ public static class JobRunner
                 return [];
             }
 
-            return SettleSummary(root, jobId, attempt, ended, UtcTimestamp.From(clock.GetUtcNow()));
+            return SettleSummary(root, jobId, attempt, ended, clock);
         }
         finally
         {
@@ -598,15 +635,22 @@ public static class JobRunner
     /// Turns what a summary call came to into the job's own move, guarded on the attempt that made
     /// the call the same way <see cref="Settle"/> guards a transcription's.
     /// </summary>
+    /// <remarks>
+    /// A filed summary has nothing left to move — the door already moved the job, accepted or
+    /// refused for good — but it may have something to say about the meeting: when the accepted
+    /// document carries a title and nobody has named the meeting, <see cref="NameTheMeeting"/> names
+    /// it. That is here and not in the intake because the intake files what was said and never
+    /// decides what a meeting is called.
+    /// </remarks>
     private static IReadOnlyList<string> SettleSummary(
-        DirectoryInfo root, Guid jobId, int attempt, SummaryEnded ended, UtcTimestamp now)
+        DirectoryInfo root, Guid jobId, int attempt, SummaryEnded ended, TimeProvider clock)
     {
         if (ended.Outcome == SummaryOutcome.Filed)
         {
-            // The door already moved the job — accepted, or refused for good — and left nothing
-            // here to move or to say.
-            return [];
+            return NameTheMeeting(root, jobId, clock);
         }
+
+        var now = UtcTimestamp.From(clock.GetUtcNow());
 
         using var writing = CorpusDatabase.Open(root);
         var fresh = writing.ProcessingJobs.FirstOrDefault(row => row.Id == jobId);
@@ -638,6 +682,49 @@ public static class JobRunner
         }
 
         return left;
+    }
+
+    /// <summary>
+    /// Names the meeting what the summary this job had accepted calls it, when nobody has named the
+    /// meeting. A failure is a line and never touches the summary, which is already filed.
+    /// </summary>
+    private static IReadOnlyList<string> NameTheMeeting(DirectoryInfo root, Guid jobId, TimeProvider clock)
+    {
+        try
+        {
+            using var context = CorpusDatabase.Open(root);
+
+            var accepted = context.ExtractionRuns
+                .AsNoTracking()
+                .Where(run => run.JobId == jobId && run.AcceptedAt != null && run.OutputArtifactId != null)
+                .Select(run => new { run.MeetingId, run.OutputArtifactId })
+                .FirstOrDefault();
+
+            if (accepted is null)
+            {
+                return [];
+            }
+
+            var kept = context.Artifacts
+                .AsNoTracking()
+                .Where(artifact => artifact.Id == accepted.OutputArtifactId)
+                .Select(artifact => artifact.RelativePath)
+                .First();
+
+            var title = ExtractionReader.Read(File.ReadAllBytes(CorpusFiles.Locate(root, kept).FullName))
+                .Document?.Title;
+
+            if (title is not null)
+            {
+                _ = new MeetingReading(context, clock).NameIfNobodyHas(accepted.MeetingId, title);
+            }
+
+            return [];
+        }
+        catch (Exception refused) when (refused is not OutOfMemoryException)
+        {
+            return [$"{jobId}: the meeting could not be named from its summary: {refused.Message}"];
+        }
     }
 
     /// <summary>

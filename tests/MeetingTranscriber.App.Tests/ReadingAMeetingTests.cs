@@ -257,7 +257,7 @@ public class ReadingAMeetingTests
 
         asking.ShouldContain("Task.Run(");
         asking.ShouldContain(".On(meeting)");
-        asking.ShouldContain("owed.Status != read.Screen.Owed.Status");
+        asking.ShouldContain("(owed.Stage, owed.Status) != (read.Screen.Owed.Stage, read.Screen.Owed.Status)");
         asking.ShouldContain("Draw(theRecordingToo: false)");
         asking.ShouldNotContain("theRecordingToo: true");
 
@@ -335,5 +335,142 @@ public class ReadingAMeetingTests
         // The player and the file it holds are let go of when the window closes. A window that
         // shut over one leaves the recording coming out of the machine.
         window.ShouldContain("Reading.Close()");
+    }
+
+
+    /// <summary>
+    /// The name is a line of text with <em>Renombrar</em> beside it, which swaps it for the field
+    /// holding the name; Enter and leaving commit and swap back, and Escape swaps back and writes
+    /// nothing.
+    /// </summary>
+    [Fact]
+    public void Renaming_swaps_the_title_for_the_field_and_back()
+    {
+        var screen = File.ReadAllText(AppSources.At(Screen).FullName);
+        var markup = File.ReadAllText(AppSources.At(Markup).FullName);
+
+        markup.ShouldContain("x:Name=\"TitleText\"");
+        markup.ShouldContain("x:Name=\"RenameButton\"");
+        markup.ShouldContain("UiTexts.CorrectThisName");
+        Regex.IsMatch(markup, @"<TextBox\s+x:Name=""NameBox""[^>]*Visibility=""Collapsed""")
+            .ShouldBeTrue("the name field is no longer collapsed until *Renombrar* is pressed.");
+        markup.ShouldNotContain("Header=\"{x:Bind In(loc:UiTexts.TheMeetingsName)}\"");
+
+        var rename = Body(screen, "private void OnRename(");
+
+        rename.ShouldContain("NameBox.Visibility = Visibility.Visible");
+        rename.ShouldContain("NameBox.SelectAll()");
+
+        var key = Body(screen, "private void OnNameKey(");
+        var enter = key[..key.IndexOf("VirtualKey.Escape", StringComparison.Ordinal)];
+        var escape = key[key.IndexOf("VirtualKey.Escape", StringComparison.Ordinal)..];
+
+        enter.ShouldContain("CommitTheName()");
+        enter.ShouldContain("SwapToTheTitle()");
+        escape.ShouldContain("NameBox.Text = _nameAsRead");
+        escape.ShouldContain("SwapToTheTitle()");
+        escape.ShouldNotContain("CommitTheName()");
+
+        Body(screen, "private void OnNameLeft(").ShouldContain("SwapToTheTitle()");
+        Body(screen, "private bool CommitTheName(").ShouldContain("new MeetingReading(context, TimeProvider.System).Name(");
+    }
+
+    /// <summary>
+    /// Selecting words on a line offers <em>Corregir</em> beside them, and pressing it asks the
+    /// window to open the corrections screen with those words: the third dialogue is gone.
+    /// </summary>
+    [Fact]
+    public void A_selection_is_corrected_on_the_corrections_screen()
+    {
+        var screen = File.ReadAllText(AppSources.At(Screen).FullName);
+
+        screen.ShouldContain("CorrectTheSelection.OfferOver(said, Chrome(\"TheSelectionsPress\")");
+        screen.ShouldContain("public event EventHandler<WordsToCorrect>? CorrectWords");
+        screen.ShouldContain("new WordsToCorrect(meeting, asWritten)");
+        screen.ShouldNotContain("CorrectingAWord");
+        screen.ShouldNotContain("ContextFlyout");
+        screen.ShouldNotContain("AskingHowAWordGoes");
+
+        var ask = Body(screen, "private void AskToCorrect(string? asWritten)");
+
+        ask.IndexOf("CommitTheName()", StringComparison.Ordinal)
+            .ShouldBeLessThan(ask.IndexOf("Pause();", StringComparison.Ordinal));
+
+        File.ReadAllText(AppSources.At(Markup).FullName).ShouldNotContain("CorrectingAWord");
+        File.Exists(AppSources.At(Path.Combine("MeetingTranscriber.App", "CorrectingAWord.xaml.cs")).FullName)
+            .ShouldBeFalse("the dialogue that corrected one word came back.");
+    }
+
+    /// <summary>
+    /// While work is queued or running the status word and a ring stand where the act was, and
+    /// only there: <em>Detener</em> and <em>Resumir de nuevo</em> keep their own conditions.
+    /// </summary>
+    [Fact]
+    public void Work_under_way_is_said_where_the_act_was()
+    {
+        var offer = Body(File.ReadAllText(AppSources.At(Screen).FullName), "private void TheActOnOffer(MeetingScreen screen)");
+        var before = offer[..offer.IndexOf("if (screen.TheSummaryMayBeStopped)", StringComparison.Ordinal)];
+
+        before.ShouldContain("if (screen.WorkIsUnderWay)");
+        before.ShouldContain("WorkUnderWay(screen)");
+
+        // The act and *Ignorar* are the other arm, and nothing else is.
+        var otherArm = before[before.IndexOf("else", StringComparison.Ordinal)..];
+
+        otherArm.ShouldContain("screen.TheActMayBeLeft");
+        otherArm.ShouldContain("screen.TheActOffered");
+        otherArm.ShouldContain("UiTexts.Ignore");
+
+        File.ReadAllText(AppSources.At(Screen).FullName).ShouldContain("new ProgressRing { IsActive = true");
+    }
+
+    /// <summary>
+    /// A running summary is still stopped from the same press as before: the stop and the second
+    /// summary are not inside the arm that says work is under way.
+    /// </summary>
+    [Fact]
+    public void A_running_summary_can_still_be_stopped_while_work_is_under_way()
+    {
+        var offer = Body(File.ReadAllText(AppSources.At(Screen).FullName), "private void TheActOnOffer(MeetingScreen screen)");
+        var after = offer[offer.IndexOf("if (screen.TheSummaryMayBeStopped)", StringComparison.Ordinal)..];
+
+        after.ShouldContain("UiTexts.Stop");
+        after.ShouldContain("StopTheSummary()");
+        after.ShouldContain("if (screen.TheSummaryMayBeAskedForAgain)");
+        after.ShouldNotContain("WorkIsUnderWay");
+        after.ShouldNotContain("else");
+    }
+
+    /// <summary>
+    /// A transcription that lands while another is queued leaves the status at <em>queued</em>, so
+    /// the poll compares the stage with it.
+    /// </summary>
+    [Fact]
+    public void The_work_watch_compares_the_stage_too()
+    {
+        var asking = Body(File.ReadAllText(AppSources.At(Screen).FullName), "private async Task AskTheWorkAsync()");
+
+        asking.ShouldContain("(owed.Stage, owed.Status) != (read.Screen.Owed.Stage, read.Screen.Owed.Status)");
+        asking.ShouldNotContain("owed.Status != read.Screen.Owed.Status");
+    }
+
+    /// <summary>
+    /// The player has a volume, a glyph for play and pause, and a track that says a time and never
+    /// a number of milliseconds.
+    /// </summary>
+    [Fact]
+    public void The_track_says_a_time()
+    {
+        var markup = File.ReadAllText(AppSources.At(Markup).FullName);
+        var screen = File.ReadAllText(AppSources.At(Screen).FullName);
+        var converter = File.ReadAllText(
+            AppSources.At(Path.Combine("MeetingTranscriber.App", "TrackTime.cs")).FullName);
+
+        markup.ShouldContain("ThumbToolTipValueConverter=\"{StaticResource TrackTime}\"");
+        markup.ShouldContain("x:Name=\"VolumeSlider\"");
+        markup.ShouldContain("<FontIcon x:Name=\"PlayGlyph\"");
+        converter.ShouldContain("ScreenNumbers.Long(");
+        screen.ShouldContain("playing.Volume = (float)(e.NewValue / 100)");
+        screen.ShouldContain("ToolTipService.SetToolTip(PlayButton");
     }
 }

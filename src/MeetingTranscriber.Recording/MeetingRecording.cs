@@ -190,13 +190,30 @@ public sealed class MeetingRecording : IDisposable
     public void OpenTheMicrophoneAgain() => session.OpenTheMicrophoneAgain();
 
     /// <summary>
-    /// Pauses the meeting. The clock keeps running: what the pause costs the recording is silence
-    /// of exactly the length it lasted, and never a shorter meeting.
+    /// Somebody choosing another microphone while the meeting runs, paused or not. The channel moves
+    /// and the meeting goes on.
+    /// </summary>
+    /// <remarks>
+    /// Like <see cref="RecordTheWholeMachine"/>, not on a thread somebody is looking at: the new
+    /// device is opened before the old one is let go of.
+    /// </remarks>
+    /// <param name="microphone">The microphone channel 1 listens to from here on.</param>
+    public void RecordFrom(AudioDevice microphone) => session.RecordFrom(microphone);
+
+    /// <summary>
+    /// Pauses the meeting. The devices keep running and the spool keeps receiving silence, but the
+    /// stretch is written down and the meeting leaves it out: what was said after it is where it was
+    /// said in the meeting that remains, and the clock stops counting it (<see cref="PausedFor"/>).
     /// </summary>
     public void Pause() => session.Pause();
 
     /// <summary>Resumes it.</summary>
     public void Resume() => session.Resume();
+
+    /// <summary>
+    /// How much of the meeting so far was paused, which the clock on screen takes away.
+    /// </summary>
+    public Duration PausedFor(UtcTimestamp now) => session.PausedFor(now);
 
     /// <summary>
     /// Stops the meeting and finishes it: the devices are let go of, the spools become the
