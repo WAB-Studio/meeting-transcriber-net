@@ -244,7 +244,7 @@ public sealed class CaptureSession : IDisposable
 
         try
         {
-            foreach (var target in InChannelOrder(Others(follow), microphone))
+            foreach (var target in InChannelOrder(CaptureTarget.ForChannelZero(follow), microphone))
             {
                 try
                 {
@@ -950,10 +950,6 @@ public sealed class CaptureSession : IDisposable
             failures.Add(failed);
         }
     }
-
-    /// <summary>What channel 0 was asked to listen to, before anything says whether it can.</summary>
-    private static CaptureTarget Others(AudioProcess? follow) =>
-        follow is null ? new CaptureTarget.TheWholeMachine() : new CaptureTarget.Program(follow);
 
     /// <summary>
     /// How channel 0 is being obtained, asked of the thing it is listening to — the one type that
