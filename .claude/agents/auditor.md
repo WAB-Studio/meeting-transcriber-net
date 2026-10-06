@@ -50,9 +50,10 @@ dotnet test --no-build
 
 Push nothing red. A card whose branch will not come with the others is left behind, not repaired.
 
-Then `<batch_dir>/pr.md` and the PR, or the one you were given brought up to date: a `Closes #N` per
-card that landed whole, then `Claims:`, then `## What changed` and `## Why` built out of each card's own `pr.md`. What
-a record leaves out or says blocks its card goes in `## Additional notes`, under that card.
+Then `<batch_dir>/pr.md` and the PR, or the one you were given brought up to date: a `Closes #N`
+per card that is a GitHub issue and landed whole — a share of owed entries carries none — then
+`Claims:`, then `## What changed` and `## Why` built out of each card's own `pr.md`. What a record
+leaves out or says blocks its card goes in `## Additional notes`, under that card.
 
 **Then delete every branch you carried**, on the remote and once the push has succeeded — its
 commits are on your branch now, under different shas, so nothing else will ever recognise it as
@@ -218,8 +219,9 @@ git show "origin/main:./.claude/audit-floor.md"
 git show "origin/main:./.claude/skills/github/SKILL.md"
 ```
 
-A card is an issue; its id is its issue number. Keep the `./` in every git-show path — Bash rewrites
-the argument without it. Needing a command not here goes in `reasons` and you stop.
+A card is an issue; its id is its issue number, and a share of owed entries is named by the share.
+Keep the `./` in every git-show path — Bash rewrites the argument without it. Needing a command not
+here goes in `reasons` and you stop.
 
 ## Output
 

@@ -16,7 +16,9 @@ without finding anything out.
 
 - `share` — the work you build, the paths you own, and the paths another share owns. Build only
   these, and write only inside what you own. The work is cards, or parts of cards, or entries from
-  `private/owed.md`, in any mixture. A card is an issue; its id is its issue number.
+  `private/owed.md`, in any mixture. A card is an issue; its id is its issue number. A share that
+  builds only owed entries has no card: its card dir is named by the share and is never written as
+  `#<n>`.
 - `owed` — the ids of the owed entries in this share, where there are any. Each is a heading in
   `private/owed.md`, which you read by absolute path; it names a file, what is there now and what
   should be. Build them like anything else and do not decline one. An entry written against a tree
@@ -53,11 +55,12 @@ before you return. An `owed` entry with no card of its own is recorded in the re
 whose files it shares, or of the first card in the share where it shares none, under `owed_built`.
 
 `<card_dir>/pr.md` for each card: what a PR body would say for that card alone — a `Closes #<n>`
-line where the card is a GitHub issue, and none where it is not: a card with any other id is named
-by that id in `## What changed`, because a `#<n>` that happens to match an open issue closes that
-issue on merge — then a `Claims:` line, `## What changed` and `## Why` — plus the decisions and what this now does
-for a meeting, a recording or the corpus that it did not. The code goes in the commit message — what
-you tried, why one shape beat another, what a review found — and stays out of `pr.md`.
+line where the card is a GitHub issue, and none where it is not: a card with any other id, and a
+share of owed entries, are named by that id or by the share in `## What changed`, because a `#<n>`
+that happens to match an open issue closes that issue on merge — then a `Claims:` line,
+`## What changed` and `## Why` — plus the decisions and what this now does for a meeting, a
+recording or the corpus that it did not. The code goes in the commit message — what you tried, why
+one shape beat another, what a review found — and stays out of `pr.md`.
 
 One branch, pushed, **one commit per card**, so a hunk can be attributed later and a revert takes
 one card. Open no PR.
