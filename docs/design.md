@@ -311,10 +311,14 @@ an ellipsis is work in progress. **The two that run are olivo and the rest are s
 everywhere else in this application. *Detenida* is the one that waits on a person, and takes the
 primary ink to be noticed; the others are quiet.
 
-A drop-down is a 34-high control on papel with a 1px `#E6E4DE` rule and an 11px chevron in
-secondary. Its open list is placed under the pill from code once the platform opens it (`PickerList`); it is still a window of its own, and that it stays under the pill has not been photographed. It is no taller than the
-control's `MaxDropDownHeight` and as wide as the pill, or 560 where a program's name needs it, held
-to the room the window has to the right of the pill. No control offers a two-way choice now. When one does, it is two halves inside a `#E6E4DE`
+A drop-down is the application's own control (`DropDown`), a 34-high pill on papel with a 1px
+`#E6E4DE` rule and an 11px chevron in secondary, veiled like every other press under the pointer. Its open
+list opens under the pill, or over it when there is no room below, always inside the window and never
+outside it: no taller than eight entries and as wide as its widest entry, and never narrower than the
+pill. The pill keeps showing what is chosen while the list is open, and a press on the pill while the
+list is open closes it. Where the list goes is `ListPlacement`'s, as plain arithmetic, and not the
+platform's: a `ComboBox` opens a window of its own that three batches of patching never placed
+reliably. No control offers a two-way choice now. When one does, it is two halves inside a `#E6E4DE`
 trough with 3px of padding, the trough at radius 4 and each half at 3; the chosen one is papel with
 weight 500 and the other is secondary with no fill. A set of more than two is a radio row: a 16px circle — genuinely round — olivo with a
 4px papel inset when chosen and a 1.5px `#C3BFB6` ring when not, and the whole chosen row sits on

@@ -43,8 +43,7 @@ public partial class OlivoTests
     private static readonly HashSet<string> PlatformBases =
     [
         "DefaultButtonStyle",
-        "DefaultComboBoxItemStyle",
-        "DefaultComboBoxStyle",
+        "DefaultListViewItemStyle",
         "DefaultRadioButtonStyle",
         "DefaultTextBoxStyle",
     ];

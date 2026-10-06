@@ -427,7 +427,7 @@ public class SayingWhoIsWhoTests
     {
         var source = File.ReadAllText(AppSources.At(Screen).FullName);
 
-        Body(source, "private ComboBox APicker(").ShouldNotContain("UiTexts.CorrectThisName");
+        Body(source, "private DropDown APicker(").ShouldNotContain("UiTexts.CorrectThisName");
 
         var beside = Body(source, "private FrameworkElement APickerAndItsCorrection(");
 

@@ -555,7 +555,7 @@ public sealed partial class SayingWhoIsWho : UserControl
     /// The picker over everybody the corpus holds, for a voice nothing has settled — naming
     /// somebody new.
     /// </summary>
-    private ComboBox APicker(VoicesAsHeard read, Voice voice, Guid? standing, int position)
+    private DropDown APicker(VoicesAsHeard read, Voice voice, Guid? standing, int position)
     {
         var extras = new List<(UiText Words, Action Chose)>
         {

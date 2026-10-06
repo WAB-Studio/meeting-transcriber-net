@@ -71,7 +71,7 @@
                  beside the press that is refused for it. Swapped in by the code-behind while
                  `RecorderScreen.Unanswered` holds the question, and out again the moment it is
                  answered. -->
-            <Style x:Key="DropDownWantingAnAnswer" TargetType="ComboBox" BasedOn="{StaticResource DropDown}">
+            <Style x:Key="DropDownWantingAnAnswer" TargetType="local:DropDown" BasedOn="{StaticResource DropDown}">
                 <Setter Property="BorderBrush" Value="{ThemeResource PeakBrush}" />
             </Style>
         </Grid.Resources>
@@ -199,7 +199,7 @@
                              because the pill carries no header — and its placeholder says the same
                              word, because this is the one picker on the screen with nothing beside
                              it, and on a fresh install it opens with nothing chosen. -->
-                        <ComboBox
+                        <local:DropDown
                             x:Name="SpokenPicker"
                             MinWidth="180"
                             Style="{StaticResource DropDown}"

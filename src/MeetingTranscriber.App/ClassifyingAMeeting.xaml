@@ -97,7 +97,7 @@
             <!-- A pill in a path, and it is a picker rather than a label: what stands at that
                  level is chosen there, not somewhere else and shown here. Olivo's DropDown already
                  draws it as the pill the artboard draws, chevron and all. -->
-            <Style x:Key="Picker" TargetType="ComboBox" BasedOn="{StaticResource DropDown}">
+            <Style x:Key="Picker" TargetType="local:DropDown" BasedOn="{StaticResource DropDown}">
                 <Setter Property="HorizontalAlignment" Value="Left" />
                 <Setter Property="MinWidth" Value="150" />
                 <Setter Property="FontSize" Value="{StaticResource TranscriptSize}" />

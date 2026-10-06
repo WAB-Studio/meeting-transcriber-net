@@ -420,7 +420,7 @@ public class ClassifyingAMeetingTests
     /// <para>
     /// The pills are built in code and have no <c>x:Name</c>, and <c>UiProbe.ElementWords</c>
     /// matches an element only by <c>AutomationId</c> or <c>Name</c> — so an unnamed one is a bare
-    /// <c>ComboBox</c> in the tree that no <c>choose</c> can reach. That is why #296's own Proof
+    /// <c>DropDown</c> in the tree that no <c>choose</c> can reach. That is why #296's own Proof
     /// could not be driven and had to be reasoned about instead, and a screen reader is in exactly
     /// the same position.
     /// </para>
@@ -440,7 +440,7 @@ public class ClassifyingAMeetingTests
     /// not a second one — XAML gives it an <c>x:Name</c>, which is where an id comes from there.
     /// </para>
     /// <para>
-    /// Read as text, so it is a cheap guard and not a structural impossibility: <c>ComboBox picker
+    /// Read as text, so it is a cheap guard and not a structural impossibility: <c>DropDown picker
     /// = new();</c> is the same construction and matches nothing here. What it stops is the
     /// ordinary way this would come back — a second builder written the way the first one is.
     /// </para>
@@ -454,7 +454,7 @@ public class ClassifyingAMeetingTests
         oneOfThese.ShouldContain(
             "AutomationProperties.SetName(picker",
             customMessage: "OneOfThese.Build returns a control with no name on it, so every pill "
-            + "built through it is a bare ComboBox to a screen reader.");
+            + "built through it is a bare DropDown to a screen reader.");
 
         oneOfThese.ShouldContain(
             "AutomationProperties.SetAutomationId(picker",
@@ -471,16 +471,18 @@ public class ClassifyingAMeetingTests
             + "the Enter that writes the name.");
 
         oneOfThese.ShouldContain(
-            "new ComboBox",
-            customMessage: "the application's one ComboBox construction has moved out of "
+            "new DropDown",
+            customMessage: "the application's one DropDown construction has moved out of "
             + "OneOfThese.cs, which is where this check expects to find it.");
 
+        // DropDown.cs is the control itself, and creates its own automation peer.
         var occurrences = AppSources.With(".cs")
-            .Sum(file => SourceLines.Occurrences(File.ReadAllText(file.FullName), "new ComboBox").Count());
+            .Where(file => !file.Name.Equals("DropDown.cs", StringComparison.Ordinal))
+            .Sum(file => SourceLines.Occurrences(File.ReadAllText(file.FullName), "new DropDown").Count());
 
         occurrences.ShouldBe(
             1,
-            "the application builds a ComboBox somewhere other than OneOfThese.Build, and that "
+            "the application builds a DropDown somewhere other than OneOfThese.Build, and that "
             + "one is addressed by nothing. Build it through OneOfThese, which is also where the "
             + "index arithmetic lives.");
     }

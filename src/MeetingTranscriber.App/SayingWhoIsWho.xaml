@@ -87,7 +87,7 @@
 
             <!-- The picker over everybody the corpus holds, naming somebody new, and correcting
                  whoever already stands there — `ClassifyingAMeeting.xaml`'s own `Picker`. -->
-            <Style x:Key="Picker" TargetType="ComboBox" BasedOn="{StaticResource DropDown}">
+            <Style x:Key="Picker" TargetType="local:DropDown" BasedOn="{StaticResource DropDown}">
                 <Setter Property="HorizontalAlignment" Value="Left" />
                 <Setter Property="MinWidth" Value="180" />
                 <Setter Property="FontSize" Value="{StaticResource TranscriptSize}" />

@@ -52,7 +52,7 @@
                 Text="{x:Bind In(loc:UiTexts.Language)}"
                 Style="{StaticResource BodyText}"
                 Foreground="{ThemeResource SecondaryTextBrush}" />
-            <ComboBox
+            <local:DropDown
                 x:Name="LanguagePicker"
                 Style="{StaticResource DropDown}"
                 AutomationProperties.Name="{x:Bind In(loc:UiTexts.Language)}"

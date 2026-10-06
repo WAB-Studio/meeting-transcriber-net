@@ -501,14 +501,14 @@ public sealed partial class WordsThatComeOutWrong : UserControl
         var chosen = ScopeBox.SelectedIndex;
         var places = _held?.Places ?? [];
 
-        ScopeBox.Items.Clear();
-        ScopeBox.Items.Add(In(UiTexts.InEveryMeeting));
-        foreach (var place in places)
-        {
-            ScopeBox.Items.Add(UiTexts.OnlyIn.In(_language, ScreenNumbers.Inside([.. place.Path])));
-        }
+        string[] offered =
+        [
+            In(UiTexts.InEveryMeeting),
+            .. places.Select(place => UiTexts.OnlyIn.In(_language, ScreenNumbers.Inside([.. place.Path]))),
+        ];
 
-        ScopeBox.SelectedIndex = chosen >= 0 && chosen < ScopeBox.Items.Count ? chosen : 0;
+        ScopeBox.ItemsSource = offered;
+        ScopeBox.SelectedIndex = chosen >= 0 && chosen < offered.Length ? chosen : 0;
         AutomationProperties.SetName(ScopeBox, In(UiTexts.InEveryMeeting));
     }
 

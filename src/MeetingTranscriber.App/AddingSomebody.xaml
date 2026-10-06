@@ -42,7 +42,7 @@
             <TextBlock
                 Style="{StaticResource BodyText}"
                 Text="{x:Bind In(loc:UiTexts.Organization)}" />
-            <ComboBox
+            <local:DropDown
                 x:Name="TheirOrganization"
                 Style="{StaticResource DropDown}"
                 SelectionChanged="OnTheirOrganizationChosen" />
