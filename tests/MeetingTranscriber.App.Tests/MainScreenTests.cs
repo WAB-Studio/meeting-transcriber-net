@@ -132,8 +132,8 @@ public partial class MainScreenTests
     }
 
     /// <summary>
-    /// The bar is the title bar: the platform's is not drawn, the window is dragged by a region the
-    /// bar hands over that leaves the back button out, and the caption buttons' width is read off the
+    /// The bar is the title bar: the platform's is not drawn, the window is dragged by caption
+    /// rectangles <c>CaptionStrip</c> works out, and the caption buttons' width is read off the
     /// window rather than guessed.
     /// </summary>
     [Fact]
@@ -143,20 +143,20 @@ public partial class MainScreenTests
 
         bar.ShouldContain("ExtendsContentIntoTitleBar = true;");
         bar.ShouldContain("TitleBarHeightOption.Tall");
-        bar.ShouldContain("SetTitleBar(TheDragRegion);");
-        Method("private void ReserveTheCaptionButtons(").ShouldContain("AppWindow.TitleBar.RightInset");
+        bar.ShouldNotContain("SetTitleBar(");
 
-        // The region is behind the mark and the name, in the columns after the back button's, and
-        // holds nothing pressable: a press inside a drag region is a drag. It is drawn with a fill
-        // nobody sees and not left with none, because a press falls through an element that
-        // has none and the bar then does not move the window (fb-106, ISC-225).
+        // The strip above the bar is part of what drags (fb-106, ISC-225), so it is rectangles in
+        // pixels handed to the window and not an element laid in the bar.
+        Method("private void TheBarMoved(").ShouldContain("AppWindow.TitleBar.RightInset");
+
+        var hand = Method("private void HandOverTheCaption(");
+
+        hand.ShouldContain("CaptionStrip.For(");
+        hand.ShouldContain("NonClientRegionKind.Caption");
+
         var markup = Read(Markup);
-        Regex.IsMatch(
-                markup,
-                @"<Border x:Name=""TheDragRegion"" Grid.Column=""1"" Grid.ColumnSpan=""2"" Style=""{StaticResource DragFill}"" />")
-            .ShouldBeTrue("the drag region is no longer an element over the mark and the name, drawn with DragFill.");
-        Read(Path.Combine("MeetingTranscriber.App", "Olivo.xaml")).ShouldMatch(
-            "x:Key=\"DragFill\"[^>]*>\\s*<Setter Property=\"Background\" Value=\"Transparent\" />");
+
+        markup.ShouldNotContain("TheDragRegion");
         markup.ShouldContain("x:Name=\"TitleText\"");
         markup.ShouldContain("x:Name=\"CaptionSpace\"");
     }

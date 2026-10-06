@@ -641,8 +641,8 @@ against. Two artboards have none, and a note nobody has written is not one this 
 
 **`Main`** · *Grabar una reunión*. The top-level screen: the recording card above, the meetings
 below. The app bar is the window's title bar: it carries the mark and the name, and the round back button
-while a sub-screen has the room, and the window is dragged by the mark, the name and the empty width
-of the row — never by the back button. Windows' caption buttons stand at its right in the chosen
+while a sub-screen has the room, and the window is dragged by the whole strip from its top edge to the
+bottom of the row — never by the back button. Windows' caption buttons stand at its right in the chosen
 theme, and the bar keeps clear of them. The foot carries *Configuración* at the left, as a press at the
 margin and a word, never an icon, and the packaging press at the right; it is not on screen while a
 sub-screen has the room. The program picker and the microphone picker are each pinned to their meter
