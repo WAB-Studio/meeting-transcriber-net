@@ -1,6 +1,6 @@
 ﻿---
 phase: climbing
-progress: 204/306
+progress: 204/312
 updated: 2026-10-06
 ---
 
@@ -377,6 +377,12 @@ Board: 7 · Distribución y backup
 - [x] ISC-114.2: The corpus opens wherever it was moved to, and the same one is opened again the next time the application starts.
 - [x] ISC-114.3: A corpus location that cannot be opened is refused naming the folder, rather than opened.
 - [x] ISC-114.4: Anti: a corpus location that cannot be opened never becomes a second, empty corpus somewhere else.
+- [ ] ISC-223: Changing where the meetings are kept moves every meeting to the new folder, each file found there whole before the application uses it, and the old copy is removed only when somebody chose that, and only once the new one was found whole.
+- [ ] ISC-223.1: After the meetings are moved to an empty folder, the application opens on that folder with every meeting the old one held, each with every file the old one held for it.
+- [ ] ISC-223.2: Anti: the application never starts using the new folder before every file the corpus records has been found there with the bytes it recorded.
+- [ ] ISC-223.3: Anti: a move that finds any file missing or different in the new folder leaves the meetings kept where they were, the old folder as it was and the new one holding nothing the move wrote.
+- [ ] ISC-223.4: Anti: the old copy is still there, whole, after a move nobody asked to remove it in.
+- [ ] ISC-223.5: Anti: the old copy is removed only after the new one has been found whole once more, and a new copy not found whole leaves the old one in place.
 - [ ] ISC-146: The package installs and uninstalls on a machine that is not the one it was built on.
 - [ ] ISC-206: The repository produces one signed package a machine can install, and what is inside it is what its manifest says.
 - [ ] ISC-215: The installed application is called Meeting Transcriber wherever Windows lists it, never by the name of a project in this repository.
