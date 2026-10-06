@@ -720,6 +720,14 @@ public class ConfiguracionTests
         pick.ShouldContain("ThemeChoice.OfThisUser().Write(chosen)");
     }
 
+    /// <summary>
+    /// The settings column is wide enough that *Resumir con* is not cut in an engine card, which
+    /// was 371 units at the old 760 and is 511 at this one.
+    /// </summary>
+    [Fact]
+    public void The_settings_column_leaves_each_engine_card_room() =>
+        Markup().ShouldContain("<StackPanel Spacing=\"18\" MaxWidth=\"1040\" HorizontalAlignment=\"Left\">");
+
     private static string Markup() => File.ReadAllText(
         AppSources.At(Path.Combine("MeetingTranscriber.App", "Configuracion.xaml")).FullName);
 
