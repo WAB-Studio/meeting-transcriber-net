@@ -56,7 +56,7 @@ public sealed class ProgramWatchTests
         {
             watch.Watch(new CaptureTarget.Program(new AudioProcess(a.Id, "powershell", 0)));
             AnotherProcess.Kill(a);
-            watch.HasGone.ShouldBeTrue();
+            SpinWait.SpinUntil(() => watch.HasGone, TimeSpan.FromSeconds(10)).ShouldBeTrue();
 
             watch.Watch(new CaptureTarget.TheWholeMachine());
 

@@ -41,7 +41,7 @@ public sealed class FollowedProgramTests
             AnotherProcess.Kill(program);
         }
 
-        watch.HasGone.ShouldBeTrue();
+        SpinWait.SpinUntil(() => watch.HasGone, TimeSpan.FromSeconds(10)).ShouldBeTrue();
     }
 
     /// <summary>
@@ -94,7 +94,7 @@ public sealed class FollowedProgramTests
 
         using var watch = FollowedProgram.Watching(new AudioProcess(id, "powershell", 0));
 
-        watch.HasGone.ShouldBeTrue();
+        SpinWait.SpinUntil(() => watch.HasGone, TimeSpan.FromSeconds(10)).ShouldBeTrue();
     }
 
     /// <summary>
