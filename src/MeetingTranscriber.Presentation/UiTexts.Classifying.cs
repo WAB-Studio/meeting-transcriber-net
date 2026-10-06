@@ -8,9 +8,6 @@ public static partial class UiTexts
     // #105 asks for is that a meeting is filed without the person meeting the three-level tree, the
     // closed vocabularies or anything else the corpus stores — so the columns are plain Spanish
     // about the meeting, and the words *node*, *role*, *link* and *template* appear nowhere.
-    public static UiText WhatThisMeetingWasAbout { get; } =
-        new("De qué fue esta reunión", "What this meeting was about");
-
     // The fourteen chips, and the question above them. What each one fills is not explained: it is
     // seen when it is chosen, which is what #105 settled.
     public static UiText WhichOneWasItLike { get; } = new("¿A cuál se pareció?", "Which one was it like?");

@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.IO;
 
 namespace MeetingTranscriber.UiProbe;
@@ -16,12 +17,19 @@ namespace MeetingTranscriber.UiProbe;
 /// <para>
 /// Closed on purpose, and small on purpose. Everything a screen is checked for is some
 /// arrangement of these — get in, look, press, fill in, press a key, pick from a list — and a verb
-/// beyond the six has to argue that no arrangement of them would have done. Two do, and neither is
+/// beyond the six has to argue that no arrangement of them would have done. Six do. Two are not
 /// about a screen at all: <see cref="Sleep"/>, because a meeting's screen is a function of elapsed
 /// real time and nothing that reads a screen makes ninety seconds pass — <see cref="Wait"/> is
 /// bounded at fifteen seconds and returns on the first frame that matches, which is the opposite of
 /// holding one; and <see cref="Kill"/>, because what a crash leaves behind cannot be reached by
-/// asking an application to shut down.
+/// asking an application to shut down. The other four are about a screen being a thing a pointer
+/// acts on, which no pattern of an element describes: <see cref="Hover"/>, because a cursor and a
+/// tooltip are what the pointer sees and an element has neither; <see cref="Drag"/>, because a
+/// bar that moves a window and a slider that moves a value are both a button held down and moved;
+/// <see cref="Select"/>, because a selection made by a mouse is what the <em>Corregir</em> pill
+/// listens to and one made through an element's text pattern is not shown to raise it; and
+/// <see cref="Size"/>, because the window's size is what a layout is judged at and nothing on
+/// the screen can set it.
 /// </para>
 /// <para>
 /// <see cref="Key"/> made that argument and won it: <see cref="Type"/> leaves the right text in a
@@ -34,7 +42,7 @@ namespace MeetingTranscriber.UiProbe;
 /// a screen that will change is waited for, and only a screen that changes by the second is held.
 /// </para>
 /// </remarks>
-internal enum Verb
+public enum Verb
 {
     /// <summary>Write the tree and the picture of the screen, under a given name.</summary>
     See,
@@ -73,21 +81,29 @@ internal enum Verb
 
     /// <summary>End the application the way a crash does, rather than asking it to close.</summary>
     Kill,
+
+    /// <summary>Put the pointer on a control, hold it there, and say which cursor it showed.</summary>
+    Hover,
+
+    /// <summary>Press the left button on a control, move it by whole pixels, and let go.</summary>
+    Drag,
+
+    /// <summary>Select words in a control by dragging the mouse across them.</summary>
+    Select,
+
+    /// <summary>Set the window's size in physical pixels.</summary>
+    Size,
 }
 
 /// <summary>One instruction, as it was written on the command line.</summary>
 /// <remarks>
-/// This is the one part of the probe a build agent could run — reading words into steps opens no
-/// window and needs no desktop — and it is nonetheless held by the reasoning written on
-/// <see cref="Read"/> and <see cref="Seconds"/> and by nothing that goes red. That is not an
-/// oversight to be fixed by adding a test project beside it: `docs/layout.md` says nothing under
-/// `tests/` may come to depend on `tools/`, and the bright line is what stops a test in such a
-/// project from reaching <see cref="Session.Open"/>, which no build agent can run. Narrowing that
-/// rule to the parts that need a desktop is a decision about how this repository is laid out, and
-/// it is worth taking — the walks this tool produces are the most expensive evidence in the repo —
-/// but it is that decision and not a test.
+/// This is the one part of the probe a build agent can run — reading words into steps opens no
+/// window and needs no desktop — and it is public for the reason <c>Repository</c> and
+/// <c>Sources</c> are: so that <c>UiProbe.Tests</c> holds the grammar. What a test there may do is
+/// read words through <see cref="Read"/> and nothing else, because the types that start a window
+/// are the ones <c>ProbeIsNotDrivenTests</c> keeps that suite away from.
 /// </remarks>
-internal sealed record Instruction(Verb Verb, string Subject, string Detail)
+public sealed record Instruction(Verb Verb, string Subject, string Detail)
 {
     private static readonly Dictionary<Verb, int> Takes = new()
     {
@@ -99,7 +115,18 @@ internal sealed record Instruction(Verb Verb, string Subject, string Detail)
         [Verb.Wait] = 1,
         [Verb.Sleep] = 1,
         [Verb.Kill] = 0,
+        [Verb.Hover] = 1,
+        [Verb.Drag] = 2,
+        [Verb.Select] = 2,
+        [Verb.Size] = 1,
     };
+
+    /// <summary>The furthest a <c>drag</c> moves along either axis, in physical pixels.</summary>
+    private const int FurthestDrag = 4000;
+
+    private const int SmallestWindow = 200;
+
+    private const int LargestWindow = 8000;
 
     /// <summary>
     /// Every key <c>key</c> sends, by the word written for it, with the virtual-key code Windows
@@ -129,7 +156,7 @@ internal sealed record Instruction(Verb Verb, string Subject, string Detail)
     /// so a script needs no punctuation and no file — which is what makes a walk through two
     /// screens one line somebody can read in a transcript.
     /// </summary>
-    internal static IReadOnlyList<Instruction> Read(IReadOnlyList<string> words)
+    public static IReadOnlyList<Instruction> Read(IReadOnlyList<string> words)
     {
         var script = new List<Instruction>();
 
@@ -164,6 +191,16 @@ internal sealed record Instruction(Verb Verb, string Subject, string Detail)
                 _ = KeyNamed(words[at + 2]);
             }
 
+            if (verb is Verb.Drag)
+            {
+                _ = Offset(words[at + 2]);
+            }
+
+            if (verb is Verb.Size)
+            {
+                _ = Dimensions(words[at + 1]);
+            }
+
             if (verb is Verb.Kill && at + 1 < words.Count)
             {
                 throw new ProbeFailed(
@@ -190,7 +227,7 @@ internal sealed record Instruction(Verb Verb, string Subject, string Detail)
     /// what an instruction is.
     /// </remarks>
     internal static TimeSpan Seconds(string word) =>
-        double.TryParse(word, System.Globalization.CultureInfo.InvariantCulture, out var seconds)
+        double.TryParse(word, CultureInfo.InvariantCulture, out var seconds)
         // The bounds are read off the number and not off a TimeSpan made from it: `TryParse` takes
         // "Infinity", and `TimeSpan.FromSeconds` of that throws out of here as the probe breaking
         // rather than as the script being wrong, which is what it is.
@@ -200,6 +237,47 @@ internal sealed record Instruction(Verb Verb, string Subject, string Detail)
             : throw new ProbeFailed(
                 $"\"{word}\" is not a number of seconds between 0 and "
                 + $"{LongestSleep.TotalSeconds:0} to hold a screen for.");
+
+    /// <summary>How far a <c>drag</c> goes, off <c>&lt;dx&gt;,&lt;dy&gt;</c>.</summary>
+    /// <remarks>
+    /// Two integers each within ±4000 and nothing else, refused before anything starts: a drag
+    /// that read one number as two would press a button and carry it nowhere, and one that read
+    /// nine thousand pixels would throw a window off the desktop.
+    /// </remarks>
+    internal static (int Dx, int Dy) Offset(string word)
+    {
+        var parts = word.Split(',');
+
+        return parts.Length == 2
+            && int.TryParse(parts[0], NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var dx)
+            && int.TryParse(parts[1], NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var dy)
+            && Math.Abs(dx) <= FurthestDrag
+            && Math.Abs(dy) <= FurthestDrag
+                ? (dx, dy)
+                : throw new ProbeFailed(
+                    $"\"{word}\" is not how far to drag. Write two whole numbers of pixels, "
+                    + $"each between -{FurthestDrag} and {FurthestDrag}, like 120,0.");
+    }
+
+    /// <summary>The size <c>size</c> sets, off <c>&lt;width&gt;x&lt;height&gt;</c>.</summary>
+    /// <remarks>
+    /// Two integers each between 200 and 8000, refused before anything starts, for the same reason
+    /// as <see cref="Offset"/>: a window of nothing, or of the width of a street, is a typo.
+    /// </remarks>
+    internal static (int Width, int Height) Dimensions(string word)
+    {
+        var parts = word.Split('x', 'X');
+
+        return parts.Length == 2
+            && int.TryParse(parts[0], NumberStyles.None, CultureInfo.InvariantCulture, out var width)
+            && int.TryParse(parts[1], NumberStyles.None, CultureInfo.InvariantCulture, out var height)
+            && width is >= SmallestWindow and <= LargestWindow
+            && height is >= SmallestWindow and <= LargestWindow
+                ? (width, height)
+                : throw new ProbeFailed(
+                    $"\"{word}\" is not a window size. Write width and height in pixels, each "
+                    + $"between {SmallestWindow} and {LargestWindow}, like 1100x700.");
+    }
 
     /// <summary>
     /// Which key a <c>key</c> sends, off the word written after the element — the whole table, and

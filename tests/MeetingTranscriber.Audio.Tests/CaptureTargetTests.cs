@@ -17,4 +17,17 @@ public class CaptureTargetTests
         new CaptureTarget.Endpoint(new AudioDevice("{id}", "Altavoces", true)).Name.ShouldBe("Altavoces");
         new CaptureTarget.TheWholeMachine().Name.ShouldBe("everything this machine plays");
     }
+
+    /// <summary>
+    /// The one rule recording and listening before a meeting both ask, so neither can open channel
+    /// 0 differently from the other.
+    /// </summary>
+    [Fact]
+    public void Channel_zero_follows_the_program_named_or_the_whole_machine()
+    {
+        var program = new AudioProcess(1000, "msedge", 900);
+
+        CaptureTarget.ForChannelZero(program).ShouldBe(new CaptureTarget.Program(program));
+        CaptureTarget.ForChannelZero(null).ShouldBeOfType<CaptureTarget.TheWholeMachine>();
+    }
 }

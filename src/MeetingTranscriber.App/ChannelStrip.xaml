@@ -70,7 +70,7 @@
                  content. No ceiling
                  because a `ContentPresenter` cannot trim: a maximum width is a device name cut
                  flat at the pill's edge, reading as a name that is still going. -->
-            <ComboBox
+            <local:DropDown
                 x:Name="Picker"
                 Grid.Column="1"
                 MinWidth="260"

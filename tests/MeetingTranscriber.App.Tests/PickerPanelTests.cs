@@ -3,30 +3,23 @@ using System.Xml.Linq;
 namespace MeetingTranscriber.App.Tests;
 
 /// <summary>
-/// A picker holding more than fits opens at the top of itself, so the entry put first is the one
-/// somebody sees first.
+/// Every picker in the application is the application's own drop-down, whose open list sits inside
+/// the window, under its pill or over it, and is bounded by its own ceiling.
 /// </summary>
 /// <remarks>
-/// A <c>ComboBox</c> lays its list out on a <c>CarouselPanel</c> unless it is told otherwise, and
-/// a carousel decides where a list too long to fit opens. With nothing chosen, what channel 0 can
-/// follow — every program on the machine — opened part way down the alphabet, so the whole
-/// machine, which is deliberately first because it is the answer that is always right about what
-/// it records, was not on screen when the list was.
+/// <para>
+/// A platform <c>ComboBox</c> opens its list in a window the platform places, for a carousel, and
+/// three batches of patching where that window went were each seen on screen to have failed: the
+/// list opened over the entry that was chosen, as wide as the monitor, part way down the alphabet.
+/// The class keeps the name it had while it held the carousel's check, because the claim it
+/// evidences (ISC-158.1, a list opening where its first entry is seen first) is still this class's.
+/// </para>
 /// <para>
 /// This reads the markup rather than a running window, for the reason <see cref="ScreenTextsTests"/>
 /// gives: a WinUI tree needs a UI thread and a packaged host that a build agent has not got. What
-/// it can hold is the one thing whose absence is silent — a picker with no items panel of its own
-/// takes the carousel back, and every screen still looks right in the designer. The evidence that
-/// it opens at the top is a UI probe on a packaged build, recorded against ISC-158.1; this is what
-/// keeps that evidence from going stale without anybody hearing.
-/// </para>
-/// <para>
-/// It holds the system's own picker style now and no longer one picker on one screen. Naming one
-/// was right while the rule bit on exactly one list — the microphones, the languages and what will
-/// be spoken are each a handful — and it stopped being right when the pickers became pills drawn
-/// from a single style with a template of its own. Settled in the dictionary the rule cannot be
-/// forgotten by the next screen at all, and a carousel is not something this design wants
-/// anywhere. The second check below is what stops that from being a rule nothing has to obey.
+/// it can hold is what is silent when it goes — a popup not constrained to the window, a picker
+/// that is the platform's again — and the evidence that the list opens where it should is a UI
+/// probe on a packaged build. Where the list goes is arithmetic and is <c>ListPlacementTests</c>'s.
 /// </para>
 /// </remarks>
 public class PickerPanelTests
@@ -35,94 +28,108 @@ public class PickerPanelTests
 
     private const string X = "http://schemas.microsoft.com/winfx/2006/xaml";
 
-    [Fact]
-    public void The_picker_lays_its_list_out_on_something_other_than_a_carousel()
-    {
-        var panel = Picker()
-            .Elements(XName.Get("Setter", Xaml))
-            .Where(setter => (string?)setter.Attribute("Property") == "ItemsPanel")
-            .Elements(XName.Get("Setter.Value", Xaml))
-            .Elements(XName.Get("ItemsPanelTemplate", Xaml))
-            .Elements()
-            .SingleOrDefault();
-
-        panel.ShouldNotBeNull(
-            "The DropDown style declares no ItemsPanel, so every picker in the application is back "
-            + "on a ComboBox's own CarouselPanel and opens wherever that puts it.");
-        panel.Name.LocalName.ShouldNotBe("CarouselPanel");
-    }
+    /// <summary>The one place the word is allowed in code: what kind of control a screen reader is told it is.</summary>
+    private const string TheControlTypeItIsReadAs = "AutomationControlType.ComboBox";
 
     [Fact]
-    public void The_open_list_is_bounded_by_the_pickers_own_ceiling()
+    public void No_screen_holds_a_platform_ComboBox()
     {
-        // With the list on a VirtualizingStackPanel and no carousel, nothing else bounds it: on a
-        // 1440 px monitor the open list was 1440 px, and it opened over its own pill.
-        var bounded = Picker()
-            .Descendants()
-            .Where(element => element.Name.LocalName is "ScrollViewer" or "Border")
-            .Any(element => ((string?)element.Attribute("MaxHeight") ?? string.Empty)
-                .Contains("MaxDropDownHeight", StringComparison.Ordinal));
+        var markup = AppSources.With(".xaml")
+            .Where(file => File.ReadAllText(file.FullName).Contains("<ComboBox", StringComparison.Ordinal))
+            .Select(file => file.Name)
+            .ToArray();
 
-        bounded.ShouldBeTrue(
-            "The DropDown template binds no MaxHeight to MaxDropDownHeight, so an open list is as tall "
-            + "as the window and opens over its own pill.");
+        var code = AppSources.With(".cs")
+            .Where(file => SourceLines
+                .Occurrences(File.ReadAllText(file.FullName).Replace(TheControlTypeItIsReadAs, string.Empty, StringComparison.Ordinal), "ComboBox")
+                .Any())
+            .Select(file => file.Name)
+            .ToArray();
+
+        markup.ShouldBeEmpty(
+            "These screens draw a platform ComboBox, whose list is a window the platform places: "
+            + string.Join("; ", markup));
+
+        code.ShouldBeEmpty(
+            "These files name the ComboBox type, so a picker is the platform's again: "
+            + string.Join("; ", code));
     }
 
     [Fact]
     public void The_open_list_stays_inside_the_window_under_its_pill()
     {
-        // The popup is a window of its own that the platform sizes and places for a carousel: as
-        // wide as the monitor and over the entry that is chosen. The template cannot say otherwise
-        // (ShouldConstrainToRootBounds and DesiredPlacement were tried and a photograph of the
-        // desktop showed them ignored), so the list's border is bounded and aligned here and
-        // `PickerList` places the popup under the pill once the platform has opened it.
-        var border = Picker()
+        // The popup is constrained to the root of the window it is in, and dismissed by a press
+        // outside it: without the first the platform may put it in a window of its own as wide as
+        // the monitor, and without the second a list stays open over whatever was pressed.
+        var popup = Picker()
             .Descendants(XName.Get("Popup", Xaml))
-            .Single()
-            .Descendants(XName.Get("Border", Xaml))
-            .First();
+            .Single();
 
-        ((string?)border.Attribute("HorizontalAlignment")).ShouldBe(
-            "Left", "The list's border stretches, so it fills the popup window, which is the monitor.");
-        ((string?)border.Attribute("VerticalAlignment")).ShouldBe("Top");
+        ((string?)popup.Attribute("ShouldConstrainToRootBounds")).ShouldBe(
+            "True", "The drop-down's popup is not constrained to the window's root.");
+        ((string?)popup.Attribute("IsLightDismissEnabled")).ShouldBe(
+            "True", "A press outside the open list does not close it.");
+    }
 
-        Picker()
-            .Elements(XName.Get("Setter", Xaml))
-            .Any(setter => (string?)setter.Attribute("Property") == "local:PickerList.IsUnderItsPill"
-                && (string?)setter.Attribute("Value") == "True")
-            .ShouldBeTrue("The DropDown style does not ask for the list to be placed under its pill.");
+    [Fact]
+    public void The_open_list_is_bounded_by_the_pickers_own_ceiling()
+    {
+        // With nothing bounding it a list is as tall as the window and opens over its own pill. The
+        // ceiling is the control's `MaxDropDownHeight`, and it is handed to the one rule that
+        // decides where a list goes.
+        var source = File.ReadAllText(
+            AppSources.At(Path.Combine("MeetingTranscriber.App", "DropDown.cs")).FullName);
+
+        var call = source[source.IndexOf("ListPlacement.For(", StringComparison.Ordinal)..];
+        call = call[..call.IndexOf(");", StringComparison.Ordinal)];
+
+        call.ShouldContain(
+            "MaxDropDownHeight",
+            customMessage: "DropDown does not hand MaxDropDownHeight to ListPlacement.For, so an "
+            + "open list is as tall as the window.");
+    }
+
+    [Fact]
+    public void An_unanswered_pill_keeps_its_rule()
+    {
+        // MainWindow's DropDownWantingAnAnswer sets BorderBrush to pico. A template that draws the
+        // pill's border from a fixed brush ignores it, and the question still unanswered is no
+        // longer drawn where it is missing.
+        var pill = Picker()
+            .Descendants()
+            .Single(element => (string?)element.Attribute(XName.Get("Name", X)) == "Pill");
+
+        ((string?)pill.Attribute("BorderBrush")).ShouldBe(
+            "{TemplateBinding BorderBrush}",
+            "The pill's rule is not the control's own BorderBrush, so a style that sets it is ignored.");
     }
 
     [Fact]
     public void Every_picker_on_every_screen_is_drawn_from_that_one_style()
     {
-        // Without this the check above holds a style nothing has to use. A picker naming another
-        // style, or none, is one carousel back and one Windows skin back — and it would look right
-        // in the designer either way.
+        // Without this the template above is a style nothing has to use. A picker naming another
+        // style, or none, has no template at all, and would look right in the designer either way.
         var strays = AppSources.With(".xaml")
             .Where(file => !file.Name.Equals("Olivo.xaml", StringComparison.Ordinal))
-            .SelectMany(file => XDocument.Load(file.FullName)
-                .Descendants(XName.Get("ComboBox", Xaml))
+            .SelectMany(file => Pickers(file)
                 .Where(picker => (string?)picker.Attribute("Style") != "{StaticResource DropDown}")
                 .Select(picker => $"{file.Name}: {(string?)picker.Attribute(XName.Get("Name", X))}"))
             .ToArray();
 
         strays.ShouldBeEmpty(
-            "These pickers are not drawn from Olivo's DropDown, so they are the platform's: "
+            "These pickers are not drawn from Olivo's DropDown, so they have no template: "
             + string.Join("; ", strays));
     }
 
     /// <summary>
-    /// The properties a `ComboBox` still takes and Olivo's picker no longer draws.
+    /// The properties a <c>ComboBox</c> took and the application's own pill does not draw.
     /// </summary>
     /// <remarks>
     /// A pill has no header, no description and no editable field — that is what lets the box
-    /// itself stand at the control rank's 34 — so the template has no part for any of them. None of
-    /// that is a compile error and none of it is an exception: the property binds, the build is
-    /// green, and the label is simply not on the screen. It already happened, to the picker on the
-    /// packaging-checks window, and it survived every check in this repository including the one
-    /// above — which holds that every picker takes this template, and so guarantees the next screen
-    /// meets it too. <c>PlaceholderText</c> is the exception and is not here: the template draws it.
+    /// itself stand at the control rank's 34 — so the template has no part for any of them. For
+    /// the control itself they are not even properties now, and the XAML compiler says so; this is
+    /// what stays true if somebody adds one to the control without a part to draw it.
+    /// <c>PlaceholderText</c> is the exception and is not here: the template draws it.
     /// </remarks>
     public static TheoryData<string> WhatThePillDoesNotDraw() => ["Header", "Description", "IsEditable"];
 
@@ -132,15 +139,23 @@ public class PickerPanelTests
     {
         var named = AppSources.With(".xaml")
             .Where(file => !file.Name.Equals("Olivo.xaml", StringComparison.Ordinal))
-            .SelectMany(file => XDocument.Load(file.FullName)
-                .Descendants(XName.Get("ComboBox", Xaml))
+            .SelectMany(file => Pickers(file)
                 .Where(picker => picker.Attribute(property) is not null)
                 .Select(picker => $"{file.Name}: {(string?)picker.Attribute(XName.Get("Name", X))}"))
             .ToArray();
 
         named.ShouldBeEmpty(
-            $"These pickers set {property}, which Olivo's pill has no part for, so it binds and "
-            + "draws nothing: " + string.Join("; ", named));
+            $"These pickers set {property}, which Olivo's pill has no part for, so it would draw "
+            + "nothing: " + string.Join("; ", named));
+    }
+
+    /// <summary>Every <c>local:DropDown</c> in a file, whatever the prefix the file gives its namespace.</summary>
+    private static IEnumerable<XElement> Pickers(FileInfo file)
+    {
+        return XDocument
+            .Load(file.FullName)
+            .Descendants()
+            .Where(element => element.Name.LocalName == "DropDown");
     }
 
     private static XElement Picker()

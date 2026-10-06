@@ -59,10 +59,22 @@ internal sealed class McpHost : IDisposable
         Every verb is also refused once the running copy of this tool is older than the sources it
         was built from: end the session, publish it, open a new one.
 
-        It drives a corpus of its own, so Record may be pressed. `start` moves the pointer to the
-        user's corpus aside and `close` puts it back, and the line `start` prints says which corpus
-        the application it just opened is on — that line, and not this paragraph, is what is true of
-        the application you are driving.
+        While an application is open its window is in front of the desktop and topmost, and every
+        verb brings it back first. `see` is a copy of the desktop over the screen and its popups, so
+        an open list, a flyout and a tooltip are in the picture and their entries are in the tree
+        under a `popup` line. `hover`, `drag` and `select` move the person's own mouse: do not use
+        the machine while they run. `size` sets the window in physical pixels.
+
+        It drives a home of its own, so Record may be pressed: the application is told on its
+        launch line which folder holds its corpus and its pointers, and the line `start` prints says
+        which. Nothing under %USERPROFILE%\MeetingTranscriber is read or written.
+
+        Still shared with the person: the Deepgram key in Windows Credential Manager, which no walk
+        saves or removes, and — on a checkout with no package suffix — the installed package's own
+        language and theme files. Nothing a probe does may queue paid work: before a command-line
+        `record` into the home its after-a-recording setting is Nada, before every `start` the
+        corpus's `status` shows no job pending or running, and no walk presses Transcribir,
+        Resumir, Resumir de nuevo or Reintentar.
         """;
 
     /// <summary>Lent by <see cref="Program"/>, which owns it, and not disposed here.</summary>
@@ -70,18 +82,6 @@ internal sealed class McpHost : IDisposable
 
     /// <summary>Touched only on <see cref="_ui"/>, by every tool below and by nothing else.</summary>
     private Session? _open;
-
-    /// <summary>
-    /// The pointer this host is holding, or nothing when no application has been started. Touched
-    /// only on <see cref="_ui"/>, like <see cref="_open"/>.
-    /// </summary>
-    /// <remarks>
-    /// Made on the first <c>start</c> and not when this host is constructed. <c>.mcp.json</c>
-    /// starts this server at every Claude Code session in this checkout, most of which never drive
-    /// anything — and a pointer put aside for one of those would leave somebody's own corpus behind
-    /// a probe folder for hours, for a verb nobody called.
-    /// </remarks>
-    private ProbeCorpus? _corpus;
 
     private McpHost(UiThread ui) => _ui = ui;
 
@@ -119,12 +119,6 @@ internal sealed class McpHost : IDisposable
             Console.Error.WriteLine(
                 $"The application would not close within {UiThread.ToStop.TotalSeconds:0} seconds. "
                 + "Ending anyway, which is what takes it with us.");
-
-            // File work and not window work, so it does not need the thread that would not answer.
-            // An application this process could not close is one the leash is about to take, and a
-            // pointer left aside would outlive both.
-            _corpus?.Dispose();
-            _corpus = null;
         }
     }
 
@@ -136,41 +130,21 @@ internal sealed class McpHost : IDisposable
             + "already open, so it is also how you pick up a rebuild — after `close` and a build.",
             () => Answer(() =>
             {
-                // Everything that refuses a start without an application, before the pointer that
-                // says where somebody's meetings are is touched at all. A checkout with nothing
-                // registered and a published copy owed a publish are the two commonest answers
-                // this verb gives, and neither should have moved a file to say so.
+                // Everything that refuses a start without an application, before the home is made
+                // at all. A checkout with nothing registered and a published copy owed a publish
+                // are the two commonest answers this verb gives, and neither should have made a
+                // folder to say so.
                 var bearings = Bearings.Taken();
 
-                var corpus = _corpus ??= ProbeCorpus.PointedAtItsOwn();
+                // Every start and not only the first: the home is the probe's own and has to hold
+                // a corpus before the application opens it, and making it is cheap when it does.
+                var corpus = ProbeCorpus.PointedAtItsOwn();
 
-                // Every start and not only the first. The application reads the pointer once, when
-                // it launches, so the only moment it has to be right is this one — and between two
-                // starts a walk that drove the move-corpus screen, another probe process closing,
-                // or the user can each have left it saying something else.
-                corpus.StillPointedAtItsOwn();
-
-                Session opened;
-                try
-                {
-                    // The new one before the old one is let go, and that ordering is the whole
-                    // point: the commonest reason this is called is to pick up a change, the
-                    // commonest reason it fails is that the change was not built, and closing
-                    // first would charge an agent the screen it had walked to for asking.
-                    opened = Session.Open(bearings);
-                }
-                catch
-                {
-                    // The pointer goes back only when this leaves nothing open. A start that
-                    // failed over an application already running is still a probe session, and
-                    // that session's window is on the probe's corpus.
-                    if (_open is null)
-                    {
-                        LetGo();
-                    }
-
-                    throw;
-                }
+                // The new one before the old one is let go, and that ordering is the whole point:
+                // the commonest reason this is called is to pick up a change, the commonest reason
+                // it fails is that the change was not built, and closing first would charge an
+                // agent the screen it had walked to for asking.
+                var opened = Session.Open(bearings, corpus);
 
                 _open?.Dispose();
                 _open = opened;
@@ -277,6 +251,51 @@ internal sealed class McpHost : IDisposable
             ([Description("The x:Name of something on the screen you expect, or the words on it.")] string element) =>
                 Turn(session => $"on \"{session.Wait(element)}\"")),
 
+        Tool(
+            "hover",
+            "Puts the pointer on a control, holds it there for two seconds and answers with the "
+            + "cursor it showed as a sequence — `hand from 0.0 s; arrow at 0.85 s` — and the tree, "
+            + "which has the words of a tooltip it opened. Moves the person's own mouse.",
+            ([Description("The x:Name of the control, or the words on it.")] string element) =>
+                Turn(session => session.Hover(element))),
+
+        Tool(
+            "drag",
+            "Presses the left button on a control, moves by whole physical pixels in twelve steps "
+            + "and lets go; `0,0` is a click. Answers with the window's rectangle and the control's "
+            + "range value before and after, and the tree. Moves the person's own mouse.",
+            (
+                [Description("The x:Name of the control, or the words on it.")] string element,
+                [Description("How far, as <dx>,<dy> each within 4000, like 120,0.")] string by) =>
+                Turn(session =>
+                {
+                    var (dx, dy) = Instruction.Offset(by);
+
+                    return session.Drag(element, dx, dy);
+                })),
+
+        Tool(
+            "select",
+            "Selects words in a control by dragging the mouse across them, and answers with what "
+            + "was selected, refusing when it is not those words, and the tree. Moves the person's "
+            + "own mouse.",
+            (
+                [Description("The x:Name of the control, or the words on it.")] string element,
+                [Description("The words to select.")] string text) =>
+                Turn(session => session.Select(element, text))),
+
+        Tool(
+            "size",
+            "Sets the window's size in physical pixels, keeping its position, and answers with the "
+            + "rectangle it now has and the tree.",
+            ([Description("<width>x<height>, each between 200 and 8000, like 1100x700.")] string to) =>
+                Turn(session =>
+                {
+                    var (width, height) = Instruction.Dimensions(to);
+
+                    return session.Size(width, height);
+                })),
+
         // There is no `kill` here, and the omission is a decision. `Session` has one, and reaching
         // what a start finds after a crash is what it is for — but every walk that needs it is a
         // script, because a crash is the end of a session and what comes after it is a second run
@@ -288,11 +307,7 @@ internal sealed class McpHost : IDisposable
             + "application needs this first.",
             () => Answer(() =>
             {
-                // The pointer as well as the application, and the pointer even when there is no
-                // application: `_corpus` outliving `_open` is what a `start` that opened one and
-                // then threw leaves, and that is the state in which somebody's own application is
-                // opening on the probe's corpus.
-                if (_open is null && _corpus is null)
+                if (_open is null)
                 {
                     return Text("Nothing was open.");
                 }
@@ -303,28 +318,16 @@ internal sealed class McpHost : IDisposable
             })),
     ];
 
-    /// <summary>
-    /// Lets go of the application and of the pointer, in that order, and forgets both.
-    /// </summary>
+    /// <summary>Lets go of the application and forgets it.</summary>
     /// <remarks>
-    /// One method because the two always end together and the pairing was spelled out in four
-    /// places: <c>close</c>, the crash branch of <see cref="Live"/>, a failed <c>start</c> and
-    /// <see cref="Dispose"/>. The fifth place somebody drops a session and forgets the pointer is
-    /// somebody's own application opening on the probe's corpus, silently, until the next probe
-    /// run.
-    /// <para>
-    /// The application first and never the pointer: it holds the corpus open and read the pointer
-    /// at its launch, and a pointer put back while it is still writing is the next launch's answer
-    /// arriving under this one.
-    /// </para>
+    /// One method because the endings are four — <c>close</c>, the crash branch of
+    /// <see cref="Live"/> and <see cref="Dispose"/> — and the one that forgets to clear
+    /// <see cref="_open"/> leaves a session every later verb would answer from.
     /// </remarks>
     private void LetGo()
     {
         _open?.Dispose();
         _open = null;
-
-        _corpus?.Dispose();
-        _corpus = null;
     }
 
     private static McpServerTool Tool(string name, string does, Delegate what) =>
@@ -389,8 +392,8 @@ internal sealed class McpHost : IDisposable
             // is not the same refusal: that window is still open and still has to be closed.
             if (session.HasGone)
             {
-                // A crash is an ending this tool can see, so the pointer goes back at the first
-                // verb after it rather than waiting for a `close` nobody is going to call.
+                // A crash is an ending this tool can see, so the session goes at the first verb
+                // after it rather than waiting for a `close` nobody is going to call.
                 LetGo();
             }
 

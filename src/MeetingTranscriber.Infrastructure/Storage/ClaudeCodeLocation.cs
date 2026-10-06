@@ -36,10 +36,16 @@ public sealed class ClaudeCodeLocation
     public FileInfo Setting { get; }
 
     /// <summary>The one kept beside where this user's corpus location is kept.</summary>
-    public static ClaudeCodeLocation OfThisUser() => new(new FileInfo(Path.Combine(
+    public static ClaudeCodeLocation OfThisUser() => Under(new DirectoryInfo(Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-        CorpusLocation.ApplicationFolderName,
-        SettingName)));
+        CorpusLocation.ApplicationFolderName)));
+
+    /// <summary>The one kept in <paramref name="applicationFolder"/>.</summary>
+    public static ClaudeCodeLocation Under(DirectoryInfo applicationFolder)
+    {
+        ArgumentNullException.ThrowIfNull(applicationFolder);
+        return new(new FileInfo(Path.Combine(applicationFolder.FullName, SettingName)));
+    }
 
     /// <summary>
     /// The file somebody chose, or <c>null</c> when nobody has — which is also what a setting file

@@ -157,7 +157,7 @@
                             <!-- Written the moment it is chosen, through the one gate every write
                                  on this screen goes through, and dead with the group above it when
                                  there is nowhere to write. -->
-                            <ComboBox
+                            <local:DropDown
                                 x:Name="SummaryModelPicker"
                                 HorizontalAlignment="Left"
                                 MinWidth="180"
@@ -174,7 +174,7 @@
                                     Text="{x:Bind In(loc:UiTexts.Effort)}"
                                     Style="{StaticResource BodyText}"
                                     Foreground="{ThemeResource SecondaryTextBrush}" />
-                                <ComboBox
+                                <local:DropDown
                                     x:Name="EffortPicker"
                                     MinWidth="120"
                                     Style="{StaticResource DropDown}"
@@ -295,7 +295,7 @@
                                 Text="{x:Bind In(loc:UiTexts.Language)}"
                                 Style="{StaticResource BodyText}"
                                 Foreground="{ThemeResource SecondaryTextBrush}" />
-                            <ComboBox
+                            <local:DropDown
                                 x:Name="LanguagePicker"
                                 MinWidth="150"
                                 Style="{StaticResource DropDown}"
@@ -308,7 +308,7 @@
                                 Text="{x:Bind In(loc:UiTexts.Theme)}"
                                 Style="{StaticResource BodyText}"
                                 Foreground="{ThemeResource SecondaryTextBrush}" />
-                            <ComboBox
+                            <local:DropDown
                                 x:Name="ThemePicker"
                                 MinWidth="150"
                                 Style="{StaticResource DropDown}"

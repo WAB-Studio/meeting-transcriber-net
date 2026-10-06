@@ -1216,7 +1216,7 @@ public sealed partial class Configuracion : UserControl
 
             try
             {
-                await Task.Run(() => CorpusLocation.OfThisUser().Choose(folder));
+                await Task.Run(() => App.Home.Corpus.Choose(folder));
             }
             catch (Exception refused) when (ScreenFailures.Reportable(refused))
             {
@@ -1335,7 +1335,7 @@ public sealed partial class Configuracion : UserControl
             }
 
             await Task.Run(
-                () => CorpusMove.Copy(from, to, stopping, whenWhole: () => CorpusLocation.OfThisUser().Choose(to)),
+                () => CorpusMove.Copy(from, to, stopping, whenWhole: () => App.Home.Corpus.Choose(to)),
                 stopping);
 
             moved = true;
@@ -1481,7 +1481,7 @@ public sealed partial class Configuracion : UserControl
 
             try
             {
-                await Task.Run(() => ClaudeCodeLocation.OfThisUser().Choose(executable));
+                await Task.Run(() => App.Home.ClaudeCode.Choose(executable));
             }
             catch (Exception refused) when (ScreenFailures.Reportable(refused))
             {

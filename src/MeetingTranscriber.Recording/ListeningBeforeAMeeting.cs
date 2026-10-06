@@ -48,9 +48,7 @@ public sealed class ListeningBeforeAMeeting : IDisposable
 
         if (source is not null)
         {
-            wanted.Add(source.Follow is { } program
-                ? new CaptureTarget.Program(program)
-                : new CaptureTarget.TheWholeMachine());
+            wanted.Add(CaptureTarget.ForChannelZero(source.Follow));
         }
 
         if (microphone is not null)

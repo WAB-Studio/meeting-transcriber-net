@@ -86,6 +86,13 @@ settles one.
 A fourth speaker has no colour yet and nobody has decided one. Until somebody does, a third named
 speaker takes the no-name grey rather than a colour invented on the spot.
 
+A press under the pointer is veiled in its own ink, at once and without a fade: tinta at 6 % under
+the pointer and 12 % pressed, and the principal act — whose fill is ink — in papel at 14 % and 28 %.
+The four strengths are `PointerVeilOpacity`, `PressedVeilOpacity`, `PrincipalPointerVeilOpacity` and
+`PrincipalPressedVeilOpacity`, and neither the two button templates nor the drop-down's pill hold a
+`Storyboard` or a `VisualTransition`. They are not rows of either table above, which pin colours and
+speakers; they are strengths of a colour a row already is.
+
 ### Decided, and not yet a key
 
 **No screen ever writes a colour.** Not in markup, not in code, and not inside a component: every
@@ -218,9 +225,10 @@ tarjeta row is invisible. On papel it is tarjeta with no rule; on tarjeta it is 
 four per cent of nothing, so the button reads as a stray outline rather than a thing to press.
 
 Every button is drawn by one of two templates of `Olivo.xaml`: `PrincipalActTemplate` for the
-principal act and `OlivoButtonTemplate` for every other rank. **Neither answers a passing cursor or a
-press** — nothing changes under the pointer, because nothing here reacts to one — and a dead button
-differs only by ink: its words go tertiary, and the principal act's ink fill becomes the rule's
+principal act and `OlivoButtonTemplate` for every other rank. **Both answer a passing cursor and a
+press at once**: a veil in the button's own ink over the whole press (§Colour has the strengths), shown
+the moment the pointer is on it and gone the moment it leaves, with nothing fading either way. A dead
+button differs only by ink: its words go tertiary, and the principal act's ink fill becomes the rule's
 colour so that it stops being the heaviest thing on the screen. What a pointer does get is the hand:
 every press and every pressable row shows it, set by the styles in `Olivo.xaml` and never by a
 screen. A press that is a glyph and nothing else — the list's caret, the player's play and pause,
@@ -303,10 +311,14 @@ an ellipsis is work in progress. **The two that run are olivo and the rest are s
 everywhere else in this application. *Detenida* is the one that waits on a person, and takes the
 primary ink to be noticed; the others are quiet.
 
-A drop-down is a 34-high control on papel with a 1px `#E6E4DE` rule and an 11px chevron in
-secondary. Its open list is placed under the pill from code once the platform opens it (`PickerList`); it is still a window of its own, and that it stays under the pill has not been photographed. It is no taller than the
-control's `MaxDropDownHeight` and as wide as the pill, or 560 where a program's name needs it, held
-to the room the window has to the right of the pill. No control offers a two-way choice now. When one does, it is two halves inside a `#E6E4DE`
+A drop-down is the application's own control (`DropDown`), a 34-high pill on papel with a 1px
+`#E6E4DE` rule and an 11px chevron in secondary, veiled like every other press under the pointer. Its open
+list opens under the pill, or over it when there is no room below, always inside the window and never
+outside it: no taller than eight entries and as wide as its widest entry, and never narrower than the
+pill. The pill keeps showing what is chosen while the list is open, and a press on the pill while the
+list is open closes it. Where the list goes is `ListPlacement`'s, as plain arithmetic, and not the
+platform's: a `ComboBox` opens a window of its own that three batches of patching never placed
+reliably. No control offers a two-way choice now. When one does, it is two halves inside a `#E6E4DE`
 trough with 3px of padding, the trough at radius 4 and each half at 3; the chosen one is papel with
 weight 500 and the other is secondary with no fill. A set of more than two is a radio row: a 16px circle — genuinely round — olivo with a
 4px papel inset when chosen and a 1.5px `#C3BFB6` ring when not, and the whole chosen row sits on
@@ -448,8 +460,10 @@ weight rather than as an effect. Nothing eases both ways; nothing bounces; nothi
 - **Anything that happens on every element.** A list whose rows arrive one after another says the
   list is important; a list of thirty says it twelve seconds late. Rows arrive together or not at
   all.
-- **Anything on hover.** A screen that reacts to a passing cursor is a screen with a hundred small
-  events in it, none of which somebody asked for.
+- **A fade on hover.** A press answers a pointer at once, with a veil that is there or is not, and
+  nothing fades in or out under it: a fade is what read as a flicker. A screen that reacts to a
+  passing cursor with anything but a press's own veil is a screen with a hundred small events in it,
+  none of which somebody asked for.
 
 ### When Windows says no
 
@@ -667,7 +681,8 @@ room while it holds no line. The status line at the foot keeps one sentence, the
 recording with nowhere to put it; every other state is already said by the stopwatch, the strip, the
 saving card and the presses.
 
-**`GrabandoVivo`** · Recording, transcribing live. Stopwatch at 40/48, *Pausar* and *Detener*, both
+**`GrabandoVivo`** · Recording, transcribing live. Stopwatch at 40/48, the pause glyph and the stop glyph
+(named and tooltipped *Pausar* and *Detener*), both
 meters compressed to one row each, and the live transcript filling the rest. Text arrives word by
 word and the tail is grey: **the grey is the provisional part the provider is still correcting, and
 grey is not what gets stored.** A 2px olive caret follows it. Speakers are a name, a coloured dot
@@ -677,7 +692,9 @@ and the time, right-aligned in a 96px gutter; the line itself is capped at 62ch.
 glyph while recording and as the play glyph while paused, its name and tooltip *Pausar* and *Seguir*;
 a press that is refused says so in a sentence and changes nothing. The clock on screen stands still
 while paused, and the stretch is left out of the audio at the end, so the meeting's length and every
-time in it are the time actually recorded.
+time in it are the time actually recorded. *Detener* is a glyph too — the square, beside the pause
+glyph and the same size, named and tooltipped *Detener* — because both steer a recording that is already
+running; the principal act, *Empezar a grabar*, stays words.
 
 **No recording screen names the meeting.** A meeting is named by its summary, or by hand from its
 own screen afterwards, so while one is running there is nothing to put there and nothing is
@@ -777,7 +794,12 @@ application is closed and opened again. It is a radio row and never the two-way 
 two, because the set only grows. A meeting with one summary has nothing to choose and draws no
 rows.
 
-**`Clasificar`** · What it was about. The templates are the fourteen chips — the thirteen meetings
+**`Clasificar`** · The screen is titled *Clasificar* — the words of the press that opens it, one entry
+used twice — and not by a question. Under the chips stands one line kept for the lit chip, two lines of
+body text high whether or not a chip is lit, so nothing below it moves: the chip's own tooltip sentence,
+then what it opens, each path's levels joined by *›* and the paths and the places for somebody by *·* —
+*Una clase o curso · Universidad › Materia · Profesor*. *Ninguna — la lleno yo* reads its sentence
+alone, and with no chip lit the line is empty. The templates are the fourteen chips — the thirteen meetings
 of `arquitectura.md` §5.3 **by name**, and *Ninguna — la lleno yo* — each with a one-phrase tooltip,
 and what each one fills in is not explained, it is seen on choosing. **A lit chip names its places in
 that kind of meeting's own words**: *Clase* opens *Universidad › Materia* and a *Profesor*;
@@ -960,7 +982,7 @@ meeting's name, and none of the presses but one:
   meeting have no clock, and a strip showing the last reading through either would be a screen
   saying a meeting is still being recorded. Elapsed time is spelled the way it is spelled
   everywhere, through `ScreenNumbers.Long`, so it reads `0:08:12` and not `08:12`.
-- ***Detener***, at the normal rank and not the principal one. The screen's one principal act is
+- ***Detener***, the square glyph at the normal rank and not the principal one. The screen's one principal act is
   *Empezar a grabar*; a press that steers a recording already running is normal, here as on the
   card. It is the one press that cannot wait for somebody to lower the list, so it is the only one
   the strip has: *Pausar*, which is *Seguir* while paused, waits, and lowering the list is what

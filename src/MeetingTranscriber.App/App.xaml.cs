@@ -74,13 +74,32 @@ public partial class App : Application
     }
 
     /// <summary>
+    /// The folder this launch keeps its two pointers and its first corpus in, settled first thing in
+    /// <see cref="OnLaunched"/> from the launch line. It is the profile's own unless the UI probe
+    /// started the application with a home of its own, so that a walk never touches the owner's.
+    /// </summary>
+    public static ApplicationHome Home { get; private set; } = ApplicationHome.OfThisUser();
+
+    /// <summary>
+    /// What the activation's own arguments say. Read off the app-lifecycle activation and not off
+    /// the XAML launch arguments, which a packaged launch leaves empty.
+    /// </summary>
+    private static string? LaunchLine() =>
+        Microsoft.Windows.AppLifecycle.AppInstance.GetCurrent().GetActivatedEventArgs().Data
+            is Windows.ApplicationModel.Activation.ILaunchActivatedEventArgs launch
+            ? launch.Arguments
+            : null;
+
+    /// <summary>
     /// Invoked when the application is launched.
     /// </summary>
     /// <param name="args">Details about the launch request and process.</param>
     protected override void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)
     {
+        Home = ApplicationHome.FromLaunch(LaunchLine());
+        Home.ReportIfAsked();
         _language = UiLanguages.Resolve(_choice.Read(), WindowsLanguages());
-        _corpus = CorpusLocation.OfThisUser().Resolve();
+        _corpus = Home.Corpus.Resolve();
 
         // No window exists yet, so none is held still while a corpus behind this build migrates.
         var said = BringUp(_corpus);
@@ -203,7 +222,7 @@ public partial class App : Application
     /// </remarks>
     private void OnCorpusChosen(object? sender, EventArgs e)
     {
-        _corpus = CorpusLocation.OfThisUser().Resolve();
+        _corpus = Home.Corpus.Resolve();
 
         var closing = _main;
 

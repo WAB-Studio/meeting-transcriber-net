@@ -147,10 +147,17 @@ public partial class MainScreenTests
         Method("private void ReserveTheCaptionButtons(").ShouldContain("AppWindow.TitleBar.RightInset");
 
         // The region is behind the mark and the name, in the columns after the back button's, and
-        // holds nothing pressable: a press inside a drag region is a drag.
+        // holds nothing pressable: a press inside a drag region is a drag. It is drawn with a fill
+        // nobody sees and not left with none, because a press falls through an element that
+        // has none and the bar then does not move the window (fb-106, ISC-225).
         var markup = Read(Markup);
-        Regex.IsMatch(markup, @"<Border x:Name=""TheDragRegion"" Grid.Column=""1"" Grid.ColumnSpan=""2"" />")
-            .ShouldBeTrue("the drag region is no longer an empty element over the mark and the name.");
+        Regex.IsMatch(
+                markup,
+                @"<Border x:Name=""TheDragRegion"" Grid.Column=""1"" Grid.ColumnSpan=""2"" Style=""{StaticResource DragFill}"" />")
+            .ShouldBeTrue("the drag region is no longer an element over the mark and the name, drawn with DragFill.");
+        Read(Path.Combine("MeetingTranscriber.App", "Olivo.xaml")).ShouldMatch(
+            "x:Key=\"DragFill\"[^>]*>\\s*<Setter Property=\"Background\" Value=\"Transparent\" />");
+        markup.ShouldContain("x:Name=\"TitleText\"");
         markup.ShouldContain("x:Name=\"CaptionSpace\"");
     }
 
@@ -181,6 +188,31 @@ public partial class MainScreenTests
         pressed.ShouldContain("screen.Allows(RecorderPress.Resume)");
         pressed.ShouldContain("recording.Resume();");
         pressed.ShouldContain("recording.Pause();");
+    }
+
+    /// <summary>
+    /// Stop is a glyph like pause is: both presses that stop a meeting hold the square and no words,
+    /// and are named and tooltipped with the word in the window's language (fb-108).
+    /// </summary>
+    [Fact]
+    public void Stop_is_a_glyph_like_pause()
+    {
+        var markup = Read(Markup);
+
+        foreach (var name in new[] { "StopButton", "StripStopButton" })
+        {
+            var press = Regex.Match(markup, $@"<Button\s[^>]*x:Name=""{name}""[\s\S]*?</Button>").Value;
+
+            press.ShouldNotBeEmpty($"{name} is not a button with content of its own.");
+            press.ShouldContain("<FontIcon Glyph=\"&#xE71A;\"");
+            press.ShouldNotContain("Content=", customMessage: $"{name} says its words again.");
+            press.ShouldContain("ASteeringPress");
+        }
+
+        var naming = Method("private void NameTheStopPresses(");
+        naming.ShouldContain("AutomationProperties.SetName(press, In(UiTexts.Stop))");
+        naming.ShouldContain("ToolTipService.SetToolTip(press, In(UiTexts.Stop))");
+        Method("private void Refresh(").ShouldContain("NameTheStopPresses();");
     }
 
     /// <summary>

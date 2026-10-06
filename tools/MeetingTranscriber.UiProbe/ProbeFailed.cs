@@ -19,7 +19,7 @@ namespace MeetingTranscriber.UiProbe;
 /// taxonomy is held by the hierarchy rather than by every host remembering to re-raise it.
 /// </para>
 /// </remarks>
-internal class ProbeFailed(string message) : Exception(message);
+public class ProbeFailed(string message) : Exception(message);
 
 /// <summary>
 /// A <c>see</c> whose window would not be photographed, carrying the tree it did read.

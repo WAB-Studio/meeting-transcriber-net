@@ -35,17 +35,20 @@ internal static class Search
     /// tier that decided. Empty when nothing does.
     /// </summary>
     internal static IReadOnlyList<AutomationElement> Matching(
-        AutomationElement root,
+        IReadOnlyList<AutomationElement> scope,
         string target,
         AutomationPattern? mustSupport = null) =>
-        Among(Everything(root, mustSupport), target);
+        Among(Everything(scope, mustSupport), target);
 
     /// <summary>
     /// The single element <paramref name="target"/> names, or a failure saying what was on the
     /// screen instead — built out of the same walk that failed to find it, so the list cannot
     /// contain the thing the search just said was not there.
     /// </summary>
-    /// <param name="root">Where to look.</param>
+    /// <param name="scope">
+    /// Where to look: the screen and then its popups, so a list the platform opened in a window of
+    /// its own is searched as part of the screen it opened from.
+    /// </param>
     /// <param name="target">What the instruction wrote.</param>
     /// <param name="mustSupport">A pattern the element has to offer, or nothing.</param>
     /// <param name="takingTheKeyboard">
@@ -55,12 +58,12 @@ internal static class Search
     /// this way: a name that matches one thing still answers with that thing, disabled or not.
     /// </param>
     internal static AutomationElement One(
-        AutomationElement root,
+        IReadOnlyList<AutomationElement> scope,
         string target,
         AutomationPattern? mustSupport = null,
         bool takingTheKeyboard = false)
     {
-        var considered = Everything(root, mustSupport);
+        var considered = Everything(scope, mustSupport);
         var matches = Among(considered, target);
 
         if (takingTheKeyboard && matches.Count > 1)
@@ -95,7 +98,7 @@ internal static class Search
             : string.Empty;
 
         throw new ProbeFailed(
-            $"Nothing on \"{ElementWords.Name(root)}\" answers to \"{target}\". "
+            $"Nothing on \"{ElementWords.Name(scope[0])}\" answers to \"{target}\". "
             + $"What is there:{Environment.NewLine}  {some}{rest}");
     }
 
@@ -128,6 +131,34 @@ internal static class Search
         return considered
             .Where(element => ElementWords.Name(element).Contains(target, StringComparison.OrdinalIgnoreCase))
             .ToList();
+    }
+
+    /// <summary>
+    /// <see cref="Everything(AutomationElement, AutomationPattern?)"/> over a screen and its
+    /// popups, in that order.
+    /// </summary>
+    internal static List<AutomationElement> Everything(
+        IReadOnlyList<AutomationElement> scope,
+        AutomationPattern? mustSupport = null)
+    {
+        var considered = new List<AutomationElement>(Everything(scope[0], mustSupport));
+
+        // A popup is best effort: a tooltip closes on its own a few seconds after it opens, and a
+        // verb that failed because one went between being found and being read would fail
+        // intermittently on a screen that was fine.
+        foreach (var popup in scope.Skip(1))
+        {
+            try
+            {
+                considered.AddRange(Everything(popup, mustSupport));
+            }
+            catch (ProbeFailed)
+            {
+                // Gone, or changing; the screen itself was read whole.
+            }
+        }
+
+        return considered;
     }
 
     /// <summary>

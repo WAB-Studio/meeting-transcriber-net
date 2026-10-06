@@ -92,7 +92,7 @@ public class PlaybackTests
         // One side at 0.4 and the other silent: the fold may not halve it, which is what it did
         // and what made every meeting 6 dB quieter than the file. Then both sides at full scale,
         // where a plain sum is 2 and a hard clip would be 1: the limiter keeps it below.
-        var folded = Playback.BothSidesInBothEars(
+        var (folded, _) = Playback.AsPlayed(
             new Fabricated(channels: 2, [0.4f, 0f, 0f, 0.4f, 1f, 1f, -1f, -1f]));
 
         folded.WaveFormat.Channels.ShouldBe(1);
@@ -111,23 +111,59 @@ public class PlaybackTests
     [Fact]
     public void The_volume_scales_what_is_heard()
     {
-        var folded = Playback.BothSidesInBothEars(new Fabricated(channels: 2, [0.4f, 0f]));
-        var scaled = new VolumeSampleProvider(folded) { Volume = 0.5f };
+        var (heard, gain) = Playback.AsPlayed(new Fabricated(channels: 2, [0.4f, 0f]));
+        gain.Volume = 0.5f;
 
-        var heard = new float[1];
-        scaled.Read(heard, 0, 1).ShouldBe(1);
+        var read = new float[1];
+        heard.Read(read, 0, 1).ShouldBe(1);
 
-        heard[0].ShouldBe(0.2f, 1e-6f);
+        read[0].ShouldBe(0.2f, 1e-6f);
     }
 
     [Fact]
-    public void A_recording_that_is_already_one_track_is_handed_over_untouched()
+    public void One_track_is_not_folded_and_still_passes_the_gain_and_the_limiter()
     {
-        // Audio brought in from outside is one track by the time it is a meeting's, and a fold
-        // over it would do nothing but stand between the file and the device.
-        var one = new Fabricated(channels: 1, [0.25f, 0.5f]);
+        // Audio brought in from outside is one track by the time it is a meeting's: a fold would
+        // have nothing to fold, but the gain and the limiter reach it like any other recording,
+        // and so reach a voice clip in Quién es quién.
+        var (heard, _) = Playback.AsPlayed(new Fabricated(channels: 1, [0.25f, 0.9f]));
 
-        Playback.BothSidesInBothEars(one).ShouldBeSameAs(one);
+        heard.WaveFormat.Channels.ShouldBe(1);
+
+        var read = new float[2];
+        heard.Read(read, 0, 2).ShouldBe(2);
+
+        read[0].ShouldBe(0.25f, 1e-6f);
+        read[1].ShouldBeLessThan(0.9f);
+        read[1].ShouldBeGreaterThan(0.5f);
+    }
+
+    [Fact]
+    public void Twice_the_volume_is_louder_and_still_never_passes_full_scale()
+    {
+        // A tone at -12 dBFS (about 0.251), and a hot sample at 0.9 that twice over is 1.8 before
+        // anything bends it. The limiter after the gain is what keeps both under full scale.
+        var tone = new float[64];
+        for (var i = 0; i < tone.Length; i++)
+        {
+            tone[i] = 0.251f * MathF.Sin(i * MathF.Tau / 16f);
+        }
+
+        static float Loudest(float[] samples, float volume)
+        {
+            var (heard, gain) = Playback.AsPlayed(new Fabricated(channels: 1, samples));
+            gain.Volume = volume;
+
+            var read = new float[samples.Length];
+            heard.Read(read, 0, read.Length).ShouldBe(read.Length);
+
+            return read.Max(MathF.Abs);
+        }
+
+        float[] hot = [.. tone, 0.9f, -0.9f];
+
+        Loudest(tone, 2f).ShouldBeGreaterThan(Loudest(tone, 1f));
+        Loudest(hot, 2f).ShouldBeLessThan(1f);
     }
 
     /// <summary>Samples that never came off a device, so the fold can be read without one.</summary>

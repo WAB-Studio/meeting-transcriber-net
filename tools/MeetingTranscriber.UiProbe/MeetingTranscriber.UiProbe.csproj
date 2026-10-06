@@ -24,11 +24,11 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- For two types and nothing else: CorpusLocation, which is where the application is told its
-         corpus is, and CorpusDatabase, which is what makes one. The probe drives the product's own
-         corpus setting the way a person moving their corpus does, so it needs no new concept and
-         adds no product surface — ISC-114.2 already promises the corpus opens wherever it was
-         moved to.
+    <!-- For three types and nothing else: ApplicationHome, which is how the application is told
+         on its launch line where its home is, CorpusLocation, which that home holds the corpus
+         pointer of, and CorpusDatabase, which is what makes a corpus. The probe gives the
+         application a home of its own and never moves the person's, so it needs no new concept in
+         the product beyond the one switch and the owner's folder is never read or written.
 
          MeetingTranscriber.App is still never referenced and never will be: touching a type from
          that assembly fires the Windows App SDK module initializer in this process and throws

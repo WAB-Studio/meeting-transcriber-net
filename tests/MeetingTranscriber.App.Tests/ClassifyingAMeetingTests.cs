@@ -420,7 +420,7 @@ public class ClassifyingAMeetingTests
     /// <para>
     /// The pills are built in code and have no <c>x:Name</c>, and <c>UiProbe.ElementWords</c>
     /// matches an element only by <c>AutomationId</c> or <c>Name</c> — so an unnamed one is a bare
-    /// <c>ComboBox</c> in the tree that no <c>choose</c> can reach. That is why #296's own Proof
+    /// <c>DropDown</c> in the tree that no <c>choose</c> can reach. That is why #296's own Proof
     /// could not be driven and had to be reasoned about instead, and a screen reader is in exactly
     /// the same position.
     /// </para>
@@ -440,7 +440,7 @@ public class ClassifyingAMeetingTests
     /// not a second one — XAML gives it an <c>x:Name</c>, which is where an id comes from there.
     /// </para>
     /// <para>
-    /// Read as text, so it is a cheap guard and not a structural impossibility: <c>ComboBox picker
+    /// Read as text, so it is a cheap guard and not a structural impossibility: <c>DropDown picker
     /// = new();</c> is the same construction and matches nothing here. What it stops is the
     /// ordinary way this would come back — a second builder written the way the first one is.
     /// </para>
@@ -454,7 +454,7 @@ public class ClassifyingAMeetingTests
         oneOfThese.ShouldContain(
             "AutomationProperties.SetName(picker",
             customMessage: "OneOfThese.Build returns a control with no name on it, so every pill "
-            + "built through it is a bare ComboBox to a screen reader.");
+            + "built through it is a bare DropDown to a screen reader.");
 
         oneOfThese.ShouldContain(
             "AutomationProperties.SetAutomationId(picker",
@@ -471,16 +471,18 @@ public class ClassifyingAMeetingTests
             + "the Enter that writes the name.");
 
         oneOfThese.ShouldContain(
-            "new ComboBox",
-            customMessage: "the application's one ComboBox construction has moved out of "
+            "new DropDown",
+            customMessage: "the application's one DropDown construction has moved out of "
             + "OneOfThese.cs, which is where this check expects to find it.");
 
+        // DropDown.cs is the control itself, and creates its own automation peer.
         var occurrences = AppSources.With(".cs")
-            .Sum(file => SourceLines.Occurrences(File.ReadAllText(file.FullName), "new ComboBox").Count());
+            .Where(file => !file.Name.Equals("DropDown.cs", StringComparison.Ordinal))
+            .Sum(file => SourceLines.Occurrences(File.ReadAllText(file.FullName), "new DropDown").Count());
 
         occurrences.ShouldBe(
             1,
-            "the application builds a ComboBox somewhere other than OneOfThese.Build, and that "
+            "the application builds a DropDown somewhere other than OneOfThese.Build, and that "
             + "one is addressed by nothing. Build it through OneOfThese, which is also where the "
             + "index arithmetic lives.");
     }
@@ -567,6 +569,68 @@ public class ClassifyingAMeetingTests
         Body(source, "private void OnKeptNameKey(").ShouldContain("CorrectTheKeptName(");
 
         Body(source, "private void CorrectTheKeptName(").ShouldContain("InTheCorpus(");
+    }
+
+    /// <summary>The screen is titled with the words of the press that opens it.</summary>
+    [Fact]
+    public void The_screen_is_called_what_its_press_says()
+    {
+        var markup = File.ReadAllText(AppSources.At(Markup).FullName);
+
+        markup.ShouldContain(
+            "loc:UiTexts.Classify)",
+            customMessage: "the title is not the words of the press that opens the screen, UiTexts.Classify.");
+
+        markup.ShouldNotContain("WhatThisMeetingWasAbout", customMessage: "the old question is back as the title.");
+
+        File.ReadAllText(AppSources.At(Path.Combine("MeetingTranscriber.Presentation", "UiTexts.Classifying.cs")).FullName)
+            .ShouldNotContain(
+                "WhatThisMeetingWasAbout",
+                customMessage: "the words of the old title are still in the catalogue.");
+    }
+
+    /// <summary>
+    /// The line under the chips holds its height whether or not a chip is lit, so nothing below it
+    /// moves when one is.
+    /// </summary>
+    [Fact]
+    public void A_lit_chip_is_described_in_a_line_kept_for_it()
+    {
+        var markup = File.ReadAllText(AppSources.At(Markup).FullName);
+
+        Regex.IsMatch(markup, @"<TextBlock\s[^>]*x:Name=""ShapeDescription""[^>]*MinHeight=""\d+""")
+            .ShouldBeTrue("the description line has no MinHeight, so the screen moves when a chip is lit.");
+
+        var source = File.ReadAllText(AppSources.At(Screen).FullName);
+
+        source.ShouldNotContain(
+            "ShapeDescription.Visibility",
+            customMessage: "the description line is collapsed in code, so it gives up its height with no chip lit.");
+
+        source.ShouldContain("ShapeDescription.Text = ", customMessage: "nothing writes the description line.");
+    }
+
+    /// <summary>
+    /// A pill opens under a pointer. Its first press was read as the one that had just dismissed its
+    /// list, because "never dismissed" was <c>long.MinValue</c> and the elapsed time against it
+    /// overflowed to a negative number — so on Clasificar, whose pills are built again by every
+    /// answer, no pill ever opened by a press, and a new place could not be named at either level.
+    /// </summary>
+    [Fact]
+    public void A_pill_that_was_never_dismissed_does_not_read_a_press_as_a_dismissal()
+    {
+        var source = File.ReadAllText(AppSources.At(Path.Combine("MeetingTranscriber.App", "DropDown.cs")).FullName);
+
+        source.ShouldNotContain(
+            "_dismissedAt = long.MinValue",
+            customMessage: "the elapsed time against long.MinValue overflows below the window, so every press "
+            + "on a fresh pill reads as a dismissal and the pill never opens.");
+
+        Regex.IsMatch(source, @"long\?\s+_dismissedAt")
+            .ShouldBeTrue("_dismissedAt is not a nullable, so there is no way to say nothing has dismissed it.");
+
+        Regex.IsMatch(source, @"_dismissedAt is \{ \} \w+\s*&&")
+            .ShouldBeTrue("a press is read against a dismissal that may never have happened.");
     }
 
     /// <summary>

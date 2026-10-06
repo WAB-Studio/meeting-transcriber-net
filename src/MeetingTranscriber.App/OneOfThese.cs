@@ -26,8 +26,8 @@ namespace MeetingTranscriber.App;
 /// <para>
 /// <c>SelectedIndex</c> is set before anything is subscribed, so the value this method writes
 /// cannot come back as somebody having chosen it. The list is strings and never the rows
-/// themselves: a <c>ComboBox</c> handed objects draws whatever they say about themselves, which is
-/// a technical name on a screen that must not have one.
+/// themselves: a pill draws the words of the entry it is handed, and a list of objects would draw
+/// whatever they say about themselves, which is a technical name on a screen that must not have one.
 /// </para>
 /// </remarks>
 internal static class OneOfThese
@@ -64,7 +64,7 @@ internal static class OneOfThese
     /// Whether the caller is building its own controls right now, so a picker being set to what it
     /// already says is not read as somebody having chosen something.
     /// </param>
-    public static ComboBox Build(
+    public static DropDown Build(
         Func<UiText, string> say,
         Style style,
         IReadOnlyList<(Guid Id, string Name)> offered,
@@ -76,7 +76,7 @@ internal static class OneOfThese
         string automationId,
         Func<bool> drawing)
     {
-        var picker = new ComboBox
+        var picker = new DropDown
         {
             Style = style,
             PlaceholderText = say(placeholder),

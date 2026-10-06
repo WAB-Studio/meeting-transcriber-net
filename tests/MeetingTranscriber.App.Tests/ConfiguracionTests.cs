@@ -171,7 +171,7 @@ public class ConfiguracionTests
         Handler("private bool ThereAreMeetingsToMoveInto(").ShouldContain("Directory.EnumerateFileSystemEntries(folder.FullName).Any()");
 
         // The switch is the line it always was, after the folder passed its inspection.
-        handler.ShouldContain("CorpusLocation.OfThisUser().Choose(folder)");
+        handler.ShouldContain("App.Home.Corpus.Choose(folder)");
         handler.ShouldContain("CorpusChosen?.Invoke(this, EventArgs.Empty)");
 
         // The line, the tick (never ticked for the person), the way out and the act.
@@ -200,7 +200,7 @@ public class ConfiguracionTests
         handler.ShouldContain("await stop()");
         handler.IndexOf("await stop()", StringComparison.Ordinal)
             .ShouldBeLessThan(handler.IndexOf("CorpusMove.Copy(", StringComparison.Ordinal));
-        handler.ShouldContain("whenWhole: () => CorpusLocation.OfThisUser().Choose(to)");
+        handler.ShouldContain("whenWhole: () => App.Home.Corpus.Choose(to)");
         handler.ShouldContain("carryOn?.Invoke()");
         handler.ShouldContain("if (ARecordingIsUnderWay)");
         handler.ShouldContain("new MeetingsMoved(from, to, removeTheOldCopy)");

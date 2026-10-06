@@ -118,6 +118,10 @@
                  one thing and says which in its name and tooltip. -->
             <Style x:Key="ThePlayGlyph" TargetType="Button" BasedOn="{StaticResource IconButton}" />
 
+            <!-- The volume as a glyph that follows the level, the same shape as the press beside the
+                 track. -->
+            <Style x:Key="TheVolumeGlyph" TargetType="Button" BasedOn="{StaticResource IconButton}" />
+
             <!-- One thing this meeting was filed under: the whole path down the tree, as one chip.
                  The path and not its deepest node alone, because *ticket #4312* on its own says
                  nothing and the company above it is what makes it a subject. It is the press that
@@ -436,7 +440,7 @@
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="140" />
+                <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
 
             <Button
@@ -489,20 +493,43 @@
                 VerticalAlignment="Center"
                 Style="{StaticResource DataText}" />
 
-            <!-- How loud it is played, apart from the machine's own volume. A slider because it is
-                 a quantity somebody sets by feel; five a step so a keyboard crosses it in twenty
-                 presses and not a hundred. -->
-            <Slider
-                x:Name="VolumeSlider"
+            <!-- How loud it is played, apart from the machine's own volume. A speaker glyph, like
+                 the press beside the track that plays: the slider is out of the way until the pointer
+                 is over the glyph or either has the keyboard, and then it opens to the glyph's left.
+                 It runs to 200 %, five a step so a keyboard crosses it in forty presses and not two
+                 hundred, and starts at 100 so a recording sounds like itself until somebody asks for
+                 more. -->
+            <StackPanel
+                x:Name="TheVolume"
                 Grid.Column="4"
+                Orientation="Horizontal"
                 VerticalAlignment="Center"
-                Foreground="{ThemeResource OliveBrush}"
-                Minimum="0"
-                Maximum="100"
-                StepFrequency="5"
-                Value="100"
-                ValueChanged="OnVolumeMoved"
-                AutomationProperties.Name="{x:Bind In(loc:UiTexts.Volume)}" />
+                PointerEntered="OnVolumeAreaEntered"
+                PointerExited="OnVolumeAreaExited">
+                <Slider
+                    x:Name="VolumeSlider"
+                    Width="120"
+                    VerticalAlignment="Center"
+                    Foreground="{ThemeResource OliveBrush}"
+                    Minimum="0"
+                    Maximum="200"
+                    StepFrequency="5"
+                    Value="100"
+                    Visibility="Collapsed"
+                    ValueChanged="OnVolumeMoved"
+                    GotFocus="OnVolumeFocusChanged"
+                    LostFocus="OnVolumeFocusChanged"
+                    AutomationProperties.Name="{x:Bind In(loc:UiTexts.Volume)}" />
+
+                <Button
+                    x:Name="VolumeButton"
+                    Style="{StaticResource TheVolumeGlyph}"
+                    Click="OnMuteOrUnmute"
+                    GotFocus="OnVolumeFocusChanged"
+                    LostFocus="OnVolumeFocusChanged">
+                    <FontIcon x:Name="VolumeGlyph" Glyph="&#xE994;" />
+                </Button>
+            </StackPanel>
         </Grid>
 
         <!-- Where the player would be, when it will not play. A machine with nothing to play

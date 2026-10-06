@@ -109,7 +109,7 @@
                                 Header="{x:Bind In(loc:UiTexts.TheWordAsItShouldBe)}"
                                 TextChanged="OnTyped" />
 
-                            <ComboBox
+                            <local:DropDown
                                 x:Name="ScopeBox"
                                 Grid.Column="1"
                                 VerticalAlignment="Bottom"

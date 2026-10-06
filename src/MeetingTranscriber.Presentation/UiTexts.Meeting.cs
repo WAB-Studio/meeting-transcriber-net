@@ -157,4 +157,10 @@ public static partial class UiTexts
 
     // The player's volume slider: its name in the automation tree, and nothing is drawn beside it.
     public static UiText Volume { get; } = new("Volumen", "Volume");
+
+    // The volume glyph's name and tooltip: what a press on it does, so *mute* while there is sound
+    // and *unmute* while it is muted.
+    public static UiText Mute { get; } = new("Silenciar", "Mute");
+
+    public static UiText Unmute { get; } = new("Activar sonido", "Unmute");
 }

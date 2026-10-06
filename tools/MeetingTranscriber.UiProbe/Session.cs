@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Windows.Automation;
 
@@ -19,10 +21,10 @@ internal sealed record Screen(string Tree, byte[] Picture, string Size);
 /// </summary>
 /// <remarks>
 /// Separate from <see cref="Session.Open"/> because of what sits between them in both hosts: the
-/// probe's corpus, which moves a file saying where a person's meetings are. A start into a checkout
-/// with nothing registered, or out of a published copy that is owed a publish, is the commonest
-/// refusal this tool gives — and it should not have moved anybody's pointer, made a folder or run a
-/// migration on its way to saying so. Neither answer costs anything to carry: <c>Repository.Around</c>
+/// probe's home, which makes a folder and runs a migration in it. A start into a checkout with
+/// nothing registered, or out of a published copy that is owed a publish, is the commonest refusal
+/// this tool gives — and it should not have made a folder or run a migration on its way to saying
+/// so. Neither answer costs anything to carry: <c>Repository.Around</c>
 /// asks Windows for every package this user has, so asking it twice would be both slow and a chance
 /// for the two answers to differ.
 /// </remarks>
@@ -81,6 +83,24 @@ internal sealed class Session : IDisposable
 
     private static readonly TimeSpan ForAScreen = TimeSpan.FromSeconds(15);
 
+    /// <summary>How long a launch has to say which home it resolved, once it has a window.</summary>
+    private static readonly TimeSpan ToBeConfirmed = TimeSpan.FromSeconds(10);
+
+    /// <summary>How long <see cref="Hover"/> holds the pointer, which is long enough for a tooltip.</summary>
+    private static readonly TimeSpan HeldOver = TimeSpan.FromSeconds(2);
+
+    /// <summary>How often <see cref="Hover"/> reads the cursor.</summary>
+    private static readonly TimeSpan Sampled = TimeSpan.FromMilliseconds(50);
+
+    /// <summary>How long <see cref="Hover"/> lets the window answer a move before it reads the cursor.</summary>
+    private static readonly TimeSpan Settle = TimeSpan.FromMilliseconds(100);
+
+    /// <summary>The pause between two moves of a drag, so the application sees a drag and not a jump.</summary>
+    private static readonly TimeSpan Step = TimeSpan.FromMilliseconds(20);
+
+    /// <summary>How many moves a drag is made of.</summary>
+    private const int Steps = 12;
+
     private readonly LaunchedApp _app;
 
     private readonly Freshness _freshness;
@@ -108,12 +128,15 @@ internal sealed class Session : IDisposable
     /// freshness check is inside the opening rather than beside it: a window of the wrong build
     /// reads exactly like a window, so nothing may be done to one before it has been refused.
     /// </summary>
-    internal static Session Open(Bearings bearings)
+    internal static Session Open(Bearings bearings, ProbeCorpus home)
     {
         ArgumentNullException.ThrowIfNull(bearings);
+        ArgumentNullException.ThrowIfNull(home);
 
         var repository = bearings.Repository;
-        var app = LaunchedApp.Start(repository.AppUserModelId);
+
+        home.ForgetWhatWasReported();
+        var app = LaunchedApp.Start(repository.AppUserModelId, home.LaunchArguments);
 
         try
         {
@@ -125,6 +148,20 @@ internal sealed class Session : IDisposable
             freshness.MustNotPredateTheCode();
 
             app.OpenAWindow();
+
+            // The home the application resolved is the one it was asked for, or nothing is done to
+            // it. A launch line that did not arrive leaves the application on the owner's own
+            // corpus and nothing on its screen says so; the report is the only place the
+            // difference shows, and its absence is refused here, before any verb exists.
+            _ = Patience.Until(ToBeConfirmed, () => home.HasBeenConfirmed() ? home : null)
+                ?? throw new ProbeFailed(
+                    $"The application did not report running in {home.Folder}, so it was started "
+                    + "without being told its home and would be driving the owner's own corpus. It "
+                    + "was closed and nothing was done to it.");
+
+            // In front from the first moment, and not at the first verb: the window a person sees
+            // open behind a browser is the one that was never going to be pressed into.
+            Foreground.Hold(app.Windows, app.Windows.Active());
 
             return new Session(app, freshness, bearings.Probe);
         }
@@ -150,8 +187,8 @@ internal sealed class Session : IDisposable
         if (_app.HasGone)
         {
             throw new ProbeFailed(
-                "The application is not running any more — it was closed, or it crashed. Start it "
-                + "again.");
+                "The application is not running any more — it was closed, or it crashed"
+                + $"{_app.ExitedWith}. Start it again.");
         }
 
         _freshness.MustNotPredateTheCode();
@@ -161,9 +198,23 @@ internal sealed class Session : IDisposable
     internal bool HasGone => _app.HasGone;
 
     /// <summary>
-    /// Both artifacts come off one window, and neither of them disturbs it: the picture is printed
-    /// out of the window rather than copied off the desktop, so nothing is raised, focused or moved
-    /// by looking.
+    /// The screen the verb is about, with its popups, after the window has been brought in front.
+    /// Every verb starts here and none of them asks the window for itself: two verbs disagreeing
+    /// about which window they acted on is the failure <see cref="AppWindows"/> exists against, and
+    /// one disagreeing about whether it was in front is the same failure said differently.
+    /// </summary>
+    private IReadOnlyList<AutomationElement> Front()
+    {
+        var window = _app.Windows.Active();
+        Foreground.Hold(_app.Windows, window);
+
+        return _app.Windows.Scope(window);
+    }
+
+    /// <summary>
+    /// Both artifacts come off one screen, and the picture is a copy of the desktop over it: the
+    /// window is brought in front first, so what is photographed is the screen and not whatever
+    /// was covering it, and its popups are part of the copy.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -187,12 +238,12 @@ internal sealed class Session : IDisposable
     /// </exception>
     internal Screen See()
     {
-        var window = _app.Windows.Active();
-        var tree = UiTree.Render(window);
+        var scope = Front();
+        var tree = UiTree.Render(scope);
 
         try
         {
-            var picture = WindowPicture.Of(window);
+            var picture = WindowPicture.Of(scope[0], [.. scope.Skip(1).Select(AppWindows.Handle)]);
 
             return new Screen(tree, picture.Png, picture.Size);
         }
@@ -203,7 +254,7 @@ internal sealed class Session : IDisposable
     }
 
     /// <summary>The tree alone, which is what a screen that has just changed is asked for.</summary>
-    internal string Tree() => UiTree.Render(_app.Windows.Active());
+    internal string Tree() => UiTree.Render(Front());
 
     /// <summary>
     /// Ends the application the way a crash does, with nothing asked and nothing let finish.
@@ -224,7 +275,7 @@ internal sealed class Session : IDisposable
     /// </summary>
     internal void Press(string target)
     {
-        var element = Search.One(_app.Windows.Active(), target);
+        var element = Search.One(Front(), target);
 
         if (Reading.Flag(() => element.Current.IsEnabled) == false)
         {
@@ -251,7 +302,7 @@ internal sealed class Session : IDisposable
     /// </summary>
     internal void Type(string target, string text)
     {
-        var element = Search.One(_app.Windows.Active(), target);
+        var element = Search.One(Front(), target);
 
         if (Reading.Flag(() => element.Current.IsEnabled) == false)
         {
@@ -307,9 +358,8 @@ internal sealed class Session : IDisposable
     /// have, so the answer to <em>did it take</em> is read back off the element before a key is sent.
     /// </para>
     /// <para>
-    /// That makes this the one verb that needs the application in front, which every other verb
-    /// deliberately does not — a window behind another still photographs. There is no way round it:
-    /// a key goes to the focused window or it goes nowhere useful.
+    /// Every verb now has the application in front, and this is the one that could not have worked
+    /// without: a key goes to the focused window or it goes nowhere useful.
     /// </para>
     /// </remarks>
     internal void Key(string target, string key)
@@ -319,7 +369,7 @@ internal sealed class Session : IDisposable
         // has no script to check, refuses it here.
         var code = Instruction.KeyNamed(key);
 
-        var element = Search.One(_app.Windows.Active(), target, takingTheKeyboard: true);
+        var element = Search.One(Front(), target, takingTheKeyboard: true);
 
         if (Reading.Flag(() => element.Current.IsEnabled) == false)
         {
@@ -399,8 +449,7 @@ internal sealed class Session : IDisposable
     /// </summary>
     internal void Choose(string container, string item)
     {
-        var window = _app.Windows.Active();
-        var list = Search.One(window, container);
+        var list = Search.One(Front(), container);
 
         var opens = Search.Supports(list, ExpandCollapsePattern.Pattern)
             ? (ExpandCollapsePattern)list.GetCurrentPattern(ExpandCollapsePattern.Pattern)
@@ -537,7 +586,9 @@ internal sealed class Session : IDisposable
             {
                 try
                 {
-                    if (Search.Matching(window, target).Count > 0)
+                    // The screen and its popups, so waiting for what a list opened is arriving at
+                    // the screen it opened from and not at a window nobody can name.
+                    if (Search.Matching(_app.Windows.Scope(window), target).Count > 0)
                     {
                         on.Add(window);
                     }
@@ -570,9 +621,224 @@ internal sealed class Session : IDisposable
         }
 
         _app.Windows.TheScreenIs(arrived[0]);
+        Foreground.Hold(_app.Windows, arrived[0]);
 
         return ElementWords.Name(arrived[0]);
     }
+
+    /// <summary>
+    /// Moves the pointer to the middle of the element, holds it there, and says which cursor it
+    /// showed and when.
+    /// </summary>
+    /// <remarks>
+    /// The answer is a sequence and not the last cursor read: <c>hand from 0.0 s; arrow at 0.85 s;
+    /// hand at 1.00 s</c> is a control that flickers, which is the defect a single read at the end
+    /// of two seconds calls fine. The tooltip a hover opens is a popup, so the tree the host writes
+    /// next has its words.
+    /// </remarks>
+    internal string Hover(string target)
+    {
+        var element = Search.One(Front(), target);
+        var (x, y) = Centre(element);
+
+        Pointer.MoveTo(x, y);
+
+        // Long enough for the window under the pointer to have handled the move: the cursor is set
+        // by the window, and the first read after the move is otherwise the cursor from before it.
+        Thread.Sleep(Settle);
+
+        var seen = new List<(string Cursor, TimeSpan At)>();
+        var clock = Stopwatch.StartNew();
+        while (clock.Elapsed < HeldOver)
+        {
+            var now = Pointer.CursorAt().Name;
+            if (seen.Count == 0 || seen[^1].Cursor != now)
+            {
+                seen.Add((now, clock.Elapsed));
+            }
+
+            Thread.Sleep(Sampled);
+        }
+
+        return $"hovered {ElementWords.Line(element)}: " + string.Join(
+            "; ",
+            seen.Select((one, at) => at == 0
+                ? $"{one.Cursor} from 0.0 s"
+                : $"{one.Cursor} at {Seconds(one.At)} s"));
+    }
+
+    /// <summary>
+    /// Presses the left button at the middle of the element, moves by whole pixels in twelve steps
+    /// and lets go; <c>0,0</c> is a click. Says where the window was and is, and what the element's
+    /// range value was and is when it has one.
+    /// </summary>
+    /// <remarks>
+    /// The button is let go in a <c>finally</c>: a button left down is a desktop nothing afterwards
+    /// is true of, and this is the one verb that can leave it that way.
+    /// </remarks>
+    internal string Drag(string target, int dx, int dy)
+    {
+        var scope = Front();
+        var element = Search.One(scope, target);
+        var (x, y) = Centre(element);
+
+        var windowBefore = RectOf(scope[0]);
+        var valueBefore = RangeOf(element);
+
+        Pointer.MoveTo(x, y);
+        Thread.Sleep(Step);
+        Pointer.Press();
+        try
+        {
+            for (var step = 1; step <= Steps; step++)
+            {
+                Pointer.MoveTo(x + (dx * step / Steps), y + (dy * step / Steps));
+                Thread.Sleep(Step);
+            }
+        }
+        finally
+        {
+            Pointer.Release();
+        }
+
+        Thread.Sleep(HedgeAfterAPress);
+
+        var said = $"dragged {ElementWords.Line(element)} by {dx},{dy}: window {windowBefore} then "
+            + RectOf(scope[0]);
+
+        var valueAfter = RangeOf(element);
+
+        return valueBefore is null && valueAfter is null
+            ? said
+            : $"{said}; value {valueBefore ?? "none"} then {valueAfter ?? "none"}";
+    }
+
+    /// <summary>
+    /// Selects the words with the mouse the way a person does: found with the element's text
+    /// pattern, pressed at the left edge of the first line they are on and let go at the right edge
+    /// of the last, then read back off the pattern's own selection.
+    /// </summary>
+    /// <remarks>
+    /// Read back and refused when it is not what was asked for, because a drag that selected the
+    /// wrong words or none is a step that ran and said done. The pattern's own
+    /// <c>Select</c> would have been the shorter route and is not this: it does not go through the
+    /// pointer, so it is not shown to raise what a real selection raises, and that event is what the
+    /// <em>Corregir</em> pill listens to.
+    /// </remarks>
+    internal string Select(string target, string text)
+    {
+        var element = Search.One(Front(), target);
+
+        if (!Search.Supports(element, TextPattern.Pattern))
+        {
+            throw new ProbeFailed(
+                $"{ElementWords.Line(element)} offers no text to select. "
+                + $"What it offers instead: {Offers(element)}.");
+        }
+
+        var pattern = (TextPattern)element.GetCurrentPattern(TextPattern.Pattern);
+        var found = pattern.DocumentRange.FindText(text, backward: false, ignoreCase: false)
+            ?? throw new ProbeFailed($"{ElementWords.Line(element)} has no \"{text}\" in it.");
+
+        var lines = found.GetBoundingRectangles();
+        if (lines.Length == 0)
+        {
+            throw new ProbeFailed(
+                $"\"{text}\" is in {ElementWords.Line(element)} but not on the screen: it has no "
+                + "rectangle to press and drag across.");
+        }
+
+        var first = lines[0];
+        var last = lines[^1];
+        var fromX = (int)first.Left + 1;
+        var fromY = (int)(first.Top + (first.Height / 2));
+        var toX = (int)last.Right - 1;
+        var toY = (int)(last.Top + (last.Height / 2));
+
+        Pointer.MoveTo(fromX, fromY);
+        Thread.Sleep(Step);
+        Pointer.Press();
+        try
+        {
+            for (var step = 1; step <= Steps; step++)
+            {
+                Pointer.MoveTo(
+                    fromX + ((toX - fromX) * step / Steps),
+                    fromY + ((toY - fromY) * step / Steps));
+                Thread.Sleep(Step);
+            }
+        }
+        finally
+        {
+            Pointer.Release();
+        }
+
+        Thread.Sleep(HedgeAfterAPress);
+
+        var selected = string.Concat(pattern.GetSelection().Select(range => range.GetText(-1)));
+
+        return selected == text
+            ? $"selected \"{selected}\" in {ElementWords.Line(element)}"
+            : throw new ProbeFailed(
+                $"Dragging across \"{text}\" in {ElementWords.Line(element)} selected "
+                + $"\"{selected}\" instead.");
+    }
+
+    /// <summary>
+    /// Sets the window's size in physical pixels, keeping its position, and says what it has now:
+    /// a window will not go below the smallest its content allows, and the answer is the rectangle
+    /// and not the one that was asked for.
+    /// </summary>
+    internal string Size(int width, int height)
+    {
+        var window = Front()[0];
+        var handle = AppWindows.Handle(window);
+
+        if (!Native.SetWindowPos(
+            handle,
+            IntPtr.Zero,
+            0,
+            0,
+            width,
+            height,
+            Native.SwpNoMove | Native.SwpNoZOrder | Native.SwpNoActivate))
+        {
+            throw new ProbeFailed(
+                $"Windows would not size \"{ElementWords.Name(window)}\" ({Marshal.GetLastWin32Error()}).");
+        }
+
+        Thread.Sleep(HedgeAfterAPress);
+
+        return $"the window is now {RectOf(window)}";
+    }
+
+    private static (int X, int Y) Centre(AutomationElement element)
+    {
+        var box = Reading.Flag(() => element.Current.IsOffscreen) == true
+            ? System.Windows.Rect.Empty
+            : Reading.Of(() => (object)element.Current.BoundingRectangle) is System.Windows.Rect read
+                ? read
+                : System.Windows.Rect.Empty;
+
+        return box.IsEmpty || box.Width <= 0 || box.Height <= 0
+            ? throw new ProbeFailed(
+                $"{ElementWords.Line(element)} has no place on the screen to put the pointer: it is "
+                + "offscreen or has no size.")
+            : ((int)(box.Left + (box.Width / 2)), (int)(box.Top + (box.Height / 2)));
+    }
+
+    private static string RectOf(AutomationElement window) =>
+        Native.GetWindowRect(AppWindows.Handle(window), out var rect)
+            ? $"{rect.Width}x{rect.Height} at {rect.Left},{rect.Top}"
+            : "gone";
+
+    private static string? RangeOf(AutomationElement element) =>
+        Search.Supports(element, RangeValuePattern.Pattern)
+            ? Reading.Of(() => ((RangeValuePattern)element.GetCurrentPattern(RangeValuePattern.Pattern))
+                .Current.Value.ToString(CultureInfo.InvariantCulture))
+            : null;
+
+    private static string Seconds(TimeSpan at) => at.TotalSeconds.ToString("0.00", CultureInfo.InvariantCulture);
 
     public void Dispose() => _app.Dispose();
 

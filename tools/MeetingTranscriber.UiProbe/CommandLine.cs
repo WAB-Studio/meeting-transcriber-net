@@ -69,6 +69,13 @@ internal static class CommandLine
                               rest of the script is about
           sleep <seconds>     let that long pass, touching nothing
           kill                end the application the way a crash does
+          hover <element>     put the pointer on it for two seconds and say which cursor it showed
+          drag <element> <dx>,<dy>  press on it, move by that many pixels, let go; 0,0 is a click
+          select <element> <text>   select those words in it by dragging the mouse across them
+          size <width>x<height>     set the window to that many physical pixels
+
+        While an application is open the probe owns the front of the desktop, and hover, drag and
+        select also own the mouse: do not use the machine while one runs.
 
         An element is named by the x:Name the XAML gave it, or by the words on it. A press whose
         effect is about to be photographed needs a wait after it — that is the only thing here
@@ -189,18 +196,14 @@ internal static class CommandLine
 
     private static void Walk(string folder, IReadOnlyList<Instruction> script, bool refusedCorpus)
     {
-        // Every refusal that does not need an application, before the pointer that says where
-        // somebody's meetings are is touched — the same order Run already keeps for a script that
-        // was wrong, and for the same reason.
+        // Every refusal that does not need an application, before the home is made — the same
+        // order Run already keeps for a script that was wrong, and for the same reason.
         var bearings = Bearings.Taken();
 
-        // Before the application and let go after it, which is what the order of these two lines
-        // says: a `using` is undone bottom up, so the application closes and only then does the
-        // pointer go back.
-        using var corpus = refusedCorpus
+        var corpus = refusedCorpus
             ? ProbeCorpus.PointedAtOneThatWillNotOpen()
             : ProbeCorpus.PointedAtItsOwn();
-        using var session = Session.Open(bearings);
+        using var session = Session.Open(bearings, corpus);
 
         Console.WriteLine(session.StartedAs);
         Console.WriteLine(corpus.Arrangement);
@@ -244,6 +247,20 @@ internal static class CommandLine
                 break;
             case Verb.Wait:
                 Console.WriteLine($"    on \"{session.Wait(step.Subject)}\"");
+                break;
+            case Verb.Hover:
+                Console.WriteLine($"    {session.Hover(step.Subject)}");
+                break;
+            case Verb.Drag:
+                var (dx, dy) = Instruction.Offset(step.Detail);
+                Console.WriteLine($"    {session.Drag(step.Subject, dx, dy)}");
+                break;
+            case Verb.Select:
+                Console.WriteLine($"    {session.Select(step.Subject, step.Detail)}");
+                break;
+            case Verb.Size:
+                var (width, height) = Instruction.Dimensions(step.Subject);
+                Console.WriteLine($"    {session.Size(width, height)}");
                 break;
             default:
                 // Not unreachable, and that is the point: a verb added to the enum and forgotten

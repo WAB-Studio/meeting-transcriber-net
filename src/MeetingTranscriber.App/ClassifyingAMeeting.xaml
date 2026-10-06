@@ -97,7 +97,7 @@
             <!-- A pill in a path, and it is a picker rather than a label: what stands at that
                  level is chosen there, not somewhere else and shown here. Olivo's DropDown already
                  draws it as the pill the artboard draws, chevron and all. -->
-            <Style x:Key="Picker" TargetType="ComboBox" BasedOn="{StaticResource DropDown}">
+            <Style x:Key="Picker" TargetType="local:DropDown" BasedOn="{StaticResource DropDown}">
                 <Setter Property="HorizontalAlignment" Value="Left" />
                 <Setter Property="MinWidth" Value="150" />
                 <Setter Property="FontSize" Value="{StaticResource TranscriptSize}" />
@@ -182,7 +182,7 @@
             <StackPanel Grid.Column="1" Spacing="1">
                 <TextBlock
                     Style="{StaticResource SubScreenTitleText}"
-                    Text="{x:Bind In(loc:UiTexts.WhatThisMeetingWasAbout)}" />
+                    Text="{x:Bind In(loc:UiTexts.Classify)}" />
 
                 <!-- Which meeting this is: its name and when it was, which are the machine's own
                      numbers and read the same in either language. -->
@@ -198,6 +198,17 @@
             <!-- The fourteen, in the order `MeetingShape` declares them, which is §5.3's own row
                  order. Built in code because which of them exist is an answer and not a layout. -->
             <local:WrappingRow x:Name="TheShapes" HorizontalGap="8" VerticalGap="8" />
+
+            <!-- What the lit chip is and what it opens, in the chip's own words. Its height is
+                 held, two lines of body text, whether or not a chip is lit, so nothing below it
+                 moves when one is. Never collapsed: the code-behind sets its text and nothing
+                 else about it. -->
+            <TextBlock
+                x:Name="ShapeDescription"
+                Style="{StaticResource BodyText}"
+                Foreground="{ThemeResource SecondaryTextBrush}"
+                MinHeight="40"
+                TextWrapping="Wrap" />
 
             <!-- Putting a classification by, under a name typed here, and the two presses a chip
                  lit from those put by adds: correcting its name, and throwing it away. The name

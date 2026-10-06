@@ -415,6 +415,13 @@ public sealed partial class MainWindow : Window
     /// so nothing the bar ever gains at its right can land under them. <c>RightInset</c> is in
     /// pixels and the column is in the units the layout is, so it is divided by the scale.
     /// The icon the taskbar and Alt+Tab show is the application's own and is set elsewhere.
+    /// <para>
+    /// The region has a transparent background, which is what the window needs of it: a press falls
+    /// through an element that has no fill, so with <c>SetTitleBar</c> on an empty border the bar did
+    /// not move the window at all (fb-106). The other way to hand a window its caption —
+    /// <c>InputNonClientPointerSource</c> with caption rectangles computed off the bar — is not in
+    /// here, because nothing has shown this is not enough on its own.
+    /// </para>
     /// </remarks>
     private void ExtendTheBarIntoTheTitleBar()
     {
@@ -643,6 +650,7 @@ public sealed partial class MainWindow : Window
 
         RecordButton.IsEnabled = screen.Allows(RecorderPress.Start);
         ShowThePausePress(screen);
+        NameTheStopPresses();
         StopButton.IsEnabled = screen.Allows(RecorderPress.Stop);
 
         // Visibility and not merely disabled: an offer that has not been made is not a button
@@ -740,6 +748,19 @@ public sealed partial class MainWindow : Window
         PauseGlyph.Glyph = paused ? "\uE768" : "\uE769";
         AutomationProperties.SetName(PauseButton, In(says));
         ToolTipService.SetToolTip(PauseButton, In(says));
+    }
+
+    /// <summary>
+    /// The two presses that stop a meeting — the card's and the strip's — are the square glyph and
+    /// say <em>Detener</em> to a screen reader and in a tooltip, in the language of the window.
+    /// </summary>
+    private void NameTheStopPresses()
+    {
+        foreach (var press in new[] { StopButton, StripStopButton })
+        {
+            AutomationProperties.SetName(press, In(UiTexts.Stop));
+            ToolTipService.SetToolTip(press, In(UiTexts.Stop));
+        }
     }
 
     /// <summary>

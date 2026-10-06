@@ -20,6 +20,17 @@ public abstract record CaptureTarget
     {
     }
 
+    /// <summary>
+    /// What channel 0 opens when it follows <paramref name="follow"/>, or the whole machine when it
+    /// follows nothing.
+    /// </summary>
+    /// <remarks>
+    /// The one rule for what channel 0 opens, read by the recording and by listening before one, so
+    /// a third kind of channel-0 source is listened to the way it is recorded.
+    /// </remarks>
+    public static CaptureTarget ForChannelZero(AudioProcess? follow) =>
+        follow is null ? new TheWholeMachine() : new Program(follow);
+
     /// <summary>What a person recording this would call it.</summary>
     public abstract string Name { get; }
 

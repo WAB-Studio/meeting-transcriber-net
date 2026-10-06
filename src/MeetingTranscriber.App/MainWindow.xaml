@@ -53,12 +53,13 @@
         Padding="{StaticResource ScreenPadding}"
         RowSpacing="20">
         <Grid.Resources>
-            <!-- Pause and carry on are one press and it is a glyph, which the code-behind swaps:
-                 the pause bars while recording and the triangle while paused, each with its own
+            <!-- The presses that steer a recording are glyphs, and they are the same size: pause
+                 and carry on are one press whose glyph the code-behind swaps — the bars while
+                 recording and the triangle while paused — and stop is the square. Each has its own
                  name and tooltip. Square at the normal rank, so it stands as tall as the press
                  beside it. The one other glyph press, the drawer's caret, is `IconButton` at the
                  control rank; this is the normal one and a style of its own for that reason. -->
-            <Style x:Key="ThePausePress" TargetType="Button" BasedOn="{StaticResource NormalButtonOnCard}">
+            <Style x:Key="ASteeringPress" TargetType="Button" BasedOn="{StaticResource NormalButtonOnCard}">
                 <Setter Property="Width" Value="{StaticResource NormalButtonHeight}" />
                 <Setter Property="MinWidth" Value="{StaticResource NormalButtonHeight}" />
                 <Setter Property="Padding" Value="0" />
@@ -71,7 +72,7 @@
                  beside the press that is refused for it. Swapped in by the code-behind while
                  `RecorderScreen.Unanswered` holds the question, and out again the moment it is
                  answered. -->
-            <Style x:Key="DropDownWantingAnAnswer" TargetType="ComboBox" BasedOn="{StaticResource DropDown}">
+            <Style x:Key="DropDownWantingAnAnswer" TargetType="local:DropDown" BasedOn="{StaticResource DropDown}">
                 <Setter Property="BorderBrush" Value="{ThemeResource PeakBrush}" />
             </Style>
         </Grid.Resources>
@@ -103,10 +104,12 @@
 
             <!-- This row is the window's title bar, and what drags the window is the mark, the name
                  and the empty width between the name and the caption buttons: one element behind
-                 them, handed to the window as its title bar. Never the back button, which is a press
+                 them, handed to the window as its title bar. It is drawn with a transparent fill and not none:
+                 an element with no fill is not hit by a press, so the press falls to the window's
+                 client area and the bar does not move the window. Never the back button, which is a press
                  and must stay one, and never anything pressable laid over it. The last column holds
                  the width the caption buttons take, which the code-behind reads off the window. -->
-            <Border x:Name="TheDragRegion" Grid.Column="1" Grid.ColumnSpan="2" />
+            <Border x:Name="TheDragRegion" Grid.Column="1" Grid.ColumnSpan="2" Style="{StaticResource DragFill}" />
 
             <!-- The way back out of a sub-screen. The arrow is a glyph, a code point that says the
                  same in either language, and it takes the button's ink so that it dims when the
@@ -144,6 +147,7 @@
             </Viewbox>
 
             <TextBlock
+                x:Name="TitleText"
                 Grid.Column="2"
                 VerticalAlignment="Center"
                 Text="{x:Bind In(loc:UiTexts.TheApplicationsName)}"
@@ -199,7 +203,7 @@
                              because the pill carries no header — and its placeholder says the same
                              word, because this is the one picker on the screen with nothing beside
                              it, and on a fresh install it opens with nothing chosen. -->
-                        <ComboBox
+                        <local:DropDown
                             x:Name="SpokenPicker"
                             MinWidth="180"
                             Style="{StaticResource DropDown}"
@@ -305,16 +309,20 @@
                         <Button
                             x:Name="PauseButton"
                             VerticalAlignment="Center"
-                            Style="{StaticResource ThePausePress}"
+                            Style="{StaticResource ASteeringPress}"
                             Click="OnPause">
                             <FontIcon x:Name="PauseGlyph" Glyph="&#xE769;" FontSize="{StaticResource BodySize}" />
                         </Button>
+                        <!-- A glyph beside the pause glyph, named and tooltipped in the code-behind with
+                             the word it used to be: stop steers the recording like pause does, and
+                             the one press on this card that is words is the principal act. -->
                         <Button
                             x:Name="StopButton"
                             VerticalAlignment="Center"
-                            Style="{StaticResource NormalButtonOnCard}"
-                            Click="OnStop"
-                            Content="{x:Bind In(loc:UiTexts.Stop)}" />
+                            Style="{StaticResource ASteeringPress}"
+                            Click="OnStop">
+                            <FontIcon Glyph="&#xE71A;" FontSize="{StaticResource BodySize}" />
+                        </Button>
                         <!-- The words and nothing else, and the dot the artboards draw on it is
                              deliberately not here. Built as a panel it cost two things worth more
                              than a glyph: the button's automation name, which is its content and
@@ -447,9 +455,10 @@
                         x:Name="StripStopButton"
                         Grid.Column="2"
                         VerticalAlignment="Center"
-                        Style="{StaticResource NormalButtonOnCard}"
-                        Click="OnStop"
-                        Content="{x:Bind In(loc:UiTexts.Stop)}" />
+                        Style="{StaticResource ASteeringPress}"
+                        Click="OnStop">
+                        <FontIcon Glyph="&#xE71A;" FontSize="{StaticResource BodySize}" />
+                    </Button>
                 </Grid>
             </Border>
 
