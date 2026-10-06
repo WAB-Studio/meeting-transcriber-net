@@ -31,47 +31,47 @@ public static partial class UiTexts
 
     // The `+` at the end of a path. A glyph with no name is nothing to a screen reader, so this is
     // what that press is called in the automation tree rather than on it.
-    public static UiText AddALevel { get; } = new("Agregar un nivel", "Add a level");
+    public static UiText AddALevel { get; } = new("Agregar nivel", "Add level");
 
     public static UiText Who { get; } = new("Quiénes", "Who");
 
     // The two toggles on a person's row, one per way a meeting can name somebody. Both are
     // pressable because both are things somebody has to be able to say: §5.3 row 10 is a person a
     // meeting is about who was never in the room.
-    public static UiText TheyWereThere { get; } = new("estuvo", "they were there");
+    public static UiText TheyWereThere { get; } = new("estuvo", "was there");
 
     // Deliberately not the artboard's *la reunión es sobre ella*. A toggle drawn beside every row
     // cannot know whose row it is on, and a gendered pronoun there is wrong for half the corpus.
     public static UiText TheMeetingIsAboutThisPerson { get; } =
-        new("la reunión es sobre esta persona", "the meeting is about them");
+        new("tema", "topic");
 
     public static UiText AddSomebody { get; } = new("Agregar a alguien", "Add somebody");
 
     // Not an escape. §5.3 says a casual chat is stored with no links and is found by text, so this
     // is an answer somebody gives — it empties the screen, and *Guardar* is still what writes.
     public static UiText LeaveItUnclassified { get; } =
-        new("Dejarla sin clasificar", "Leave it unclassified");
+        new("No clasificar", "Do not classify");
 
     // Putting a filled classification by under a name, to file with again. A new act and not
     // *Conservar*'s, which is not throwing a recording away.
     public static UiText Remember { get; } = new("Recordar", "Remember");
 
     public static UiText ANameToUseItAgainBy { get; } =
-        new("Un nombre para volver a usarla", "A name to use it again by");
+        new("Recordar como…", "Remember as…");
 
     // Two entries and not a question with a noun in it. What stands at the top of the tree is either
     // an organization or a body of work belonging to nobody in particular, and #105's rule is that
     // no technical name appears on this screen — so the two are offered as the two things they are,
     // in the words somebody would use for them.
-    public static UiText ANewOrganization { get; } = new("Una organización nueva…", "A new organization…");
+    public static UiText ANewOrganization { get; } = new("Organización nueva…", "New organization…");
 
     public static UiText WorkThatIsNobodysInParticular { get; } =
-        new("Un trabajo que no es de nadie en particular…", "Work that is nobody's in particular…");
+        new("Proyecto nuevo…", "New project…");
 
     // The title of the notice that adds a person, when it is opened over somebody who is already
     // there. A title only, which is why it has no ellipsis: what was pressed to get here said
     // *Corregir este nombre…*, and this says what the form in front of somebody is about.
-    public static UiText AboutThisPerson { get; } = new("Sobre esta persona", "About this person");
+    public static UiText AboutThisPerson { get; } = new("Persona", "Person");
 
     // What the dialogue that adds a person asks. An organization and a year are optional: a person
     // carries as many affiliations as they have, and a corpus that never learned the date has none.
@@ -80,13 +80,21 @@ public static partial class UiTexts
     // Offered under the name field while a person is being added and somebody the corpus holds is
     // spelled nearly the same way. The pill reads the name and the organization, and both are the
     // corpus's and not the catalogue's: only the separator is.
-    public static UiText IsItSomebodyAlreadyHere { get; } = new("¿Es alguien que ya está?", "Is it somebody already here?");
+    public static UiText IsItSomebodyAlreadyHere { get; } = new("¿Ya existe?", "Already exists?");
 
     public static UiText SomebodyAndWhereTheyBelong { get; } = new("{0} · {1}", "{0} · {1}");
 
     public static UiText Organization { get; } = new("Organización", "Organization");
 
-    public static UiText From { get; } = new("Desde", "From");
+    // The year field of the dialogue that adds a person: its header says what the number is, and the
+    // placeholder says what to type, so neither stands alone as one word that explains nothing.
+    public static UiText SinceYear { get; } = new("Desde el año", "Since year");
+
+    public static UiText Year { get; } = new("Año", "Year");
+
+    // The first entry of the organization picker on that dialogue. Not *Ninguno*, which empties a
+    // pill on the screens: here nothing is being emptied, a person is simply not tied to one.
+    public static UiText NoOrganization { get; } = new("Ninguna", "None");
 
     // Where somebody belonged the day of the meeting, beside their name. The year and not the date:
     // what it is read against is another person's period and the meeting's own.

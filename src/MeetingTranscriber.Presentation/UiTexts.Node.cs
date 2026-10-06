@@ -13,7 +13,7 @@ public static partial class UiTexts
     // classification screen before any meeting was filed under it has no story yet, and saying so is
     // the answer.
     public static UiText NothingHasBeenSaidAboutThisYet { get; } =
-        new("Todavía no se dijo nada de esto", "Nothing has been said about this yet");
+        new("Nada todavía", "Nothing yet");
 
     // Under the last card, when the read came back full — and alone, in the empty arm, when the
     // first card alone already filled the read and none was drawn at all: that arm's other text,
@@ -21,5 +21,5 @@ public static partial class UiTexts
     // that says the truer thing, that the screen was cut instead. How much more is not said either
     // way: what the screen knows is that it was cut and never by how much.
     public static UiText ThereIsMoreThanThisScreenShows { get; } =
-        new("Hay más de lo que entra en esta pantalla", "There is more here than this screen shows");
+        new("Hay más", "There is more");
 }

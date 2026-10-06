@@ -134,7 +134,7 @@ public sealed partial class AddingSomebody : ContentDialog
 
         TheirOrganization.ItemsSource = (string[])
         [
-            In(UiTexts.NoneOfThese),
+            In(UiTexts.NoOrganization),
             .. organizations.Select(node => node.Name),
         ];
 

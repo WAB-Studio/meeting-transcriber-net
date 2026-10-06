@@ -180,26 +180,89 @@ public class ClassifyingAMeetingTests
     }
 
     /// <summary>
-    /// Every picker on this screen offers a way to correct what already stands in it — the pills
-    /// over the tree and the rows of people alike, because a name typed wrong is typed wrong in
-    /// both, and in the same words for the reason <c>docs/design.md</c> gives.
+    /// Every pill and place that holds something has a press beside it that corrects its name,
+    /// and no list offers one — the pills over the tree and the rows of people alike, because a name
+    /// typed wrong is typed wrong in both, and in the same words for the reason
+    /// <c>docs/design.md</c> gives.
     /// </summary>
     /// <remarks>
-    /// Read inside each builder rather than anywhere in the file, so an entry deleted from one of
+    /// Read inside each builder rather than anywhere in the file, so a press deleted from one of
     /// the two is what fails rather than the member surviving in a comment somewhere else.
     /// </remarks>
     [Fact]
-    public void Every_picker_offers_a_way_to_correct_what_stands_in_it()
+    public void Every_filled_pill_and_place_has_a_correction_press_beside_it_and_none_inside_its_list()
     {
         var source = File.ReadAllText(AppSources.At(Screen).FullName);
 
+        foreach (var builder in new[] { "private UIElement APill(", "private UIElement APlaceForSomebody(" })
+        {
+            Regex.IsMatch(Body(source, builder), @"extras\.Add\(\(\s*UiTexts\.CorrectThisName")
+                .ShouldBeFalse(
+                    $"`{builder}` offers correcting a name as an entry in the list of what the pill "
+                    + "may become, where it is read past and cannot empty what stands there.");
+        }
+
         Body(source, "private UIElement APill(").ShouldContain(
-            "UiTexts.CorrectThisName",
-            customMessage: "no pill over the tree offers correcting the name standing in it.");
+            "BesideIt(",
+            customMessage: "no pill over the tree has a correction press beside it.");
 
         Body(source, "private UIElement APlaceForSomebody(").ShouldContain(
-            "UiTexts.CorrectThisName",
-            customMessage: "no row of people offers correcting the name of whoever stands in it.");
+            "BesideIt(",
+            customMessage: "no row of people has a correction press beside the name standing in it.");
+
+        Body(source, "private StackPanel BesideIt(").ShouldContain("UiTexts.CorrectThisName");
+    }
+
+    /// <summary>
+    /// Leaving the naming field writes nothing and erases nothing: a press elsewhere, <em>Agregar</em>
+    /// included, is not an answer to the field.
+    /// </summary>
+    /// <remarks>
+    /// The field was put away by its own <c>LostFocus</c>, so the redraw a press causes took what had
+    /// been typed with it and the press looked as though it did nothing. The way out is now
+    /// <em>Cancelar</em> and Escape, and what is typed rides on the field's state across a redraw.
+    /// </remarks>
+    [Fact]
+    public void Losing_the_naming_field_s_focus_writes_and_erases_nothing()
+    {
+        var body = Body(File.ReadAllText(AppSources.At(Screen).FullName), "private UIElement AName(");
+
+        body.ShouldNotContain(
+            "LostFocus",
+            customMessage: "the naming field answers a lost focus, so a press anywhere else puts the "
+            + "pill back and erases what was typed.");
+
+        body.ShouldContain("TextChanged", customMessage: "what is typed is not kept across a redraw.");
+        body.ShouldContain("UiTexts.Save", customMessage: "the naming field has no press that commits it.");
+        body.ShouldContain("UiTexts.Cancel", customMessage: "the naming field has no press that puts it away.");
+
+        body.ShouldContain(
+            "{ typing, cancel, save }",
+            customMessage: "the act is not on the right: `docs/design.md` §Two places puts the way out on its left.");
+
+        body.ShouldContain(
+            "Opened",
+            customMessage: "the field takes focus on every redraw, from whatever was pressed to cause it.");
+    }
+
+    /// <summary>
+    /// The line that puts a classification by is there for one filled by hand, and for one already
+    /// put by and lit — not beside a chip somebody chose from the fourteen.
+    /// </summary>
+    [Fact]
+    public void The_keep_line_is_offered_only_for_a_classification_filled_by_hand()
+    {
+        var source = File.ReadAllText(AppSources.At(Screen).FullName);
+
+        var line = Body(source, "private void TheLine(");
+
+        line.ShouldContain("KeepingIt.Visibility");
+        line.ShouldContain("MeetingShape.FilledByHand");
+        line.ShouldContain("lit is not null");
+
+        Body(source, "private void Render(").ShouldContain(
+            "KeepingIt.Visibility = Visibility.Collapsed",
+            customMessage: "the line is left standing over a screen with no meeting on it.");
     }
 
     /// <summary>
