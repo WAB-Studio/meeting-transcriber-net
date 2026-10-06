@@ -1,3 +1,5 @@
+using System.Text.RegularExpressions;
+
 namespace MeetingTranscriber.App.Tests;
 
 /// <summary>
@@ -41,7 +43,7 @@ public class ConfiguracionTests
             .ShouldNameItsWholeEnum("AfterARecording");
 
     /// <summary>
-    /// The gear opens the settings, the way back closes them, and what is chosen on them goes where
+    /// The word at the foot opens the settings, the way back closes them, and what is chosen on them goes where
     /// it is answered.
     /// </summary>
     /// <remarks>
@@ -67,7 +69,7 @@ public class ConfiguracionTests
     /// </para>
     /// </remarks>
     [Fact]
-    public void The_gear_opens_the_settings_screen_the_way_back_closes_it_and_the_language_goes_up()
+    public void The_word_at_the_foot_opens_the_settings_screen_the_way_back_closes_it_and_the_language_goes_up()
     {
         var markup = File.ReadAllText(
             AppSources.At(Path.Combine("MeetingTranscriber.App", "MainWindow.xaml")).FullName);
@@ -394,6 +396,111 @@ public class ConfiguracionTests
         Handler("private static bool? WhetherAKeyIsKept(").ShouldContain("catch (DeepgramKeyException)");
         Handler("private void OnRemoveTheKey(").ShouldContain("catch (DeepgramKeyException)");
     }
+
+    /// <summary>
+    /// The screen opens itself the first time: when the corpus is reachable and nobody has said who
+    /// is using the application, which is the rule <c>WhoIsUsingThisRow</c> already carries.
+    /// </summary>
+    /// <remarks>
+    /// Read out of source, since opening a window is what it would otherwise take. What is held is
+    /// that <c>Open</c> reads the row the way the window's own read does, inside a catch for what a
+    /// corpus that will not open throws — it runs in the window's constructor, where nothing may
+    /// escape — and that it is the row that decides.
+    /// </remarks>
+    [Fact]
+    public void Settings_opens_itself_the_first_time()
+    {
+        var open = Handler("public void Open(");
+
+        open.ShouldContain("ReadWhoIsUsingThis();");
+        open.ShouldContain("WhoIsUsingThis().IsAsking");
+        open.ShouldNotContain("CheckClaudeCodeAsync");
+
+        var read = Handler("private void ReadWhoIsUsingThis(");
+        read.ShouldContain("new HumanLayer(context, TimeProvider.System).Me()");
+        read.ShouldContain("catch (Exception wouldNotRead) when (ScreenFailures.Reportable(wouldNotRead))");
+        read.ShouldContain("Say(UiTexts.WhoIsUsingThisCouldNotBeRead);");
+
+        // The press at the foot always opens the whole of it.
+        Handler("public async void Show(").ShouldContain("_firstStep = false;");
+
+        var markup = File.ReadAllText(
+            AppSources.At(Path.Combine("MeetingTranscriber.App", "Configuracion.xaml")).FullName);
+        markup.ShouldContain("x:Name=\"StartButton\"");
+        markup.ShouldContain("In(loc:UiTexts.Start)");
+        Handler("private void Arrange(").ShouldContain("UiTexts.GetStarted");
+    }
+
+    /// <summary>
+    /// Choosing what happens after a recording never greys the choice: a write in flight is waited
+    /// for and not refused.
+    /// </summary>
+    [Fact]
+    public void Choosing_after_recording_never_disables_the_choice()
+    {
+        var screen = File.ReadAllText(AppSources.At(Screen).FullName);
+
+        screen.ShouldNotContain("_writingTheAnswer");
+        Handler("private void ShowWhatHappensWhenARecordingEnds(")
+            .ShouldContain("AfterARecordingOptions.IsEnabled = live;");
+    }
+
+    /// <summary>
+    /// Everything the screen writes to the corpus goes through the one line of writes, so two of
+    /// them are never two migrations of a folder with no schema racing for one write lock.
+    /// </summary>
+    /// <remarks>
+    /// The four writes are the name, what happens after a recording, the summary model and an
+    /// export. The count of <c>OpenMigrated</c> is the other half: a fifth write added beside them
+    /// that skipped the line would be found here and not by somebody's first install.
+    /// </remarks>
+    [Fact]
+    public void The_screen_writes_one_thing_at_a_time()
+    {
+        foreach (var handler in new[]
+        {
+            "private async void OnKeepWhoIsUsingThis(",
+            "private async void OnAfterARecordingChosen(",
+            "private async void OnSummaryModelChosen(",
+            "private async void OnExport(",
+        })
+        {
+            Handler(handler).ShouldContain("OneWriteAtATime(", customMessage: handler);
+        }
+
+        var screen = File.ReadAllText(AppSources.At(Screen).FullName);
+        Regex.Matches(screen, Regex.Escape("CorpusDatabase.OpenMigrated(")).Count
+            .ShouldBe(4, "a write to the corpus that does not go through the line of writes");
+    }
+
+    /// <summary>
+    /// Claude Code is tested on a press, and the press asks the question opening the screen asks.
+    /// </summary>
+    [Fact]
+    public void Claude_Code_is_tested_on_a_press()
+    {
+        var markup = File.ReadAllText(
+            AppSources.At(Path.Combine("MeetingTranscriber.App", "Configuracion.xaml")).FullName);
+
+        markup.ShouldContain("x:Name=\"TestClaudeCodeButton\"");
+        markup.ShouldContain("Click=\"OnTestClaudeCode\"");
+
+        Handler("private async void OnTestClaudeCode(").ShouldContain("CheckClaudeCodeAsync(");
+        Handler("private void ShowWhereClaudeCodeIs(").ShouldContain("UiTexts.ClaudeCodeAnswers");
+    }
+
+    /// <summary>
+    /// Every model a summary can be asked of has a name on this screen, which is what makes it a
+    /// thing a person can choose.
+    /// </summary>
+    [Fact]
+    public void Every_summary_model_has_a_name_on_this_screen() =>
+        EnumTable.Read(
+                Screen,
+                "model",
+                "SummaryModel",
+                Path.Combine("MeetingTranscriber.Domain", "Meetings", "SummaryModel.cs"))
+            .ShouldNameItsWholeEnum("SummaryModel");
 
     /// <summary>
     /// The handler's own body, from its signature to the closing brace that balances it, so a

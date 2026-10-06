@@ -51,7 +51,7 @@ namespace MeetingTranscriber.App;
 /// </para>
 /// <para>
 /// A control and not a window, the way the meeting screen and the filing screen are. It is reached
-/// from the gear on the front door and returns there, and a meeting under way keeps its strip above
+/// from the word at the foot of the front door and is left through the window's app bar, and a meeting under way keeps its strip above
 /// it for the whole of that — which is why the window counts this as the room below having the
 /// window rather than as a second opinion beside the recorder.
 /// </para>
@@ -63,6 +63,9 @@ public sealed partial class Configuracion : UserControl
     /// twice, so the two cannot come apart.
     /// </summary>
     private static readonly UiLanguage[] Languages = Enum.GetValues<UiLanguage>();
+
+    /// <summary>The order the model picker offers and reads a selection back in, for the same reason.</summary>
+    private static readonly SummaryModel[] Models = Enum.GetValues<SummaryModel>();
 
     /// <summary>
     /// Where this application's corpus is, or what stopped it being found. Handed over once by the
@@ -84,9 +87,8 @@ public sealed partial class Configuracion : UserControl
     private bool _open;
 
     /// <summary>
-    /// Whether a folder picker is up, or the folder it answered with is being written. The shape
-    /// <see cref="_writingTheAnswer"/> already has, so a second press cannot land while the first
-    /// is still running.
+    /// Whether a folder picker is up, or the folder it answered with is being written, so a second
+    /// press cannot land while the first is still running.
     /// </summary>
     private bool _choosingAFolder;
 
@@ -145,12 +147,48 @@ public sealed partial class Configuracion : UserControl
     private bool _settledIsKnown = true;
 
     /// <summary>
-    /// Whether an answer about a recording that ends is on its way to the corpus. It is the state
-    /// the options would not otherwise have, and without it a second press lands while the first is
-    /// still running — which on a machine that has never recorded is a second migration of the
-    /// whole schema racing the first for the same write lock.
+    /// What was last asked about a recording that ends, which is what is on disk or on its way
+    /// there. A press choosing what is already asked writes nothing; one choosing the old answer
+    /// again while a write is in flight is a choice and is written after it.
     /// </summary>
-    private bool _writingTheAnswer;
+    private AfterARecording _wantedAfterARecording = AfterARecording.DoNothing;
+
+    /// <summary>Which model summaries are asked of, as of the last read or write.</summary>
+    private SummaryModel _summaryModel = SummaryModel.Sonnet;
+
+    /// <summary>What was last asked of the model picker, for the reason the field above gives.</summary>
+    private SummaryModel _wantedSummaryModel = SummaryModel.Sonnet;
+
+    /// <summary>
+    /// Which choice of what happens after a recording is the newest. A write that comes up in turn
+    /// and finds a newer one waiting writes nothing: the last choice wins, and the one before it
+    /// was never going to be seen.
+    /// </summary>
+    private int _afterARecordingAsk;
+
+    /// <summary>The same number for the model picker.</summary>
+    private int _summaryModelAsk;
+
+    /// <summary>
+    /// The end of the line of writes. Everything this screen writes to the corpus waits for the one
+    /// before it: the first step puts a name and an after-recording choice on one screen, and on a
+    /// fresh install two writes at once are two migrations of a folder with no schema racing for
+    /// one write lock — which <see cref="WhoIsUsingThisRow.BeingKept"/> alone could not see across
+    /// two different writes.
+    /// </summary>
+    private Task _lastWrite = Task.CompletedTask;
+
+    /// <summary>
+    /// Whether this screen is open as the first step: while nobody has said who is using the
+    /// application, with only what is needed to begin on it.
+    /// </summary>
+    private bool _firstStep;
+
+    /// <summary>
+    /// Whether somebody pressed <em>Probar</em> since the screen was shown, which is the only time
+    /// Claude Code answering is something this screen says.
+    /// </summary>
+    private bool _claudeCodeWasTested;
 
     /// <summary>True while the controls are being filled, so filling them is not somebody choosing.</summary>
     private bool _filling;
@@ -192,9 +230,22 @@ public sealed partial class Configuracion : UserControl
 
     /// <summary>
     /// Hands over the corpus this install keeps its meetings in, and the window it is on, which
-    /// the folder picker needs. Reads nothing: nothing on this screen is answered until it is
-    /// shown.
+    /// the folder picker needs — and opens the screen as the first step when nobody has said who is
+    /// using the application.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The rule is <see cref="WhoIsUsingThisRow.IsAsking"/>, which the row already carries and
+    /// tests: the corpus is reachable and nobody has said. A corpus that was refused does not open
+    /// it, since every block on it would be dead there and the folder card that fixes it is on the
+    /// full screen. One that will not be read answers nobody-has-said and opens it with the
+    /// sentence saying so, because <see cref="ReadWhoIsUsingThis"/> speaks for it.
+    /// </para>
+    /// <para>
+    /// Nothing is asked of Claude Code here, and no process started: this runs inside the window's
+    /// constructor. The window already re-reads <see cref="IsOpen"/> when it arranges itself.
+    /// </para>
+    /// </remarks>
     /// <exception cref="InvalidOperationException">It was opened twice.</exception>
     public void Open(CorpusFolder corpus, WindowId window)
     {
@@ -207,6 +258,29 @@ public sealed partial class Configuracion : UserControl
 
         _corpus = corpus;
         _window = window;
+
+        ReadWhoIsUsingThis();
+
+        if (!WhoIsUsingThis().IsAsking)
+        {
+            _status.Nothing();
+            return;
+        }
+
+        _open = true;
+        _firstStep = true;
+
+        ReadWhatHappensWhenARecordingEnds();
+        _aKeyIsKept = WhetherAKeyIsKept();
+
+        FillTheLanguagePicker();
+        FillTheModelPicker();
+        ShowWhatHappensWhenARecordingEnds();
+        ShowWhoIsUsingThis();
+        ShowTheKey();
+        SayWhereTheCorpusIs();
+        Arrange();
+        Render();
     }
 
     /// <summary>Which language this screen is being read in.</summary>
@@ -222,11 +296,13 @@ public sealed partial class Configuracion : UserControl
         Bindings.Update();
 
         FillTheLanguagePicker();
+        FillTheModelPicker();
         ShowWhatHappensWhenARecordingEnds();
         ShowWhoIsUsingThis();
         ShowTheKey();
         SayWhereTheCorpusIs();
         ShowTheExport();
+        Arrange();
         Render();
     }
 
@@ -245,6 +321,8 @@ public sealed partial class Configuracion : UserControl
     public async void Show()
     {
         _open = true;
+        _firstStep = false;
+        _claudeCodeWasTested = false;
         _status.Nothing();
         _claudeCode = null;
 
@@ -254,12 +332,14 @@ public sealed partial class Configuracion : UserControl
         _aKeyIsKept = WhetherAKeyIsKept();
 
         FillTheLanguagePicker();
+        FillTheModelPicker();
         ShowWhatHappensWhenARecordingEnds();
         ShowWhoIsUsingThis();
         ShowTheKey();
         SayWhereTheCorpusIs();
         ShowTheExport();
         ShowWhereClaudeCodeIs();
+        Arrange();
         Render();
 
         await CheckClaudeCodeAsync(++_claudeCodeAsk);
@@ -269,6 +349,7 @@ public sealed partial class Configuracion : UserControl
     public void Close()
     {
         _open = false;
+        _firstStep = false;
         _status.Nothing();
 
         // A key pasted and never saved does not wait in a screen nobody is looking at.
@@ -295,29 +376,31 @@ public sealed partial class Configuracion : UserControl
             "The settings screen was never given a corpus, so it has nothing to answer about.");
 
     /// <summary>
-    /// Reads what was settled about a recording that ends.
+    /// Reads what was settled about a recording that ends, and the model summaries are asked of —
+    /// the two preferences the corpus keeps for the whole install.
     /// </summary>
     /// <remarks>
     /// A corpus nobody has answered in really does answer <see cref="AfterARecording.DoNothing"/>,
     /// and a corpus that would not open answers nothing at all — which is the whole of why
     /// <see cref="_settledIsKnown"/> exists. Shown as the first, the second would leave somebody
-    /// looking at <em>No hacer nada</em> over a corpus holding <c>transcribe</c>, and the next
+    /// looking at <em>Nada</em> over a corpus holding <c>transcribe</c>, and the next
     /// recording they stopped would be paid for.
     /// </remarks>
     private void ReadWhatHappensWhenARecordingEnds()
     {
         _afterARecording = AfterARecording.DoNothing;
+        _summaryModel = SummaryModel.Sonnet;
         _settledIsKnown = true;
-
-        if (Corpus().Folder is not { } folder || !CorpusDatabase.HoldsACorpus(folder))
-        {
-            return;
-        }
 
         try
         {
-            using var context = CorpusDatabase.Open(folder);
-            _afterARecording = new CorpusSettings(context).WhenARecordingEnds();
+            if (Corpus().Folder is { } folder && CorpusDatabase.HoldsACorpus(folder))
+            {
+                using var context = CorpusDatabase.Open(folder);
+                var settings = new CorpusSettings(context);
+                _afterARecording = settings.WhenARecordingEnds();
+                _summaryModel = settings.SummaryModel();
+            }
         }
         catch (Exception wouldNotRead) when (ScreenFailures.Reportable(wouldNotRead))
         {
@@ -327,6 +410,9 @@ public sealed partial class Configuracion : UserControl
             _settledIsKnown = false;
             Say(UiTexts.ThatDidNotGoThrough, wouldNotRead.Message);
         }
+
+        _wantedAfterARecording = _afterARecording;
+        _wantedSummaryModel = _summaryModel;
     }
 
     /// <summary>
@@ -422,16 +508,11 @@ public sealed partial class Configuracion : UserControl
         _whoIsUsingThis with { Typed = WhoIsUsingThisBox.Text };
 
     /// <summary>
-    /// Sets the row's three controls from the one answer, the way the front door sets the
-    /// recorder's. Nothing here decides anything.
+    /// Sets the row's two controls from the one answer. Nothing here decides anything.
     /// </summary>
     private void ShowWhoIsUsingThis()
     {
         var row = WhoIsUsingThis();
-
-        // Visibility and not merely a greyer line: an explanation that stayed would keep asking a
-        // question this install has an answer to.
-        NobodyHasSaidYet.Visibility = row.IsAsking ? Visibility.Visible : Visibility.Collapsed;
         WhoIsUsingThisBox.IsEnabled = row.FieldIsLive;
         WhoIsUsingThisButton.IsEnabled = row.MayBeKept;
     }
@@ -452,7 +533,7 @@ public sealed partial class Configuracion : UserControl
         {
             foreach (var answer in Enum.GetValues<AfterARecording>())
             {
-                Offers(answer).IsChecked = _settledIsKnown && answer == _afterARecording;
+                Offers(answer).IsChecked = _settledIsKnown && answer == _wantedAfterARecording;
             }
         }
         finally
@@ -460,13 +541,73 @@ public sealed partial class Configuracion : UserControl
             _filling = false;
         }
 
-        // Three reasons to be dead and they are one rule: there is nowhere this press could write
-        // to, there is nothing it could be correcting because the answer was never read, or a
-        // write is already on its way. The first is what the row about who is using the
-        // application applies one block down.
-        AfterARecordingOptions.IsEnabled =
-            Corpus().Folder is not null && _settledIsKnown && !_writingTheAnswer;
+        // Two reasons to be dead and they are one rule: there is nowhere this press could write
+        // to, or there is nothing it could be correcting because the answer was never read. A
+        // write on its way is not one: a choice made meanwhile waits its turn, so the group stays
+        // live however long a fresh install takes to lay the schema out.
+        var live = Corpus().Folder is not null && _settledIsKnown;
+        AfterARecordingOptions.IsEnabled = live;
+
+        _filling = true;
+        try
+        {
+            SummaryModelPicker.SelectedIndex = _settledIsKnown ? Array.IndexOf(Models, _wantedSummaryModel) : -1;
+        }
+        finally
+        {
+            _filling = false;
+        }
+
+        SummaryModelPicker.IsEnabled = live;
     }
+
+    /// <summary>
+    /// Arranges the screen as the first step or as the whole of it: the title, which cards are on
+    /// it, and whether <em>Empezar</em> is. Nothing here decides which — <see cref="_firstStep"/>
+    /// is set by <see cref="Open"/> and <see cref="Show"/>.
+    /// </summary>
+    private void Arrange()
+    {
+        TitleText.Text = In(_firstStep ? UiTexts.GetStarted : UiTexts.Settings);
+
+        var whole = _firstStep ? Visibility.Collapsed : Visibility.Visible;
+        EnginesRow.Visibility = whole;
+        FolderCard.Visibility = whole;
+        ExportCard.Visibility = whole;
+        ClaudeCodeCard.Visibility = whole;
+        StartButton.Visibility = _firstStep ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    /// <summary>Puts the models in the picker without any of it reading as somebody choosing.</summary>
+    private void FillTheModelPicker()
+    {
+        _filling = true;
+        try
+        {
+            SummaryModelPicker.ItemsSource = Models.Select(offered => In(Named(offered))).ToArray();
+            SummaryModelPicker.SelectedIndex = _settledIsKnown ? Array.IndexOf(Models, _wantedSummaryModel) : -1;
+        }
+        finally
+        {
+            _filling = false;
+        }
+    }
+
+    /// <summary>What a model is called in the picker.</summary>
+    /// <remarks>
+    /// One table, held to <see cref="SummaryModel"/> by <c>ConfiguracionTests</c> and ending in a
+    /// throw, like every table on this screen: a model added with no name here would otherwise be
+    /// offered as one of the others, and the one it would be shown as is the one that gets asked.
+    /// </remarks>
+    /// <exception cref="InvalidOperationException">This screen has no name for that model.</exception>
+    private static UiText Named(SummaryModel model) => model switch
+    {
+        SummaryModel.Sonnet => UiTexts.SummaryModelSonnet,
+        SummaryModel.Opus => UiTexts.SummaryModelOpus,
+        SummaryModel.Haiku => UiTexts.SummaryModelHaiku,
+        _ => throw new InvalidOperationException(
+            $"This screen has no name for the model summaries are asked of: '{model}'."),
+    };
 
     /// <summary>
     /// Says when the last export was and what it took, and whether the press may be used. Nothing
@@ -580,11 +721,9 @@ public sealed partial class Configuracion : UserControl
     /// </remarks>
     private void SayWhereTheCorpusIs()
     {
-        var text = Corpus().Refusal switch
+        UiText? text = Corpus().Refusal switch
         {
-            null => ThereIsACorpus()
-                ? UiTexts.MeetingsAreKeptAt
-                : UiTexts.TheFirstThingKeptMakesTheCorpusAt,
+            null => null,
             CorpusRefusal.SettingSaysNothingUsable => UiTexts.TheSettingSaysNothingUsable,
             CorpusRefusal.FolderDoesNotAnswer => UiTexts.TheCorpusFolderDidNotAnswer,
             CorpusRefusal.NoCorpusInTheFolder => UiTexts.ThereIsNoCorpusInThatFolder,
@@ -593,9 +732,10 @@ public sealed partial class Configuracion : UserControl
                 $"This screen has no text for corpus refusal '{Corpus().Refusal}'."),
         };
 
-        // One entry, read once. Every arm above takes the path and nothing else, so there is no
-        // second case here and no punctuation for this screen to choose between two of them.
-        CorpusText.Text = text.In(_language, Corpus().Path);
+        // The path is data, and so is all there is to say about a folder that opened. Every arm
+        // above takes the path and nothing else, so there is no punctuation for this screen to
+        // choose between two of them.
+        CorpusText.Text = text is null ? Corpus().Path : text.In(_language, Corpus().Path);
 
         // Drawn only over a refused corpus: a corpus that opened is moved by moving the files and
         // then saying so, and no screen offers the first half.
@@ -624,7 +764,7 @@ public sealed partial class Configuracion : UserControl
         var sentence = _claudeCode switch
         {
             null => null,
-            { Is: Availability.Answers } => null,
+            { Is: Availability.Answers } => _claudeCodeWasTested ? UiTexts.ClaudeCodeAnswers : null,
             { Is: Availability.NotOnThisMachine } => UiTexts.ClaudeCodeIsNotOnThisMachine,
             { Is: Availability.DoesNotAnswer } => UiTexts.ClaudeCodeDidNotAnswer,
             _ => throw new InvalidOperationException(
@@ -707,7 +847,8 @@ public sealed partial class Configuracion : UserControl
         KeepTheKeyButton.IsEnabled = DeepgramKeyBox.Password.Length > 0;
 
     /// <summary>
-    /// Keeps what was pasted as this machine's Deepgram key, in place of whatever was there.
+    /// Keeps what was pasted as this machine's Deepgram key, in place of whatever was there. Says
+    /// nothing when it worked: the line under the field is what says so.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -723,11 +864,10 @@ public sealed partial class Configuracion : UserControl
     /// </remarks>
     private void OnKeepTheKey(object sender, RoutedEventArgs e)
     {
-        UiText said;
+        UiText? said = null;
         try
         {
             KeepingThisMachinesKey.Keep(DeepgramKeyBox.Password);
-            said = UiTexts.TheDeepgramKeyIsKept;
         }
         catch (DeepgramKeyException refused)
         {
@@ -740,6 +880,15 @@ public sealed partial class Configuracion : UserControl
 
         _aKeyIsKept = WhetherAKeyIsKept();
         ShowTheKey();
+
+        // The line under the field changing is what says a key was kept; only a refusal is said.
+        if (said is null)
+        {
+            _status.Nothing();
+            Render();
+            return;
+        }
+
         Say(said);
     }
 
@@ -760,7 +909,15 @@ public sealed partial class Configuracion : UserControl
 
         _aKeyIsKept = WhetherAKeyIsKept();
         ShowTheKey();
-        Say(_aKeyIsKept is false ? UiTexts.TheDeepgramKeyIsRemoved : UiTexts.TheDeepgramKeyWasNotRemoved);
+
+        if (_aKeyIsKept is false)
+        {
+            _status.Nothing();
+            Render();
+            return;
+        }
+
+        Say(UiTexts.TheDeepgramKeyWasNotRemoved);
     }
 
     /// <summary>What this screen says for each way a paste can be refused.</summary>
@@ -779,6 +936,23 @@ public sealed partial class Configuracion : UserControl
 
     /// <summary>Leaves the screen, which is the window's app bar's to ask.</summary>
     public void GoBack() => Left?.Invoke(this, EventArgs.Empty);
+
+    /// <summary>
+    /// <em>Empezar</em>: the first step is done, and leaving it is leaving the screen. Nothing is
+    /// required of it — the app bar's way back leaves it too, and it is offered again at the next
+    /// launch until a name is saved.
+    /// </summary>
+    private void OnStart(object sender, RoutedEventArgs e) => GoBack();
+
+    /// <summary>
+    /// <em>Probar</em>: asks Claude Code the question <see cref="Show"/> asks, and says the answer
+    /// either way — including that it works, which opening the screen never says.
+    /// </summary>
+    private async void OnTestClaudeCode(object sender, RoutedEventArgs e)
+    {
+        _claudeCodeWasTested = true;
+        await CheckClaudeCodeAsync(++_claudeCodeAsk);
+    }
 
     /// <summary>
     /// Somebody asked to change where the corpus is kept, which is only offered over a refused
@@ -975,6 +1149,7 @@ public sealed partial class Configuracion : UserControl
 
             _status.Nothing();
             _claudeCode = null;
+            _claudeCodeWasTested = false;
             ShowWhereClaudeCodeIs();
             Render();
 
@@ -1104,11 +1279,13 @@ public sealed partial class Configuracion : UserControl
 
         try
         {
-            exported = await Task.Run(() =>
+            CorpusExported? made = null;
+            await OneWriteAtATime(async () => made = await Task.Run(() =>
             {
                 using var context = CorpusDatabase.OpenMigrated(folder);
                 return CorpusExport.Into(context, chosen.FullName, kinds, TimeZoneInfo.Local, at);
-            });
+            }));
+            exported = made!;
         }
         catch (Exception refused) when (ScreenFailures.Reportable(refused))
         {
@@ -1168,74 +1345,89 @@ public sealed partial class Configuracion : UserControl
     /// why <see cref="CorpusSettings"/> takes one rather than a clock.
     /// </para>
     /// <para>
-    /// Off this thread, and for the reason keeping who is using the application is: this is one of
-    /// the two presses that can make the corpus, so on a machine that has never recorded it runs
-    /// every migration there is before the first row. Answering this before recording anything is
-    /// the likeliest first act on a fresh install, so it is exactly the press that pays that cost.
-    /// </para>
-    /// <para>
-    /// The group is dead for as long as the write is in flight, which is the other half and is the
-    /// lesson the row below already learnt: a second press landing beside the first is two
-    /// migrations of one schema racing each other for one write lock.
+    /// Off this thread, and one write at a time: this is one of the presses that can make the
+    /// corpus, so on a machine that has never recorded it runs every migration there is before the
+    /// first row — and the first step has the name beside it, so a second write beside this one is
+    /// two migrations of one schema racing for one write lock. The group is not dead for it. A
+    /// choice made while a write runs waits for it, and a newer choice replaces one still waiting:
+    /// the last one wins, and a write that finds itself replaced writes nothing.
     /// </para>
     /// </remarks>
     private async void OnAfterARecordingChosen(object sender, RoutedEventArgs e)
     {
-        // Asked again inside the handler, because a press already in flight arrives after the group
-        // was drawn dead.
+        // Asked again inside the handler, because a press already in flight arrives after the
+        // group was drawn dead.
         if (_filling
-            || _writingTheAnswer
             || !_settledIsKnown
             || Chose(sender) is not { } chosen
-            || chosen == _afterARecording
+            || chosen == _wantedAfterARecording
             || Corpus().Folder is not { } folder)
         {
             return;
         }
 
         var at = Now();
-        _writingTheAnswer = true;
-        ShowWhatHappensWhenARecordingEnds();
+        var ask = ++_afterARecordingAsk;
+        _wantedAfterARecording = chosen;
+        var wrote = false;
 
         try
         {
-            await Task.Run(() =>
+            await OneWriteAtATime(async () =>
             {
-                folder.Create();
-                using var context = CorpusDatabase.OpenMigrated(folder);
-                new CorpusSettings(context).WhenARecordingEnds(chosen, at);
+                if (ask != _afterARecordingAsk)
+                {
+                    return;
+                }
+
+                await Task.Run(() =>
+                {
+                    folder.Create();
+                    using var context = CorpusDatabase.OpenMigrated(folder);
+                    new CorpusSettings(context).WhenARecordingEnds(chosen, at);
+                });
+
+                wrote = true;
             });
         }
         catch (Exception refused) when (ScreenFailures.Reportable(refused))
         {
             if (!_closed)
             {
-                // The finally below puts the options back to what is really on disk. A screen left
-                // showing what was pressed would have somebody expecting a transcription that was
-                // never asked for.
+                // The options go back to what is really on disk, unless a newer choice is waiting
+                // and will say its own. A screen left showing what was pressed would have somebody
+                // expecting a transcription that was never asked for.
+                if (ask == _afterARecordingAsk)
+                {
+                    _wantedAfterARecording = _afterARecording;
+                    ShowWhatHappensWhenARecordingEnds();
+                }
+
                 Say(UiTexts.ThatDidNotGoThrough, refused.Message);
             }
 
             return;
         }
-        finally
-        {
-            _writingTheAnswer = false;
 
-            if (!_closed)
+        if (wrote)
+        {
+            // What the write said, rather than the corpus asked again — the same rule the name
+            // keeps: the write either threw or put this answer on the one row that carries it.
+            _afterARecording = chosen;
+
+            // Also what is wanted when nothing newer is, so a screen shown again mid-write (which
+            // reads the old value) cannot leave a later press of that old value looking like no change.
+            if (ask == _afterARecordingAsk)
             {
-                ShowWhatHappensWhenARecordingEnds();
+                _wantedAfterARecording = chosen;
             }
         }
 
-        if (_closed)
+        if (_closed || ask != _afterARecordingAsk)
         {
             return;
         }
 
-        // What the write said, rather than the corpus asked again — the same rule the row below
-        // keeps: the write either threw or put this answer on the one row that carries it.
-        _afterARecording = chosen;
         _status.Nothing();
         ShowWhatHappensWhenARecordingEnds();
 
@@ -1243,6 +1435,119 @@ public sealed partial class Configuracion : UserControl
         // be saying so.
         SayWhereTheCorpusIs();
         Render();
+    }
+
+    /// <summary>
+    /// Somebody chose the model summaries are asked of. Written the way
+    /// <see cref="OnAfterARecordingChosen"/> is written, for the same reasons, and through the same
+    /// line of writes.
+    /// </summary>
+    private async void OnSummaryModelChosen(object sender, SelectionChangedEventArgs e)
+    {
+        if (_filling
+            || !_settledIsKnown
+            || SummaryModelPicker.SelectedIndex < 0
+            || Corpus().Folder is not { } folder)
+        {
+            return;
+        }
+
+        var chosen = Models[SummaryModelPicker.SelectedIndex];
+        if (chosen == _wantedSummaryModel)
+        {
+            return;
+        }
+
+        var at = Now();
+        var ask = ++_summaryModelAsk;
+        _wantedSummaryModel = chosen;
+        var wrote = false;
+
+        try
+        {
+            await OneWriteAtATime(async () =>
+            {
+                if (ask != _summaryModelAsk)
+                {
+                    return;
+                }
+
+                await Task.Run(() =>
+                {
+                    folder.Create();
+                    using var context = CorpusDatabase.OpenMigrated(folder);
+                    new CorpusSettings(context).SummaryModel(chosen, at);
+                });
+
+                wrote = true;
+            });
+        }
+        catch (Exception refused) when (ScreenFailures.Reportable(refused))
+        {
+            if (!_closed)
+            {
+                if (ask == _summaryModelAsk)
+                {
+                    _wantedSummaryModel = _summaryModel;
+                    ShowWhatHappensWhenARecordingEnds();
+                }
+
+                Say(UiTexts.ThatDidNotGoThrough, refused.Message);
+            }
+
+            return;
+        }
+
+        if (wrote)
+        {
+            _summaryModel = chosen;
+
+            if (ask == _summaryModelAsk)
+            {
+                _wantedSummaryModel = chosen;
+            }
+        }
+
+        if (_closed || ask != _summaryModelAsk)
+        {
+            return;
+        }
+
+        _status.Nothing();
+        ShowWhatHappensWhenARecordingEnds();
+        SayWhereTheCorpusIs();
+        Render();
+    }
+
+    /// <summary>
+    /// Runs one write to the corpus once every write asked before it has finished, and answers what
+    /// it answered. The line is kept in <see cref="_lastWrite"/>; asking and chaining happen on the
+    /// UI thread, so there is no second thread to race it.
+    /// </summary>
+    /// <remarks>
+    /// A write that failed leaves the line as it was for the next one: only its own caller sees the
+    /// failure.
+    /// <para>
+    /// An export takes its place in this line too, so a choice made during one is written after it:
+    /// that is the price of never running two migrations at once. The name's own press and the
+    /// export's stay dead while they run, as double-press guards — the choices are what stays live.
+    /// </para>
+    /// </remarks>
+    private async Task OneWriteAtATime(Func<Task> write)
+    {
+        var before = _lastWrite;
+        var done = new TaskCompletionSource();
+        _lastWrite = done.Task;
+
+        try
+        {
+            await before;
+            await write();
+        }
+        finally
+        {
+            done.SetResult();
+        }
     }
 
     /// <summary>Which option on this screen offers <paramref name="answer"/>.</summary>
@@ -1319,12 +1624,12 @@ public sealed partial class Configuracion : UserControl
 
         try
         {
-            await Task.Run(() =>
+            await OneWriteAtATime(() => Task.Run(() =>
             {
                 folder.Create();
                 using var context = CorpusDatabase.OpenMigrated(folder);
                 new HumanLayer(context, TimeProvider.System).ThisIsMe(name);
-            });
+            }));
         }
         catch (Exception refused) when (ScreenFailures.Reportable(refused))
         {
