@@ -650,6 +650,7 @@ public sealed partial class MainWindow : Window
 
         RecordButton.IsEnabled = screen.Allows(RecorderPress.Start);
         ShowThePausePress(screen);
+        NameTheStopPresses();
         StopButton.IsEnabled = screen.Allows(RecorderPress.Stop);
 
         // Visibility and not merely disabled: an offer that has not been made is not a button
@@ -747,6 +748,19 @@ public sealed partial class MainWindow : Window
         PauseGlyph.Glyph = paused ? "\uE768" : "\uE769";
         AutomationProperties.SetName(PauseButton, In(says));
         ToolTipService.SetToolTip(PauseButton, In(says));
+    }
+
+    /// <summary>
+    /// The two presses that stop a meeting — the card's and the strip's — are the square glyph and
+    /// say <em>Detener</em> to a screen reader and in a tooltip, in the language of the window.
+    /// </summary>
+    private void NameTheStopPresses()
+    {
+        foreach (var press in new[] { StopButton, StripStopButton })
+        {
+            AutomationProperties.SetName(press, In(UiTexts.Stop));
+            ToolTipService.SetToolTip(press, In(UiTexts.Stop));
+        }
     }
 
     /// <summary>

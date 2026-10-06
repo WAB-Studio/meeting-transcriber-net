@@ -53,12 +53,13 @@
         Padding="{StaticResource ScreenPadding}"
         RowSpacing="20">
         <Grid.Resources>
-            <!-- Pause and carry on are one press and it is a glyph, which the code-behind swaps:
-                 the pause bars while recording and the triangle while paused, each with its own
+            <!-- The presses that steer a recording are glyphs, and they are the same size: pause
+                 and carry on are one press whose glyph the code-behind swaps — the bars while
+                 recording and the triangle while paused — and stop is the square. Each has its own
                  name and tooltip. Square at the normal rank, so it stands as tall as the press
                  beside it. The one other glyph press, the drawer's caret, is `IconButton` at the
                  control rank; this is the normal one and a style of its own for that reason. -->
-            <Style x:Key="ThePausePress" TargetType="Button" BasedOn="{StaticResource NormalButtonOnCard}">
+            <Style x:Key="ASteeringPress" TargetType="Button" BasedOn="{StaticResource NormalButtonOnCard}">
                 <Setter Property="Width" Value="{StaticResource NormalButtonHeight}" />
                 <Setter Property="MinWidth" Value="{StaticResource NormalButtonHeight}" />
                 <Setter Property="Padding" Value="0" />
@@ -308,16 +309,20 @@
                         <Button
                             x:Name="PauseButton"
                             VerticalAlignment="Center"
-                            Style="{StaticResource ThePausePress}"
+                            Style="{StaticResource ASteeringPress}"
                             Click="OnPause">
                             <FontIcon x:Name="PauseGlyph" Glyph="&#xE769;" FontSize="{StaticResource BodySize}" />
                         </Button>
+                        <!-- A glyph beside the pause glyph, named and tooltipped in the code-behind with
+                             the word it used to be: stop steers the recording like pause does, and
+                             the one press on this card that is words is the principal act. -->
                         <Button
                             x:Name="StopButton"
                             VerticalAlignment="Center"
-                            Style="{StaticResource NormalButtonOnCard}"
-                            Click="OnStop"
-                            Content="{x:Bind In(loc:UiTexts.Stop)}" />
+                            Style="{StaticResource ASteeringPress}"
+                            Click="OnStop">
+                            <FontIcon Glyph="&#xE71A;" FontSize="{StaticResource BodySize}" />
+                        </Button>
                         <!-- The words and nothing else, and the dot the artboards draw on it is
                              deliberately not here. Built as a panel it cost two things worth more
                              than a glyph: the button's automation name, which is its content and
@@ -450,9 +455,10 @@
                         x:Name="StripStopButton"
                         Grid.Column="2"
                         VerticalAlignment="Center"
-                        Style="{StaticResource NormalButtonOnCard}"
-                        Click="OnStop"
-                        Content="{x:Bind In(loc:UiTexts.Stop)}" />
+                        Style="{StaticResource ASteeringPress}"
+                        Click="OnStop">
+                        <FontIcon Glyph="&#xE71A;" FontSize="{StaticResource BodySize}" />
+                    </Button>
                 </Grid>
             </Border>
 

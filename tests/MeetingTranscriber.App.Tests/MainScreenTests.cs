@@ -191,6 +191,31 @@ public partial class MainScreenTests
     }
 
     /// <summary>
+    /// Stop is a glyph like pause is: both presses that stop a meeting hold the square and no words,
+    /// and are named and tooltipped with the word in the window's language (fb-108).
+    /// </summary>
+    [Fact]
+    public void Stop_is_a_glyph_like_pause()
+    {
+        var markup = Read(Markup);
+
+        foreach (var name in new[] { "StopButton", "StripStopButton" })
+        {
+            var press = Regex.Match(markup, $@"<Button\s[^>]*x:Name=""{name}""[\s\S]*?</Button>").Value;
+
+            press.ShouldNotBeEmpty($"{name} is not a button with content of its own.");
+            press.ShouldContain("<FontIcon Glyph=\"&#xE71A;\"");
+            press.ShouldNotContain("Content=", customMessage: $"{name} says its words again.");
+            press.ShouldContain("ASteeringPress");
+        }
+
+        var naming = Method("private void NameTheStopPresses(");
+        naming.ShouldContain("AutomationProperties.SetName(press, In(UiTexts.Stop))");
+        naming.ShouldContain("ToolTipService.SetToolTip(press, In(UiTexts.Stop))");
+        Method("private void Refresh(").ShouldContain("NameTheStopPresses();");
+    }
+
+    /// <summary>
     /// Both clocks on screen — the stopwatch and the strip — are the one <c>ClockAt</c>, which takes
     /// the paused time off the stretch since the devices opened (ISC-222.3).
     /// </summary>

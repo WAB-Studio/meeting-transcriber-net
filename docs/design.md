@@ -681,7 +681,8 @@ room while it holds no line. The status line at the foot keeps one sentence, the
 recording with nowhere to put it; every other state is already said by the stopwatch, the strip, the
 saving card and the presses.
 
-**`GrabandoVivo`** · Recording, transcribing live. Stopwatch at 40/48, *Pausar* and *Detener*, both
+**`GrabandoVivo`** · Recording, transcribing live. Stopwatch at 40/48, the pause glyph and the stop glyph
+(named and tooltipped *Pausar* and *Detener*), both
 meters compressed to one row each, and the live transcript filling the rest. Text arrives word by
 word and the tail is grey: **the grey is the provisional part the provider is still correcting, and
 grey is not what gets stored.** A 2px olive caret follows it. Speakers are a name, a coloured dot
@@ -691,7 +692,9 @@ and the time, right-aligned in a 96px gutter; the line itself is capped at 62ch.
 glyph while recording and as the play glyph while paused, its name and tooltip *Pausar* and *Seguir*;
 a press that is refused says so in a sentence and changes nothing. The clock on screen stands still
 while paused, and the stretch is left out of the audio at the end, so the meeting's length and every
-time in it are the time actually recorded.
+time in it are the time actually recorded. *Detener* is a glyph too — the square, beside the pause
+glyph and the same size, named and tooltipped *Detener* — because both steer a recording that is already
+running; the principal act, *Empezar a grabar*, stays words.
 
 **No recording screen names the meeting.** A meeting is named by its summary, or by hand from its
 own screen afterwards, so while one is running there is nothing to put there and nothing is
@@ -974,7 +977,7 @@ meeting's name, and none of the presses but one:
   meeting have no clock, and a strip showing the last reading through either would be a screen
   saying a meeting is still being recorded. Elapsed time is spelled the way it is spelled
   everywhere, through `ScreenNumbers.Long`, so it reads `0:08:12` and not `08:12`.
-- ***Detener***, at the normal rank and not the principal one. The screen's one principal act is
+- ***Detener***, the square glyph at the normal rank and not the principal one. The screen's one principal act is
   *Empezar a grabar*; a press that steers a recording already running is normal, here as on the
   card. It is the one press that cannot wait for somebody to lower the list, so it is the only one
   the strip has: *Pausar*, which is *Seguir* while paused, waits, and lowering the list is what
