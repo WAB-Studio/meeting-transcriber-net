@@ -322,3 +322,13 @@ appears when there is code to put in it, and one the destination never named app
 turns out to have nowhere it can go — which is what `Recording` is. Dependencies point inwards, and
 `MeetingTranscriber.Domain` stays free of Windows and WinUI references, with tests asserting
 exactly that.
+
+## After a crash
+
+The application writes what an exception nobody caught told it to `crash-record.log`, beside the
+language and theme choices and never in the corpus: `%LOCALAPPDATA%\MeetingTranscriber\`, which an
+installed build has redirected to `%LOCALAPPDATA%\Packages\<package family>\LocalCache\Local\
+MeetingTranscriber\`. One entry is the time, where it was caught, and each exception's type, message
+and stack; `CrashRecord` says what it leaves out and when the file starts again. Not every kind of crash reaches it (a native fail-fast may not); an empty file after a crash is itself an answer. Windows' own report
+for a managed crash names a native module (`CoreMessagingXP.dll`, code `0xc000027b`), so this file
+is the first thing to read.

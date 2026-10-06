@@ -71,7 +71,25 @@ public partial class App : Application
     public App()
     {
         InitializeComponent();
+
+        // What goes wrong on the way down is written to a file of its own before Windows ends the
+        // process, because the report Windows keeps names a native module and none of our lines.
+        UnhandledException += (_, thrown) => Crashes.Write("Application.UnhandledException", thrown.Exception, TimeProvider.System.GetUtcNow());
+        AppDomain.CurrentDomain.UnhandledException += (_, thrown) =>
+        {
+            if (thrown.ExceptionObject is Exception exception)
+            {
+                Crashes.Write("AppDomain.UnhandledException", exception, TimeProvider.System.GetUtcNow());
+            }
+        };
+        TaskScheduler.UnobservedTaskException += (_, thrown) => Crashes.Write("TaskScheduler.UnobservedTaskException", thrown.Exception, TimeProvider.System.GetUtcNow());
     }
+
+    /// <summary>
+    /// Where an exception nobody caught is written down; <see cref="CrashRecord"/> says where that
+    /// is and what it keeps.
+    /// </summary>
+    public static CrashRecord Crashes { get; } = CrashRecord.OfThisUser();
 
     /// <summary>
     /// The folder this launch keeps its two pointers and its first corpus in, settled first thing in

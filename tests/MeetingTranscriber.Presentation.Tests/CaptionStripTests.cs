@@ -57,4 +57,24 @@ public class CaptionStripTests
     {
         CaptionStrip.For(1, 100, 60, null, 138).ShouldBeEmpty();
     }
+
+    [Fact]
+    public void The_columns_width_is_the_inset_over_the_scale()
+    {
+        CaptionStrip.ReservedWidth(138, 1.5).ShouldBe(92);
+    }
+
+    [Theory]
+    [InlineData(138, 0)]
+    [InlineData(138, -1)]
+    [InlineData(138, double.NaN)]
+    [InlineData(double.NaN, 1)]
+    [InlineData(double.PositiveInfinity, 1)]
+    [InlineData(-4, 1)]
+    public void A_window_with_no_scale_has_no_width_to_give_and_is_left_alone(double inset, double scale)
+    {
+        // A minimised window reads a scale of zero, and a width over zero is infinity: the layout
+        // refuses it with E_INVALIDARG from a callback nothing of ours catches (O-20261006-09).
+        CaptionStrip.ReservedWidth(inset, scale).ShouldBeNull();
+    }
 }

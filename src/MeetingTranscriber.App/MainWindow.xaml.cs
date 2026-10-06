@@ -449,7 +449,13 @@ public sealed partial class MainWindow : Window
         };
     }
 
-    private void TheBarMoved()
+    /// <remarks>
+    /// Run off the dispatcher and off layout, so a throw here is never caught by anything of ours:
+    /// the guard writes it to the crash record first. A window that has no scale — one that is
+    /// minimised is suspected of reading zero — has no column width to give, and the column is left as it was
+    /// (see <see cref="CaptionStrip.ReservedWidth"/>).
+    /// </remarks>
+    private void TheBarMoved() => App.Crashes.Guard(nameof(TheBarMoved), () =>
     {
         if (_closed)
         {
@@ -457,11 +463,15 @@ public sealed partial class MainWindow : Window
         }
 
         var scale = Content?.XamlRoot?.RasterizationScale ?? 1;
-        var inset = AppWindow.TitleBar.RightInset / scale;
+
+        if (CaptionStrip.ReservedWidth(AppWindow.TitleBar.RightInset, scale) is not { } inset)
+        {
+            return;
+        }
 
         CaptionSpace.Width = new GridLength(inset);
         HandOverTheCaption(scale, inset);
-    }
+    });
 
     private void HandOverTheCaption(double scale, double inset)
     {
@@ -2982,7 +2992,10 @@ public sealed partial class MainWindow : Window
     /// Guarded the way the second's tick is, and for the same reason: a press that is still opening
     /// or closing a device owns the recording until it comes back.
     /// </remarks>
-    private void OnMeters(object? sender, object e)
+    private void OnMeters(object? sender, object e) =>
+        App.Crashes.Guard(nameof(OnMeters), () => TickTheMeters());
+
+    private void TickTheMeters()
     {
         if (_step != RecorderStep.Nothing)
         {
@@ -3017,8 +3030,11 @@ public sealed partial class MainWindow : Window
     /// </summary>
     private void OnActivated(object sender, WindowActivatedEventArgs args)
     {
-        _windowIsActive = args.WindowActivationState != WindowActivationState.Deactivated;
-        ListenAsTheScreenAsks(Screen());
+        App.Crashes.Guard(nameof(OnActivated), () =>
+        {
+            _windowIsActive = args.WindowActivationState != WindowActivationState.Deactivated;
+            ListenAsTheScreenAsks(Screen());
+        });
     }
 
     /// <summary>
