@@ -743,8 +743,8 @@ at the prompt: `deepgram-live` and `transcribe-again` send only after a person t
 back (`TypedBack`).
 
 No screen shows money: no provider quotes a price before a call, and a figure written without
-that quote would be invented. The dialogue that approves a transcription says how many minutes
-will be sent; the one for a summary says the model and no figure.
+that quote would be invented. When the approval of ISC-85 is built, the dialogue for a transcription will say how many
+minutes will be sent and the one for a summary the model, and neither a figure.
 
 ### 6.6 Transcription
 
@@ -1213,7 +1213,9 @@ Cases:
 
 ### 12.4 Windows integration
 
-Probed by hand; `docs/process-capture.md` is the record of what ran.
+What has to be probed by hand, because no build agent has the hardware.
+`docs/process-capture.md` records what has run, and anything below that it does not record has not
+been probed.
 
 - microphone and loopback with known signals;
 - target process and tree of children;

@@ -128,7 +128,7 @@ purpose. It is there for:
   not render is named on the way out and caught up by the next launch;
 - `CorrectingWords`, which saves a correction and renders every meeting it touches the same way.
 
-Any of the three can be there because of the direction: `Processing` knows nothing about a window,
+Any of the four can be there because of the direction: `Processing` knows nothing about a window,
 so nothing came back the other way.
 
 ### `MeetingTranscriber.Cli`
