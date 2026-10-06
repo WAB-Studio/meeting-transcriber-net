@@ -554,13 +554,6 @@
          control sitting on that card is papel again. There is no third — a block nested inside a
          card takes a 1px rule and never a tint of its own. -->
 
-    <!-- What the window is dragged by: an element with a fill nobody sees. A press falls through an
-         element that has no fill, so with none the title bar did not move the window (fb-106); the
-         screen names this and never writes the fill itself. -->
-    <Style x:Key="DragFill" TargetType="Border">
-        <Setter Property="Background" Value="Transparent" />
-    </Style>
-
     <Style x:Key="Card" TargetType="Border">
         <Setter Property="Background" Value="{ThemeResource CardBrush}" />
         <Setter Property="CornerRadius" Value="{StaticResource CardCorner}" />

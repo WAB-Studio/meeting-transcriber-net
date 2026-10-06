@@ -11,6 +11,7 @@ using MeetingTranscriber.Recording;
 
 using Microsoft.EntityFrameworkCore;
 using Microsoft.UI.Dispatching;
+using Microsoft.UI.Input;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
@@ -406,46 +407,93 @@ public sealed partial class MainWindow : Window
 
     /// <summary>
     /// The bar is the window's title bar: the platform's own is not drawn, the caption buttons are
-    /// drawn over the bar's right-hand end, and the window is dragged by the mark, the name and the
-    /// empty width between them and the caption buttons.
+    /// drawn over the bar's right-hand end, and the window is dragged by the whole strip from its
+    /// top edge to the bottom of the bar, except the back button and the caption buttons.
     /// </summary>
     /// <remarks>
-    /// The back button is deliberately not in the region the window is handed — a press inside a
-    /// drag region is a drag — and the caption buttons' width is reserved in the bar's last column
-    /// so nothing the bar ever gains at its right can land under them. <c>RightInset</c> is in
-    /// pixels and the column is in the units the layout is, so it is divided by the scale.
-    /// The icon the taskbar and Alt+Tab show is the application's own and is set elsewhere.
     /// <para>
-    /// The region has a transparent background, which is what the window needs of it: a press falls
-    /// through an element that has no fill, so with <c>SetTitleBar</c> on an empty border the bar did
-    /// not move the window at all (fb-106). The other way to hand a window its caption —
-    /// <c>InputNonClientPointerSource</c> with caption rectangles computed off the bar — is not in
-    /// here, because nothing has shown this is not enough on its own.
+    /// The strip is handed to <c>InputNonClientPointerSource</c> as caption rectangles in pixels,
+    /// and <see cref="CaptionStrip"/> decides them. It is rectangles and not an element because the
+    /// root grid is padded: the bar starts below the window's top edge, and an element in the bar
+    /// cannot cover the strip above it. The strip takes the whole width, so the window's top edge
+    /// is a caption there too, which is what a title bar is. Not yet seen working on an installed
+    /// build; no probe here can drag a window.
+    /// </para>
+    /// <para>
+    /// The rectangles are worked again whenever what they are worked from moves: the window's size,
+    /// the bar's layout, the back button appearing or going, and the scale. The caption buttons'
+    /// width is also reserved in the bar's last column so nothing the bar gains at its right can
+    /// land under them; <c>RightInset</c> is in pixels and the column in layout units, so it is
+    /// divided by the scale. The icon the taskbar and Alt+Tab show is set elsewhere.
     /// </para>
     /// </remarks>
     private void ExtendTheBarIntoTheTitleBar()
     {
         ExtendsContentIntoTitleBar = true;
         AppWindow.TitleBar.PreferredHeightOption = TitleBarHeightOption.Tall;
-        SetTitleBar(TheDragRegion);
 
-        ReserveTheCaptionButtons();
-        TheApplication.Loaded += (_, _) => ReserveTheCaptionButtons();
+        TheBarMoved();
+        TheApplication.Loaded += (_, _) =>
+        {
+            TheBarMoved();
+            Content.XamlRoot.Changed += (_, _) => TheBarMoved();
+        };
+        TheApplication.SizeChanged += (_, _) => TheBarMoved();
+        TheApplication.LayoutUpdated += (_, _) => TheBarMoved();
         AppWindow.Changed += (_, change) =>
         {
             if (change.DidSizeChange)
             {
-                _drawnOn.TryEnqueue(ReserveTheCaptionButtons);
+                _drawnOn.TryEnqueue(TheBarMoved);
             }
         };
     }
 
-    private void ReserveTheCaptionButtons()
+    private void TheBarMoved()
     {
-        var scale = Content?.XamlRoot?.RasterizationScale ?? 1;
+        if (_closed)
+        {
+            return;
+        }
 
-        CaptionSpace.Width = new GridLength(AppWindow.TitleBar.RightInset / scale);
+        var scale = Content?.XamlRoot?.RasterizationScale ?? 1;
+        var inset = AppWindow.TitleBar.RightInset / scale;
+
+        CaptionSpace.Width = new GridLength(inset);
+        HandOverTheCaption(scale, inset);
     }
+
+    private void HandOverTheCaption(double scale, double inset)
+    {
+        if (Content is not FrameworkElement root || TheApplication.ActualHeight <= 0)
+        {
+            return;
+        }
+
+        var bar = TheApplication.TransformToVisual(null).TransformPoint(new Windows.Foundation.Point(0, 0));
+        (double Left, double Right)? back = null;
+
+        if (BackButton.Visibility == Visibility.Visible && BackButton.ActualWidth > 0)
+        {
+            var at = BackButton.TransformToVisual(null).TransformPoint(new Windows.Foundation.Point(0, 0));
+            back = (at.X, at.X + BackButton.ActualWidth);
+        }
+
+        var rects = CaptionStrip.For(scale, root.ActualWidth, bar.Y + TheApplication.ActualHeight, back, inset);
+
+        if (rects.SequenceEqual(_caption))
+        {
+            return;
+        }
+
+        _caption = rects;
+        InputNonClientPointerSource.GetForWindowId(AppWindow.Id).SetRegionRects(
+            NonClientRegionKind.Caption,
+            [.. rects.Select(r => new Windows.Graphics.RectInt32(r.X, r.Y, r.Width, r.Height))]);
+    }
+
+    /// <summary>What the window was last handed as its caption, so an unchanged strip is not handed again.</summary>
+    private IReadOnlyList<PixelRect> _caption = [];
 
     /// <summary>
     /// Somebody picked a language on this screen. What is done about it is not this window's.

@@ -102,15 +102,6 @@
                 <ColumnDefinition x:Name="CaptionSpace" Width="0" />
             </Grid.ColumnDefinitions>
 
-            <!-- This row is the window's title bar, and what drags the window is the mark, the name
-                 and the empty width between the name and the caption buttons: one element behind
-                 them, handed to the window as its title bar. It is drawn with a transparent fill and not none:
-                 an element with no fill is not hit by a press, so the press falls to the window's
-                 client area and the bar does not move the window. Never the back button, which is a press
-                 and must stay one, and never anything pressable laid over it. The last column holds
-                 the width the caption buttons take, which the code-behind reads off the window. -->
-            <Border x:Name="TheDragRegion" Grid.Column="1" Grid.ColumnSpan="2" Style="{StaticResource DragFill}" />
-
             <!-- The way back out of a sub-screen. The arrow is a glyph, a code point that says the
                  same in either language, and it takes the button's ink so that it dims when the
                  button does. The button names itself, because a shape with no name is what a screen
