@@ -41,7 +41,7 @@ public class RecordingClockTests
     public void How_long_the_meeting_has_been_running_is_on_screen_for_as_long_as_it_runs(
         RecorderState state)
     {
-        var clock = RecordingClock.Of(state, Opened, Opened + Duration.FromSeconds(754));
+        var clock = RecordingClock.Of(state, Opened, Opened + Duration.FromSeconds(754), Duration.Zero);
 
         clock.Showing.ShouldBeTrue();
         clock.Ran.ShouldBe(Duration.FromSeconds(754));
@@ -80,7 +80,7 @@ public class RecordingClockTests
     [MemberData(nameof(WithNoMeetingRunning))]
     public void No_clock_runs_when_no_meeting_is_being_recorded(RecorderState state)
     {
-        var clock = RecordingClock.Of(state, Opened, Opened + Duration.FromSeconds(754));
+        var clock = RecordingClock.Of(state, Opened, Opened + Duration.FromSeconds(754), Duration.Zero);
 
         clock.Showing.ShouldBeFalse();
         clock.Ran.ShouldBe(Duration.Zero);
@@ -93,7 +93,7 @@ public class RecordingClockTests
     /// </summary>
     [Fact]
     public void A_screen_with_no_recording_behind_it_shows_no_clock() =>
-        RecordingClock.Of(RecorderState.Recording, startedAt: null, Opened)
+        RecordingClock.Of(RecorderState.Recording, startedAt: null, Opened, Duration.Zero)
             .Showing.ShouldBeFalse();
 
     /// <summary>
@@ -106,7 +106,8 @@ public class RecordingClockTests
         RecordingClock.Of(
             RecorderState.Recording,
             startedAt: Opened + Duration.FromSeconds(90),
-            now: Opened).Ran.ShouldBe(Duration.Zero);
+            now: Opened,
+            paused: Duration.Zero).Ran.ShouldBe(Duration.Zero);
 
     private static RecorderState[] States() => Enum.GetValues<RecorderState>();
 }

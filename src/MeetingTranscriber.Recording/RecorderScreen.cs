@@ -1,4 +1,8 @@
 ﻿using MeetingTranscriber.Audio;
+using MeetingTranscriber.Domain.Artifacts;
+using MeetingTranscriber.Infrastructure.Storage;
+
+using Microsoft.EntityFrameworkCore;
 
 namespace MeetingTranscriber.Recording;
 
@@ -70,6 +74,48 @@ public sealed record RecorderChoices
         Microphone is not null && Source is not null && !string.IsNullOrWhiteSpace(Spoken);
 
     /// <summary>
+    /// What the person last said a meeting would be spoken in, when the picker still offers it: the
+    /// language of the most recently started meeting that has a recording, and nothing otherwise.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The person's last answer and never the application's language, which is
+    /// <c>MeetingRecordings.Open</c>'s reason for asking at all: a meeting file from a Spanish menu would be
+    /// filed as Spanish. What is read is a meeting somebody recorded, so it is a row with an audio
+    /// artifact — the fact <c>MeetingReading.Audio</c> reads — and not merely a row. A meeting
+    /// that arrived as a paid response has none and never sets it, and neither does one that has
+    /// only just been started and has no audio filed yet.
+    /// </para>
+    /// <para>
+    /// Here and not on <c>MeetingRecordings</c>, which is the composition of what recording a
+    /// meeting files: the window reads this, and the window is held to leaving every step of that
+    /// composition alone (<c>SavingCardTests</c>). Reading what was said last time files nothing.
+    /// </para>
+    /// <para>
+    /// Only the latest is asked. When that one's language is not on offer the answer is nothing,
+    /// not the one before it: the picker then waits on a person, which is what it does on a corpus
+    /// with no meeting in it.
+    /// </para>
+    /// </remarks>
+    /// <param name="corpus">The corpus the next meeting is recorded into.</param>
+    /// <param name="offered">The language tags the picker offers.</param>
+    public static string? SpokenLastTime(CorpusDbContext corpus, IReadOnlySet<string> offered)
+    {
+        ArgumentNullException.ThrowIfNull(corpus);
+        ArgumentNullException.ThrowIfNull(offered);
+
+        var last = corpus.Meetings
+            .AsNoTracking()
+            .Where(meeting => corpus.Artifacts.Any(
+                artifact => artifact.MeetingId == meeting.Id && artifact.Kind == ArtifactKind.Audio))
+            .OrderByDescending(meeting => meeting.StartedAt)
+            .Select(meeting => meeting.Language)
+            .FirstOrDefault();
+
+        return last is not null && offered.Contains(last) ? last : null;
+    }
+
+    /// <summary>
     /// These choices against the microphones this machine has now: the chosen one as the machine
     /// describes it today, or nothing chosen at all when the machine no longer offers it.
     /// </summary>
@@ -137,6 +183,19 @@ public sealed record RecorderChoices
     }
 }
 
+/// <summary>The three questions a recording cannot start without an answer to.</summary>
+public enum RecorderQuestion
+{
+    /// <summary>What channel 0 will follow.</summary>
+    Source = 1,
+
+    /// <summary>Which microphone channel 1 will record.</summary>
+    Microphone = 2,
+
+    /// <summary>What the meeting will be spoken in.</summary>
+    Spoken = 3,
+}
+
 /// <summary>
 /// The recording screen as the facts that decide what can be pressed on it and which of its two
 /// arrangements it is in, and nothing else.
@@ -187,22 +246,34 @@ public sealed record RecorderScreen
     /// </remarks>
     public bool TheProgramWentAway { get; init; }
 
-    /// <summary>Whether it has already been taken, which happens at most once in a meeting.</summary>
+    /// <summary>
+    /// Whether the notice's own press for the whole machine has been made and has not come back,
+    /// which is what takes the offer off screen while the move is under way.
+    /// </summary>
+    /// <remarks>
+    /// Once the move has held, what ends the offer is channel 0 being on the whole machine, which
+    /// <see cref="RecorderChoices.Source"/> says — channel 0 can be moved back onto a program from
+    /// its picker now, and the notice must be able to be made about that one in its own right.
+    /// </remarks>
     public bool WholeMachineTaken { get; init; }
 
     /// <summary>
-    /// Whether <em>Cambiar</em> was pressed on the notice and nothing has been chosen yet, so
-    /// channel 0's picker is live and offering programs.
+    /// Whether a move of channel 0 is in flight, onto a program or onto the whole machine. The
+    /// screen takes one move at a time because the session records each move under a gate and a
+    /// second press would only queue behind it, reporting a move onto a source the first had
+    /// already left.
     /// </summary>
-    /// <remarks>Carried and never worked out, like <see cref="WholeMachineTaken"/>.</remarks>
-    public bool AnotherProgramIsBeingChosen { get; init; }
+    /// <remarks>
+    /// The same fact <c>TheSourceIsBeingChanged</c> would be, so there is one name for it: this
+    /// one is older, and what the notice asks about it is the same question.
+    /// </remarks>
+    public bool AnotherProgramIsBeingOpened { get; init; }
 
     /// <summary>
-    /// Whether a move of channel 0 onto a program is in flight. The screen takes one move at a time
-    /// because the session records each move under a gate and a second press would only queue
-    /// behind it, reporting a move onto a program the first had already left.
+    /// Whether a move of channel 1 onto another microphone is in flight. One move at a time, for
+    /// the reason <see cref="AnotherProgramIsBeingOpened"/> gives for channel 0.
     /// </summary>
-    public bool AnotherProgramIsBeingOpened { get; init; }
+    public bool TheMicrophoneIsBeingChanged { get; init; }
 
     /// <summary>
     /// Whether the notice is on screen, and channel 0's meter reads <em>sin señal</em>: the
@@ -350,6 +421,46 @@ public sealed record RecorderScreen
     public bool TheStripIsOnScreen => !TheRecorderIsOnScreen && State.IsInAMeeting();
 
     /// <summary>
+    /// What a choosing screen still waits on, so each question that has no answer can say so while
+    /// it waits. Empty outside <see cref="RecorderState.Choosing"/>: a meeting under way has been
+    /// through all three.
+    /// </summary>
+    /// <remarks>
+    /// Read off <see cref="RecorderChoices.Settled"/>'s own three conditions, so a picker drawn as
+    /// wanting an answer and the press that is refused for the same missing answer cannot
+    /// disagree.
+    /// </remarks>
+    public IReadOnlySet<RecorderQuestion> Unanswered
+    {
+        get
+        {
+            if (State != RecorderState.Choosing)
+            {
+                return new HashSet<RecorderQuestion>();
+            }
+
+            var waiting = new HashSet<RecorderQuestion>();
+
+            if (Chosen.Source is null)
+            {
+                waiting.Add(RecorderQuestion.Source);
+            }
+
+            if (Chosen.Microphone is null)
+            {
+                waiting.Add(RecorderQuestion.Microphone);
+            }
+
+            if (string.IsNullOrWhiteSpace(Chosen.Spoken))
+            {
+                waiting.Add(RecorderQuestion.Spoken);
+            }
+
+            return waiting;
+        }
+    }
+
+    /// <summary>
     /// What can be pressed now: what the state reaches, less what has not been answered yet.
     /// </summary>
     public IReadOnlySet<RecorderPress> Available =>
@@ -384,30 +495,34 @@ public sealed record RecorderScreen
             && Chosen.Source?.IsTheWholeMachine == false,
 
         // The same two reports, and the same consent: pointing channel 0 somewhere else is a way
-        // out of the same silence. Only while the recorder half is on screen, because a picker that
-        // is not there cannot be pressed and choosing without the meter in view defeats the point.
-        // And not once the picker is open or a move is under way, which is what keeps it one press.
+        // out of the same silence. It opens channel 0's picker and moves nothing, so pressing it
+        // twice is opening a list twice. Only while the recorder half is on screen, because a
+        // picker that is not there cannot be opened and choosing without the meter in view
+        // defeats the point. And not while a move is under way.
         RecorderPress.ChooseAnotherProgram =>
             EitherReportStands
             && !WholeMachineTaken
-            && !AnotherProgramIsBeingChosen
             && !AnotherProgramIsBeingOpened
             && TheRecorderIsOnScreen
             && Chosen.Source?.IsTheWholeMachine == false,
 
-        // A pick in the picker Cambiar opened, and never a pick in the one that chose the meeting's
-        // source. Not once the whole machine has been taken: the list it was offering is stale.
-        RecorderPress.FollowAnotherProgram =>
-            AnotherProgramIsBeingChosen
-            && !AnotherProgramIsBeingOpened
-            && !WholeMachineTaken
-            && TheRecorderIsOnScreen,
+        // A pick in either picker while the meeting records or is paused, one move of a channel at
+        // a time. The state table says where; this says that the picker is on screen to have been
+        // picked in and that the channel is not already on its way somewhere.
+        // The notice's own press moves channel 0 too, and is in flight while WholeMachineTaken says
+        // so; a pick made then would queue a second move behind it.
+        RecorderPress.ChangeTheSource =>
+            !AnotherProgramIsBeingOpened && !WholeMachineTaken && TheRecorderIsOnScreen,
+
+        RecorderPress.ChangeTheMicrophone =>
+            !TheMicrophoneIsBeingChanged && !TheMicrophoneIsBeingOpenedAgain && TheRecorderIsOnScreen,
 
         // The microphone has to have died, and nothing must already be opening it. The second half
         // is what the whole machine's `Taken` is: an offer stays on screen while the press it
         // belongs to is opening a device, and one taken twice reaches a channel the first press
         // brought back.
-        RecorderPress.TryTheMicrophoneAgain => TheMicrophoneDied && !TheMicrophoneIsBeingOpenedAgain,
+        RecorderPress.TryTheMicrophoneAgain =>
+            TheMicrophoneDied && !TheMicrophoneIsBeingOpenedAgain && !TheMicrophoneIsBeingChanged,
 
         _ => true,
     };

@@ -75,7 +75,7 @@ public sealed record RecordingClock
     /// included. Never makes the clock negative: more paused than ran reads as no time.
     /// </param>
     public static RecordingClock Of(
-        RecorderState state, UtcTimestamp? startedAt, UtcTimestamp now, Duration paused = default)
+        RecorderState state, UtcTimestamp? startedAt, UtcTimestamp now, Duration paused)
     {
         if (!state.IsRecording() || startedAt is not { } opened)
         {

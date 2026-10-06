@@ -15,8 +15,9 @@ public enum RecorderState
     Recording,
 
     /// <summary>
-    /// A meeting is being recorded and is paused. Its clock is still running, so this is a stretch
-    /// of the meeting rather than a break in it.
+    /// A meeting is being recorded and is paused. The recording keeps receiving blocks and they are
+    /// silent, so nothing is lost by pausing; what the meeting makes of the stretch is to leave it
+    /// out, at the end, and the clock stands still for as long as it lasts.
     /// </summary>
     Paused,
 
@@ -89,10 +90,22 @@ public enum RecorderPress
     ChooseAnotherProgram,
 
     /// <summary>
-    /// Point channel 0 at the program chosen in that picker. The meeting goes on, and so does the
-    /// question of whether anything arrives from the new program.
+    /// Point channel 1 at the microphone chosen in its picker, while the meeting is being recorded
+    /// or paused. The meeting goes on, as one recording.
     /// </summary>
-    FollowAnotherProgram,
+    ChangeTheMicrophone,
+
+    /// <summary>
+    /// Point channel 0 at what was chosen in its picker — the whole machine's audio or one
+    /// program — while the meeting is being recorded or paused. The meeting goes on, and so does
+    /// the question of whether anything arrives from the new source.
+    /// </summary>
+    /// <remarks>
+    /// A pick in the picker and not the notice's consent: choosing the whole machine here is
+    /// somebody choosing it, which is what ISC-139 asks of any move onto it. The notice's own
+    /// <see cref="RecordTheWholeMachine"/> stays offered only by the recording's report.
+    /// </remarks>
+    ChangeTheSource,
 
     /// <summary>
     /// Open the microphone again, after its stream stopped responding. Offered by the meters and
@@ -103,8 +116,8 @@ public enum RecorderPress
     /// Channel 1 and not either channel, because opening a source again is only something channel 1
     /// can do — <c>CaptureSession.OpenTheMicrophoneAgain</c> says why. A channel 0 that stopped is
     /// not opened again. Its ways out, <see cref="RecordTheWholeMachine"/> and
-    /// <see cref="FollowAnotherProgram"/>, answer a program that never brought anything and one
-    /// that went away.
+    /// <see cref="ChangeTheSource"/>, answer a program that never brought anything and one that
+    /// went away.
     /// </remarks>
     TryTheMicrophoneAgain,
 }
@@ -129,11 +142,15 @@ public static class RecorderStates
             // whether it is live yet.
             [RecorderState.Choosing] = Set(RecorderPress.Start),
 
-            // Being recorded. The whole machine's audio is takeable only here, and so is another
-            // program: the offer comes from channel 0 having heard nothing or from its program
-            // having gone, and a paused meeting hears nothing by definition, so a paused recording
-            // is exactly where the first of those would say the wrong thing. A program that goes
-            // away during a pause is said at once and offered on resume.
+            // Being recorded. The notice's two presses are reachable only here: the offer comes from
+            // channel 0 having heard nothing or from its program having gone, and a paused meeting
+            // hears nothing by definition, so a paused recording is exactly where the first of
+            // those would say the wrong thing. A program that goes away during a pause is said at
+            // once and offered on resume.
+            //
+            // Changing either source is here and on Paused both. It is somebody choosing, not the
+            // recording reporting, so a level has nothing to say about it, and a meeting somebody
+            // paused to plug a different microphone in is exactly when it is pressed.
             //
             // Opening the microphone again is here and on Paused both, which is the opposite of
             // the rule above and is the same rule read properly: what makes the whole machine wrong
@@ -146,13 +163,18 @@ public static class RecorderStates
                 RecorderPress.Stop,
                 RecorderPress.RecordTheWholeMachine,
                 RecorderPress.ChooseAnotherProgram,
-                RecorderPress.FollowAnotherProgram,
+                RecorderPress.ChangeTheMicrophone,
+                RecorderPress.ChangeTheSource,
                 RecorderPress.TryTheMicrophoneAgain),
 
-            // Paused. Stopping from here is allowed and finishes the meeting with the pause in it
-            // as the silence it was, rather than needing somebody to resume first.
+            // Paused. Stopping from here is allowed and finishes the meeting with the pause left out
+            // of it, rather than needing somebody to resume first.
             [RecorderState.Paused] = Set(
-                RecorderPress.Resume, RecorderPress.Stop, RecorderPress.TryTheMicrophoneAgain),
+                RecorderPress.Resume,
+                RecorderPress.Stop,
+                RecorderPress.ChangeTheMicrophone,
+                RecorderPress.ChangeTheSource,
+                RecorderPress.TryTheMicrophoneAgain),
 
             // Being started. Nothing, and least of all record again: the devices are opening and
             // a second press would open a second meeting over the top of the first.
@@ -171,10 +193,9 @@ public static class RecorderStates
     /// meter.
     /// </summary>
     /// <remarks>
-    /// Paused counts. The clock is still running and both devices are still open — what a paused
-    /// meeting records is silence of exactly the length it lasted — so a screen that hid the
-    /// meters for it would take the levels away at the one moment somebody is looking to see
-    /// whether the pause took.
+    /// Paused counts. Both devices are still open — what a paused meeting receives is silence,
+    /// which the meeting leaves out when it is made — so a screen that hid the meters for it would
+    /// take the levels away at the one moment somebody is looking to see whether the pause took.
     /// <para>
     /// Starting and finishing do not. In neither is there a device to read: one has not opened
     /// them yet and the other has already let them go, and a meter that went on showing its last

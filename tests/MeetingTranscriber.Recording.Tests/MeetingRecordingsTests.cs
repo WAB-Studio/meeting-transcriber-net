@@ -1231,6 +1231,78 @@ public sealed class MeetingRecordingsTests : IDisposable
         WaitingRecordings.In(reopened).Select(recording => recording.MeetingId).ShouldContain(meetingId);
     }
 
+    private static readonly IReadOnlySet<string> OnOffer = new HashSet<string> { "es", "en" };
+
+    /// <summary>
+    /// ISC-220.1: what will be spoken is offered again as the last recorded meeting had it, which
+    /// is read off the corpus and so also after the application is opened again.
+    /// </summary>
+    [Fact]
+    public void The_last_recorded_meeting_s_language_is_offered_again()
+    {
+        using var context = corpus.OpenMigrated();
+        RecordedIn(context, "es", now);
+        RecordedIn(context, "en", now + Duration.FromSeconds(300));
+
+        RecorderChoices.SpokenLastTime(context, OnOffer).ShouldBe("en");
+
+        // The same answer from a second connection: it is the corpus's, not this process's.
+        using var reopened = corpus.Open();
+        RecorderChoices.SpokenLastTime(reopened, OnOffer).ShouldBe("en");
+    }
+
+    /// <summary>
+    /// A meeting that arrived as a paid response, or has only been started, has no audio filed and
+    /// never sets what the next one is spoken in.
+    /// </summary>
+    [Fact]
+    public void A_meeting_with_no_recording_does_not_set_it()
+    {
+        using var context = corpus.OpenMigrated();
+        RecorderChoices.SpokenLastTime(context, OnOffer).ShouldBeNull();
+
+        RecordedIn(context, "es", now);
+        using (MeetingRecordings.Open(context, "en", now + Duration.FromSeconds(300)))
+        {
+        }
+
+        RecorderChoices.SpokenLastTime(context, OnOffer).ShouldBe("es");
+    }
+
+    [Fact]
+    public void A_language_the_picker_does_not_offer_is_not()
+    {
+        using var context = corpus.OpenMigrated();
+        RecordedIn(context, "es", now);
+        RecordedIn(context, "fr", now + Duration.FromSeconds(300));
+
+        // Not the one before it either: the picker waits on a person, as it does with no history.
+        RecorderChoices.SpokenLastTime(context, OnOffer).ShouldBeNull();
+    }
+
+    /// <summary>A meeting started at <paramref name="at"/> with its audio filed, as a stop leaves it.</summary>
+    private static void RecordedIn(CorpusDbContext context, string language, UtcTimestamp at)
+    {
+        Guid id;
+        using (var prepared = MeetingRecordings.Open(context, language, at))
+        {
+            id = prepared.MeetingId;
+        }
+
+        context.Artifacts.Add(new Artifact
+        {
+            Id = Guid.NewGuid(),
+            MeetingId = id,
+            Kind = ArtifactKind.Audio,
+            Origin = ArtifactKind.Audio.OriginOf(),
+            RelativePath = CorpusFiles.PathFor(id, "audio.wav"),
+            ByteSize = 4,
+            Sha256 = new string('a', 64),
+            ConfirmedAt = at,
+        });
+        context.SaveChanges();
+    }
+
     /// <summary>
     /// Builds a recording exactly the way the rest of this file does, but with the press disposed
     /// before it returns — so its claim over the spool is gone before a caller finishes it, and a

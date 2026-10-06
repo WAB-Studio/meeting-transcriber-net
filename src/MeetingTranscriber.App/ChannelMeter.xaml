@@ -76,7 +76,7 @@
 
         <!-- Nothing here says which channel this is, and that is the redraw rather than an
              omission. `docs/design.md` §Where it goes pins the meter to the control that chooses
-             its source, so the mono chip, the role and the picker are the row above and belong to
+             its source, so the role and the picker are the row above and belong to
              `ChannelStrip` — a meter that wrote *Canal 0 · los demás* over its own bar as well
              would be one column saying the same thing twice. What stays here is what nothing else
              in this application draws: the four layers, the scale under them and the retained

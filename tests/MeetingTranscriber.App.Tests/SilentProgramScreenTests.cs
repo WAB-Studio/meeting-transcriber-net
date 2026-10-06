@@ -2,8 +2,8 @@ namespace MeetingTranscriber.App.Tests;
 
 /// <summary>
 /// The window's half of the silent-program notice: that it says which program nothing came from,
-/// that channel 0's meter reads <em>sin señal</em>, and that choosing in channel 0's picker moves
-/// the channel through the recording.
+/// that channel 0's meter reads <em>sin señal</em>, and that choosing in channel 0's picker — live
+/// for the whole meeting, paused or not — moves the channel through the recording.
 /// </summary>
 /// <remarks>
 /// Read off source, like its neighbours, because a window needs a UI thread and a packaged host
@@ -19,16 +19,33 @@ public class SilentProgramScreenTests
     private static readonly string Markup = Path.Combine("MeetingTranscriber.App", "MainWindow.xaml");
 
     /// <summary>
-    /// A pick in channel 0's picker while the notice has it open is the recording's to carry out,
-    /// off the UI thread, and only when the screen allows it.
+    /// A pick in channel 0's picker mid-meeting is the recording's to carry out, off the UI thread,
+    /// and only when the screen allows it — onto a program, or onto the whole machine, which is
+    /// somebody choosing it.
     /// </summary>
     [Fact]
     public void Choosing_in_channel_0s_picker_mid_meeting_moves_it_through_the_recording()
     {
         var window = File.ReadAllText(AppSources.At(Window).FullName);
 
-        window.ShouldContain("Task.Run(() => recording.FollowAnotherProgram(");
-        window.ShouldContain("Screen().Allows(RecorderPress.FollowAnotherProgram)");
+        window.ShouldContain("await Task.Run(() =>");
+        window.ShouldContain("recording.FollowAnotherProgram(program)");
+        window.ShouldContain("recording.RecordTheWholeMachine()");
+        window.ShouldContain("screen.Allows(RecorderPress.ChangeTheSource)");
+        window.ShouldContain("TheOthers.PickerIsLive = choosing || screen.Allows(RecorderPress.ChangeTheSource)");
+    }
+
+    /// <summary>
+    /// <em>Cambiar</em> on the notice opens the one picker, which is live through the meeting, and
+    /// nothing else: there is no second list of programs to move onto for a pick to be a position in.
+    /// </summary>
+    [Fact]
+    public void Cambiar_opens_the_one_source_picker_and_there_is_no_second_list()
+    {
+        var window = File.ReadAllText(AppSources.At(Window).FullName);
+
+        window.ShouldContain("TheOthers.Open();");
+        window.ShouldNotContain("_programsToMoveTo");
     }
 
     [Fact]
@@ -71,9 +88,11 @@ public class SilentProgramScreenTests
         body.ShouldContain("RecorderScreen.ProgramsOnOffer(");
         body.ShouldNotContain("OrderBy(", customMessage: "ReadThePrograms orders the programs itself again.");
 
-        window.ShouldContain(
-            "_programsToMoveTo = [.. RecorderScreen.ProgramsOnOffer(",
-            customMessage: "the move list is no longer ordered by the same rule as the picker.");
+        // There is one list now, so there is nothing for it to disagree with: every offer of
+        // programs, before a meeting and during one, is `_sources`, built here.
+        window.ShouldNotContain(
+            "ProgramsOnOffer(offered, recording",
+            customMessage: "a second list of programs is ordered where the picker's is not.");
     }
 
     /// <summary>

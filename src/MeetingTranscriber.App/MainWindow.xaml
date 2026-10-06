@@ -39,7 +39,11 @@
          because the strip below the card travels the other way as the half leaves. What a meeting
          under way is doing, and the press that stops it, are on screen whichever of the two
          arrangements the window is in. What is not on the strip is what nobody watches from the
-         list: the two meters, and pause. -->
+         list: the two meters, and pause.
+
+         The window's own title bar is not there: the bar below is the title bar, with the mark and
+         the name where a title would be and the caption buttons at the right, so the window carries
+         one row where it used to carry two. -->
 
     <!-- Papel, and opaque. `docs/design.md` §And five things this application is not: never mica or
          acrylic, because a translucent window is one where nothing weighs anything. What was here
@@ -48,6 +52,30 @@
         Background="{ThemeResource PaperBrush}"
         Padding="{StaticResource ScreenPadding}"
         RowSpacing="20">
+        <Grid.Resources>
+            <!-- Pause and carry on are one press and it is a glyph, which the code-behind swaps:
+                 the pause bars while recording and the triangle while paused, each with its own
+                 name and tooltip. Square at the normal rank, so it stands as tall as the press
+                 beside it. The one other glyph press, the drawer's caret, is `IconButton` at the
+                 control rank; this is the normal one and a style of its own for that reason. -->
+            <Style x:Key="ThePausePress" TargetType="Button" BasedOn="{StaticResource NormalButtonOnCard}">
+                <Setter Property="Width" Value="{StaticResource NormalButtonHeight}" />
+                <Setter Property="MinWidth" Value="{StaticResource NormalButtonHeight}" />
+                <Setter Property="Padding" Value="0" />
+                <Setter Property="HorizontalContentAlignment" Value="Center" />
+                <Setter Property="VerticalContentAlignment" Value="Center" />
+            </Style>
+
+            <!-- A picker whose question is waiting on somebody: the same pill with its rule in
+                 pico, so what is missing is drawn where it is missing rather than said in a line
+                 beside the press that is refused for it. Swapped in by the code-behind while
+                 `RecorderScreen.Unanswered` holds the question, and out again the moment it is
+                 answered. -->
+            <Style x:Key="DropDownWantingAnAnswer" TargetType="ComboBox" BasedOn="{StaticResource DropDown}">
+                <Setter Property="BorderBrush" Value="{ThemeResource PeakBrush}" />
+            </Style>
+        </Grid.Resources>
+
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
@@ -70,7 +98,15 @@
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
+                <ColumnDefinition x:Name="CaptionSpace" Width="0" />
             </Grid.ColumnDefinitions>
+
+            <!-- This row is the window's title bar, and what drags the window is the mark, the name
+                 and the empty width between the name and the caption buttons: one element behind
+                 them, handed to the window as its title bar. Never the back button, which is a press
+                 and must stay one, and never anything pressable laid over it. The last column holds
+                 the width the caption buttons take, which the code-behind reads off the window. -->
+            <Border x:Name="TheDragRegion" Grid.Column="1" Grid.ColumnSpan="2" />
 
             <!-- The way back out of a sub-screen. The arrow is a glyph, a code point that says the
                  same in either language, and it takes the button's ink so that it dims when the
@@ -202,11 +238,11 @@
                      as the paper is depth as decoration.
 
                      The channels are two and they are fixed: the others, and you. This is never a
-                     list. Everything in it is dead the moment a recording
-                     starts — changing the microphone half way through is not a thing the engine can
-                     do, so it is not a thing this screen offers. The one exception is the others'
-                     picker, which comes back to life when *Cambiar* is pressed on the notice that
-                     nothing arrived from its program: pick, look at the meter, pick the next. -->
+                     list. Both pickers stay live while a meeting is recorded or paused: a pick moves
+                     that channel and the meeting goes on as one recording, which is what *Cambiar* on
+                     the notice that nothing arrived from its program opens — pick, look at the meter,
+                     pick the next. Before a meeting the meters listen to what is chosen, so the
+                     program or the microphone can be picked by ear. -->
                 <Grid ColumnSpacing="20">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
@@ -261,18 +297,18 @@
                          of the first. The three beside it steer a recording that is already running
                          rather than being what the screen is asking for, so they are normal. -->
                     <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                        <!-- One press for pausing and for carrying on, because only one of them is ever
+                             possible and a second button that is dead while the first is live is a
+                             screen saying twice what one glyph says. Its glyph, name and tooltip are
+                             set in the code-behind from the state, with the words of the two entries
+                             it used to be. -->
                         <Button
                             x:Name="PauseButton"
                             VerticalAlignment="Center"
-                            Style="{StaticResource NormalButtonOnCard}"
-                            Click="OnPause"
-                            Content="{x:Bind In(loc:UiTexts.Pause)}" />
-                        <Button
-                            x:Name="ResumeButton"
-                            VerticalAlignment="Center"
-                            Style="{StaticResource NormalButtonOnCard}"
-                            Click="OnResume"
-                            Content="{x:Bind In(loc:UiTexts.Resume)}" />
+                            Style="{StaticResource ThePausePress}"
+                            Click="OnPause">
+                            <FontIcon x:Name="PauseGlyph" Glyph="&#xE769;" FontSize="{StaticResource BodySize}" />
+                        </Button>
                         <Button
                             x:Name="StopButton"
                             VerticalAlignment="Center"
