@@ -218,9 +218,10 @@ through `Processing.Export` and asks Claude Code whether it answers through
 `Processing.Summaries`; and `AddingSomebody` catches the `RenderException` a corrected name can
 end on, from `Processing.Rendering`; and `WordsThatComeOutWrong` reads `Processing.Corrections`
 and catches the `RenderException` a correction can end on, reading the meetings it could not render
-off `RenderException.Meetings`; `ReadingAMeeting` reads the transcript through `MeetingRenderer.AsRead`, so the screen
-and `transcript.md` say the same words; and `CorrectingAWord` catches the `RenderException` a correction made where
-a word is read can end on, from `Processing.Rendering`. All eight reach it through the reference `App.csproj`'s own
+off `RenderException.Meetings` — and it is the one screen a correction ends on, whether the words were typed
+there or selected where they are read and brought in; `ReadingAMeeting` reads the transcript through
+`MeetingRenderer.AsRead`, so the screen and `transcript.md` say the same words; and `SayingWhoIsWho` reads each
+voice's quotation through it for the same reason. All eight reach it through the reference `App.csproj`'s own
 comment already says brings `Processing` along — the same closure `App.xaml.cs` already reaches
 `Infrastructure` through — so a second, explicit `ProjectReference` would only restate what that
 comment already commits to. The rule still lives

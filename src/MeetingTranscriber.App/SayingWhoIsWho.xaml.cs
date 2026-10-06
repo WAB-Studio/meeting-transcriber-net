@@ -1,8 +1,10 @@
 using MeetingTranscriber.Audio;
+using MeetingTranscriber.Domain.Knowledge;
 using MeetingTranscriber.Domain.Meetings;
 using MeetingTranscriber.Infrastructure.Meetings;
 using MeetingTranscriber.Infrastructure.Storage;
 using MeetingTranscriber.Presentation;
+using MeetingTranscriber.Processing.Rendering;
 using MeetingTranscriber.Recording;
 
 using Microsoft.UI.Xaml;
@@ -45,6 +47,13 @@ public sealed partial class SayingWhoIsWho : UserControl
 
     /// <summary>What was read the last time this screen drew, or nothing when the read refused.</summary>
     private VoicesAsHeard? _read;
+
+    /// <summary>
+    /// Every turn of the meeting as the rendered files say it, read beside <see cref="_read"/>, so a
+    /// quotation shows the words with the corrections that reach the meeting and not the stored
+    /// ones. Nothing while there is no transcription.
+    /// </summary>
+    private IReadOnlyList<Turn>? _turns;
 
     /// <summary>
     /// The answer as it stands on screen for every voice not already settled by the recording,
@@ -93,6 +102,9 @@ public sealed partial class SayingWhoIsWho : UserControl
     /// <summary>Somebody asked to go back without naming anybody.</summary>
     public event EventHandler? Left;
 
+    /// <summary>Somebody selected words in a quotation and asked to correct them.</summary>
+    public event EventHandler<WordsToCorrect>? CorrectWords;
+
     /// <summary>Whether this screen is showing a meeting.</summary>
     public bool IsOpen => _meeting is not null;
 
@@ -135,8 +147,10 @@ public sealed partial class SayingWhoIsWho : UserControl
     /// <summary>Lets go of the meeting and of everything drawn about it.</summary>
     public void Close()
     {
+        CorrectTheSelection.Dismiss();
         _meeting = null;
         _read = null;
+        _turns = null;
         _draft.Clear();
         _status.Nothing();
         _noAudio.Nothing();
@@ -170,6 +184,7 @@ public sealed partial class SayingWhoIsWho : UserControl
     private void Draw()
     {
         _read = null;
+        _turns = null;
         _draft.Clear();
         _status.Nothing();
         _noAudio.Nothing();
@@ -190,7 +205,7 @@ public sealed partial class SayingWhoIsWho : UserControl
             try
             {
                 using var context = CorpusDatabase.Open(folder);
-                _read = new MeetingVoices(context, TimeProvider.System).Of(meetingId);
+                ReadTheVoices(context, meetingId);
             }
             catch (MeetingStageException gone)
             {
@@ -210,6 +225,59 @@ public sealed partial class SayingWhoIsWho : UserControl
             }
 
             OpenTheClips(read);
+        }
+
+        Render();
+    }
+
+    /// <summary>
+    /// Reads the meeting's voices and, beside them, its turns as the rendered files say them.
+    /// </summary>
+    /// <remarks>
+    /// Both from the one context and at the one moment, so a quotation is always a turn of the voices
+    /// beside it. The turns are read only where there are voices, which is only once the meeting is
+    /// transcribed.
+    /// </remarks>
+    private void ReadTheVoices(CorpusDbContext context, Guid meetingId)
+    {
+        _read = new MeetingVoices(context, TimeProvider.System).Of(meetingId);
+        _turns = _read.Voices.Voices.Count > 0 ? MeetingRenderer.AsRead(context, meetingId) : null;
+    }
+
+    /// <summary>
+    /// The words of a voice's quotation: the turn it quotes as the rendered files say it, or the
+    /// stored words when the turns were not read.
+    /// </summary>
+    private string QuotedWords(Voice voice) =>
+        _turns?.FirstOrDefault(turn => turn.Ordinal == voice.Quoted.Ordinal)?.Text ?? voice.Quoted.Text;
+
+    /// <summary>
+    /// Reads the quotations again after the corrections screen, which may have saved a correction,
+    /// and draws them with the draft and the clip exactly as they were.
+    /// </summary>
+    /// <remarks>
+    /// Not <see cref="Draw"/>, which would drop the draft somebody was half way through and the clip
+    /// that was playing: only the turns are read again, and the voices stay as they were.
+    /// </remarks>
+    public void ReadTheQuotationsAgain()
+    {
+        if (_meeting is not { } meetingId || _read is null || Corpus().Folder is not { } folder)
+        {
+            return;
+        }
+
+        try
+        {
+            using var context = CorpusDatabase.Open(folder);
+            _turns = MeetingRenderer.AsRead(context, meetingId);
+        }
+        catch (MeetingStageException gone)
+        {
+            _status.Says(UiTexts.ThatIsNoLongerHowItWas, gone.Message);
+        }
+        catch (Exception unreadable) when (ScreenFailures.Reportable(unreadable))
+        {
+            _status.Says(UiTexts.ThatDidNotGoThrough, unreadable.Message);
         }
 
         Render();
@@ -332,11 +400,14 @@ public sealed partial class SayingWhoIsWho : UserControl
             Style = Chrome("VoiceData"),
         });
 
-        // The quotation is where a wrong word is seen, so the words are selectable and a right-click
-        // on a selection offers the dialogue that corrects it there.
-        var quoted = new TextBlock { Text = voice.Quoted.Text, Style = Chrome("VoiceQuoted") };
-        quoted.ContextFlyout = CorrectingAWord.OfferedOver(
-            quoted, In(UiTexts.CorrectThisWord), words => _ = CorrectAWordAsync(read, words));
+        // The quotation is where a wrong word is seen, so the words are selectable and a selection
+        // offers *Corregir*, which opens the corrections screen with them in its field.
+        var quoted = new TextBlock { Text = QuotedWords(voice), Style = Chrome("VoiceQuoted") };
+        CorrectTheSelection.OfferOver(
+            quoted,
+            Chrome("TheSelectionsPress"),
+            In(UiTexts.CorrectThisWord),
+            words => AskToCorrect(read.Meeting.Id, words));
         left.Children.Add(quoted);
 
         if (ClipRow(read, voice, position) is { } clip)
@@ -451,7 +522,8 @@ public sealed partial class SayingWhoIsWho : UserControl
     /// <remarks>
     /// The press is a margin press and never an entry of the list: an entry in a list of people is
     /// read as one more person to choose, and correcting a name is an act on the one chosen, not a
-    /// choice. It stands only beside a voice somebody has been put on.
+    /// choice. It stands only beside a voice somebody has been put on, in a row with the picker as
+    /// <c>ClassifyingAMeeting</c> draws its own, and at the control height the picker is.
     /// </remarks>
     private FrameworkElement APickerAndItsCorrection(VoicesAsHeard read, Voice voice, Guid? standing, int position)
     {
@@ -467,13 +539,13 @@ public sealed partial class SayingWhoIsWho : UserControl
         {
             Content = In(UiTexts.CorrectThisName),
             Style = Chrome("CorrectTheirName"),
-            HorizontalAlignment = HorizontalAlignment.Left,
+            VerticalAlignment = VerticalAlignment.Top,
         };
 
         AutomationProperties.SetAutomationId(correct, $"correct-{position}");
         correct.Click += (_, _) => _ = AskWhoTheyAre(read, voice, them);
 
-        var both = new StackPanel { Spacing = 4 };
+        var both = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 7 };
         both.Children.Add(picker);
         both.Children.Add(correct);
         return both;
@@ -551,46 +623,19 @@ public sealed partial class SayingWhoIsWho : UserControl
     }
 
     /// <summary>
-    /// Opens the dialogue that corrects one word over the one a selection in a quotation stands
-    /// for, and says what is left to say when it saved.
+    /// Asks the window to open the corrections screen over this meeting with the words selected in
+    /// a quotation, and stops the clip first.
     /// </summary>
     /// <remarks>
-    /// Nothing is drawn again: the quotation is the voice's own words as they were stored, a
-    /// correction is applied when a transcript is rendered, and a redraw here would drop the draft
-    /// and the clip playing. The corrected words are on the meeting's own screen.
+    /// The screen stays as it is behind it: the draft is not dropped, because the way back from the
+    /// corrections returns here with it kept (<see cref="ReadTheQuotationsAgain"/>).
     /// </remarks>
-    private async Task CorrectAWordAsync(VoicesAsHeard read, string selection)
+    private void AskToCorrect(Guid meeting, string words)
     {
-        if (CorrectingAWord.TheWordIn(selection) is not { } word)
-        {
-            return;
-        }
-
-        bool saved;
-
-        try
-        {
-            saved = await AskingHowAWordGoes.AskAsync(Corpus(), read.Meeting.Id, word, _language, Root.XamlRoot);
-        }
-        catch (Exception refused) when (ScreenFailures.Reportable(refused))
-        {
-            // Said and not dropped: the press that opened this was fired and forgotten.
-            _status.Says(UiTexts.ThatDidNotGoThrough, refused.Message);
-            ShowTheStatus();
-            return;
-        }
-
-        // The screen was closed, or moved to another meeting, while the dialogue was open.
-        if (!saved || _meeting != read.Meeting.Id)
-        {
-            return;
-        }
-
-        if (AskingHowAWordGoes.Afterwards is { } afterwards)
-        {
-            _status.Says(afterwards);
-            ShowTheStatus();
-        }
+        CorrectTheSelection.Dismiss();
+        StopClip();
+        Render();
+        CorrectWords?.Invoke(this, new WordsToCorrect(meeting, words));
     }
 
     /// <summary>
@@ -608,7 +653,7 @@ public sealed partial class SayingWhoIsWho : UserControl
         try
         {
             using var context = CorpusDatabase.Open(folder);
-            _read = new MeetingVoices(context, TimeProvider.System).Of(meetingId);
+            ReadTheVoices(context, meetingId);
         }
         catch (MeetingStageException gone)
         {

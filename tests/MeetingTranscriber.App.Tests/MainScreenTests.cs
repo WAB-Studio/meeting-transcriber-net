@@ -72,12 +72,23 @@ public partial class MainScreenTests
     [Fact]
     public void The_back_button_goes_back_through_the_screen_that_has_the_room()
     {
-        var back = Method("private void GoBack(");
+        // One ordered list, read by the three questions about the sub-screens. The corrections come
+        // before the voices because they open over them and win while they are open.
+        var list = Method("private SubScreen[] TheSubScreens(");
+        var order = new[] { "Settings", "Classifying", "Corrections", "Voices", "NodeStory", "Reading" };
 
-        foreach (var screen in new[] { "Settings", "Classifying", "Voices", "Corrections", "NodeStory", "Reading" })
+        foreach (var screen in order)
         {
-            back.ShouldContain(screen + ".GoBack()", customMessage: $"the way back never leaves {screen}.");
+            list.ShouldContain(screen + ".GoBack", customMessage: $"the way back never leaves {screen}.");
         }
+
+        order.Select(screen => list.IndexOf("new(" + screen + ",", StringComparison.Ordinal))
+            .ShouldBe(order.Select(screen => list.IndexOf("new(" + screen + ",", StringComparison.Ordinal)).Order());
+
+        Method("private FrameworkElement? TheSubScreenWithTheRoom(").ShouldContain("TheSubScreens()");
+        Method("private void GoBack(").ShouldContain("TheSubScreens()");
+        Method("private void ShowWhatTheRoomIsShowing(").ShouldContain("TheSubScreens()");
+        Method("private void PlaceTheSubScreens(").ShouldContain("TheSubScreens()");
 
         var window = Read(Code);
 

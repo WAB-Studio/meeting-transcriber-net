@@ -297,6 +297,7 @@ public sealed partial class MainWindow : Window
         Voices.Open(corpus);
         Voices.Named += OnVoicesNamed;
         Voices.Left += OnLeftTheVoices;
+        Voices.CorrectWords += OnCorrectWords;
 
         Corrections.Open(corpus);
         Corrections.Left += OnLeftTheCorrections;
@@ -463,28 +464,46 @@ public sealed partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Which sub-screen has the room, or none when the list does. The one place that says so, and
-    /// the order is what says which wins: the settings first, because they are reached from the
-    /// window itself and not from a meeting; then filing, naming the voices and correcting words,
-    /// which are reached from the meeting and are never open beside each other; then a node's
-    /// story, and last the meeting itself, which goes on holding what it was showing underneath
-    /// every one of them.
+    /// One sub-screen: the control, whether it has the window's room now, and the call that leaves it.
+    /// </summary>
+    private readonly record struct SubScreen(FrameworkElement Screen, bool HasTheRoom, Action GoBack);
+
+    /// <summary>
+    /// Every sub-screen, in the order that says which one wins when more than one is open. The one
+    /// list the window's three questions about them read — which has the room, which are arranged
+    /// under the bar, and which one the back press leaves — so a seventh added here is added to all
+    /// three and cannot be left without a way back in one of them.
     /// </summary>
     /// <remarks>
-    /// The back button asks it too, so the screen it leaves is the screen that is showing. Read off
-    /// the six controls rather than kept, for the reason every other field of
-    /// <see cref="Screen"/> is. <c>NodeStory.IsShowingANode</c> and the others are redundant with
+    /// The settings first, because they are reached from the window itself and not from a meeting;
+    /// then filing, which is reached from the meeting; then the corrections, which are reached from
+    /// the meeting or from the voices and so win over the voices they were opened over, whose draft
+    /// and quotations wait underneath; then the voices, a node's story, and last the meeting itself,
+    /// which goes on holding what it was showing underneath every one of them. Read off the
+    /// controls rather than kept, for the reason every other field of <see cref="Screen"/> is.
+    /// </remarks>
+    private SubScreen[] TheSubScreens() =>
+    [
+        new(Settings, Settings.IsOpen, Settings.GoBack),
+        new(Classifying, Classifying.IsOpen, Classifying.GoBack),
+        new(Corrections, Corrections.IsOpen, Corrections.GoBack),
+        new(Voices, Voices.IsOpen, Voices.GoBack),
+        new(NodeStory, NodeStory.IsShowingANode, NodeStory.GoBack),
+        new(Reading, Reading.IsShowingAMeeting, Reading.GoBack),
+    ];
+
+    /// <summary>
+    /// Which sub-screen has the room, or none when the list does: the first of
+    /// <see cref="TheSubScreens"/> that is open.
+    /// </summary>
+    /// <remarks>
+    /// The back button asks it too, so the screen it leaves is the screen that is showing.
+    /// <c>NodeStory.IsShowingANode</c> and the others are redundant with
     /// <c>Reading.IsShowingAMeeting</c> by the accident of there being one door into each, and are
     /// named anyway.
     /// </remarks>
     private FrameworkElement? TheSubScreenWithTheRoom() =>
-        Settings.IsOpen ? Settings
-        : Classifying.IsOpen ? Classifying
-        : Voices.IsOpen ? Voices
-        : Corrections.IsOpen ? Corrections
-        : NodeStory.IsShowingANode ? NodeStory
-        : Reading.IsShowingAMeeting ? Reading
-        : null;
+        TheSubScreens().FirstOrDefault(sub => sub.HasTheRoom).Screen;
 
     /// <summary>
     /// What the meters read as for a screen in <paramref name="state"/>, off what the devices last
@@ -1651,7 +1670,7 @@ public sealed partial class MainWindow : Window
         // a stop that failed under the settings is not something to find on the way back — and the screen fills everything
         // between the bar and the foot, arriving by a fade. Only the raised list travels, and
         // coming back from a sub-screen is not the list.
-        foreach (var candidate in new FrameworkElement[] { Settings, Classifying, Voices, Corrections, NodeStory, Reading })
+        foreach (var candidate in TheSubScreens().Select(sub => sub.Screen))
         {
             var has = ReferenceEquals(candidate, room);
 
@@ -1744,7 +1763,7 @@ public sealed partial class MainWindow : Window
     {
         var rowAbove = screen.TheStripIsOnScreen || _report.Count > 0;
 
-        foreach (var candidate in new FrameworkElement[] { Settings, Classifying, Voices, Corrections, NodeStory, Reading })
+        foreach (var candidate in TheSubScreens().Select(sub => sub.Screen))
         {
             Grid.SetRow(candidate, rowAbove ? 3 : 1);
             Grid.SetRowSpan(candidate, rowAbove ? 1 : 3);
@@ -1790,32 +1809,7 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        var room = TheSubScreenWithTheRoom();
-
-        if (ReferenceEquals(room, Settings))
-        {
-            Settings.GoBack();
-        }
-        else if (ReferenceEquals(room, Classifying))
-        {
-            Classifying.GoBack();
-        }
-        else if (ReferenceEquals(room, Voices))
-        {
-            Voices.GoBack();
-        }
-        else if (ReferenceEquals(room, Corrections))
-        {
-            Corrections.GoBack();
-        }
-        else if (ReferenceEquals(room, NodeStory))
-        {
-            NodeStory.GoBack();
-        }
-        else if (ReferenceEquals(room, Reading))
-        {
-            Reading.GoBack();
-        }
+        TheSubScreens().FirstOrDefault(sub => sub.HasTheRoom).GoBack?.Invoke();
     }
 
     /// <summary>
@@ -1880,12 +1874,17 @@ public sealed partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Somebody asked to correct the words that came out wrong on the meeting they are reading.
-    /// Shown before the room is rearranged, for the reason <see cref="OnMeetingChosen"/> gives.
+    /// Somebody asked to correct words on the meeting they are reading, or on a voice's quotation
+    /// over it: the screen that corrects words opens, with the words they selected in its field when
+    /// they selected some. Shown before the room is rearranged, for the reason
+    /// <see cref="OnMeetingChosen"/> gives. Whichever screen asked stays open underneath and is not
+    /// closed, which is what lets the way back return to it as it was.
     /// </summary>
-    private void OnCorrectWords(object? sender, Guid meeting)
+    private void OnCorrectWords(object? sender, WordsToCorrect asked)
     {
-        Corrections.Show(meeting);
+        ArgumentNullException.ThrowIfNull(asked);
+
+        Corrections.Show(asked.Meeting, asked.AsWritten);
         Refresh();
     }
 
@@ -1973,13 +1972,24 @@ public sealed partial class MainWindow : Window
 
     /// <summary>
     /// Somebody came back from correcting words. Whatever was saved is already in the corpus and
-    /// the transcripts, so the meeting screen reads itself again: its transcript is what a
-    /// correction changes, and its recording has not moved.
+    /// the transcripts, so the screens under it read again what a correction changes: the meeting's
+    /// transcript, whose recording has not moved, and the voices' quotations with their draft kept
+    /// when it was opened from the voices.
     /// </summary>
     private void OnLeftTheCorrections(object? sender, EventArgs e)
     {
         Corrections.Close();
+
+        // The meeting screen is open underneath whichever screen asked, and what a correction
+        // changes is its transcript: read again in both cases, and the voices' quotations too when
+        // they are the screen the person comes back to, their draft kept.
         Reading.ReadAgain();
+
+        if (Voices.IsOpen)
+        {
+            Voices.ReadTheQuotationsAgain();
+        }
+
         Refresh();
     }
 

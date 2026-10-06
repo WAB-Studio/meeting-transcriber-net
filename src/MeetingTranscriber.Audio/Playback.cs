@@ -38,11 +38,13 @@ public sealed class Playback : IDisposable
 {
     private readonly WaveFileReader _wav;
     private readonly WasapiOut _out;
+    private readonly VolumeSampleProvider _volume;
 
-    private Playback(WaveFileReader wav, WasapiOut through)
+    private Playback(WaveFileReader wav, WasapiOut through, VolumeSampleProvider volume)
     {
         _wav = wav;
         _out = through;
+        _volume = volume;
         _out.PlaybackStopped += (_, stopped) => WhatStoppedIt ??= stopped.Exception;
     }
 
@@ -57,6 +59,21 @@ public sealed class Playback : IDisposable
     /// the one thing it has to notice would be a second thing to remember to hook up.
     /// </remarks>
     public Exception? WhatStoppedIt { get; private set; }
+
+    /// <summary>
+    /// How loud it is played, from 0 (nothing) to 1 (as the recording is), applied after the two
+    /// sides are folded.
+    /// </summary>
+    /// <remarks>
+    /// Clamped rather than refused: it is driven by a slider whose ends are reachable by ordinary
+    /// use, and somebody dragging past an end means the end. It scales what this player sends to
+    /// the endpoint and never the machine's own volume, which is somebody else's to set.
+    /// </remarks>
+    public float Volume
+    {
+        get => _volume.Volume;
+        set => _volume.Volume = Math.Clamp(value, 0f, 1f);
+    }
 
     /// <summary>How long the recording is.</summary>
     public Duration Length => Duration.FromTimeSpan(_wav.TotalTime);
@@ -91,9 +108,10 @@ public sealed class Playback : IDisposable
 
         try
         {
+            var volume = new VolumeSampleProvider(BothSidesInBothEars(wav.ToSampleProvider()));
             var through = new WasapiOut();
-            through.Init(BothSidesInBothEars(wav.ToSampleProvider()));
-            return new Playback(wav, through);
+            through.Init(volume);
+            return new Playback(wav, through, volume);
         }
         catch (Exception refused)
         {
@@ -114,17 +132,22 @@ public sealed class Playback : IDisposable
     /// A meeting's two channels are two sources and not a stereo image — channel 0 is what the
     /// machine played and channel 1 is the microphone — so handing the file straight to an
     /// endpoint puts everybody else in one ear and the user in the other, and somebody listening
-    /// on a single earbud hears one side of the conversation. Folded half each, which is the
-    /// average <see cref="Samples.ToMono"/> takes of the two-channel PCM16 this corpus stores, and
-    /// for the same reason: whichever side spoke, it is heard.
+    /// on a single earbud hears one side of the conversation. Each side is folded in at full
+    /// weight, so one side speaking is heard at the level it was recorded: the half-each average
+    /// this used to take made every meeting 6 dB quieter than the file, with nothing the listener
+    /// could do about it but turn the machine up.
     /// <para>
-    /// Both weights are written here rather than left to the provider's own, and that is why this
-    /// is not one line. The weights decide what every listener hears, and a package's default is
-    /// not this repository's to state: the pin in <c>Directory.Packages.props</c> means a bump is a
-    /// change somebody makes here, but nothing about that change would say a default underneath it
-    /// had moved. Written down, the mix is this file's, and
-    /// <c>PlaybackTests.The_two_sides_of_a_meeting_are_folded_half_each</c> is what goes red if
-    /// either the line or the package moves it.
+    /// Two sides loud at once add up past full scale, and a hard clip there is a crackle on
+    /// exactly the passages where people talk over each other. So the sum goes through a soft
+    /// limiter: unity below half scale (about −6 dBFS), then a <c>tanh</c> shoulder that bends
+    /// towards full scale and never reaches it. The shoulder starts with the slope the line below
+    /// it has, so there is no corner to hear.
+    /// </para>
+    /// <para>
+    /// Both weights are written here rather than left to the provider's own, because they decide
+    /// what every listener hears and a package's default is not this repository's to state.
+    /// <c>PlaybackTests.One_side_speaking_is_heard_at_its_own_level_and_both_never_pass_full_scale</c>
+    /// is what goes red if either the line or the package moves it.
     /// </para>
     /// <para>
     /// Public, and taking what it folds rather than the file it came out of, for that test alone:
@@ -150,11 +173,39 @@ public sealed class Playback : IDisposable
             return samples;
         }
 
-        return new StereoToMonoSampleProvider(samples)
+        return new SoftLimiter(new StereoToMonoSampleProvider(samples)
         {
-            LeftVolume = 0.5f,
-            RightVolume = 0.5f,
-        };
+            LeftVolume = 1f,
+            RightVolume = 1f,
+        });
+    }
+
+    /// <summary>
+    /// Passes what is below half scale unchanged and bends what is above it towards full scale.
+    /// </summary>
+    private sealed class SoftLimiter(ISampleProvider source) : ISampleProvider
+    {
+        private const float Knee = 0.5f;
+
+        public WaveFormat WaveFormat => source.WaveFormat;
+
+        public int Read(float[] buffer, int offset, int count)
+        {
+            var read = source.Read(buffer, offset, count);
+
+            for (var i = offset; i < offset + read; i++)
+            {
+                var x = buffer[i];
+                var over = MathF.Abs(x) - Knee;
+
+                if (over > 0)
+                {
+                    buffer[i] = MathF.CopySign(Knee + ((1f - Knee) * MathF.Tanh(over / (1f - Knee))), x);
+                }
+            }
+
+            return read;
+        }
     }
 
     /// <summary>

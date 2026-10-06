@@ -70,7 +70,8 @@ public class WordsThatComeOutWrongTests
         var window = File.ReadAllText(AppSources.At(Window).FullName);
 
         window.ShouldContain("Reading.CorrectWords += OnCorrectWords");
-        window.ShouldContain("Corrections.Show(meeting)");
+        window.ShouldContain("Corrections.Show(asked.Meeting, asked.AsWritten)");
+        window.ShouldContain("Voices.CorrectWords += OnCorrectWords");
         window.ShouldContain("Corrections.Left += OnLeftTheCorrections");
 
         // And the window lets go of it, so a window that shut over a screen still waiting on the
@@ -130,5 +131,73 @@ public class WordsThatComeOutWrongTests
         source.ShouldNotContain(".Filing(");
         source.ShouldContain(".Places(");
         source.ShouldContain(".PathTo(");
+    }
+
+
+    /// <summary>
+    /// Words brought from a selection open in the field, are pinned at the top of the forms and
+    /// ticked whatever a later search returns, and are counted in what is saved.
+    /// </summary>
+    [Fact]
+    public void Words_brought_from_a_selection_are_pinned_and_ticked()
+    {
+        var source = File.ReadAllText(AppSources.At(Screen).FullName);
+
+        source.ShouldContain("public void Show(Guid meetingId, string? asWritten = null)");
+        source.ShouldContain("TypedField.SelectAll()");
+
+        // The search runs at once over them, and what it returns carries the pinned form first.
+        Body(source, "private async Task SearchAsync()").ShouldContain("_forms = WithThePinned(found)");
+        Body(source, "private async Task SearchAsync()").ShouldContain("form.Text == _pinned");
+
+        var pinned = Body(source, "private IReadOnlyList<WrittenForm> WithThePinned(");
+
+        pinned.ShouldContain("[theOne, .. found.Where(form => form.Text != pinned)]");
+
+        // Counted in what is saved, because it is one of the forms: dropping it from the list
+        // would drop it from the save with it.
+        Body(source, "private string[] FormsToSave(").ShouldContain("_forms");
+
+        // And forgotten with the meeting and after a save.
+        Body(source, "private void Reset()").ShouldContain("_pinned = null");
+    }
+
+    /// <summary>
+    /// Words that are the output of a correction already reaching the meeting are said to be
+    /// corrected already and pinned nowhere: a correction keyed on them would leave the transcript
+    /// as it is.
+    /// </summary>
+    [Fact]
+    public void A_selection_already_corrected_is_said_and_not_pinned()
+    {
+        var source = File.ReadAllText(AppSources.At(Screen).FullName);
+
+        source.ShouldContain("MeetingRenderer.CorrectionsReaching(context, meetingId)");
+
+        var read = Body(source, "private async Task ReadAsync(");
+        var said = read.IndexOf("held.AlreadyWrittenByACorrection.Contains(asked)", StringComparison.Ordinal);
+
+        said.ShouldBeGreaterThan(-1);
+        read.IndexOf("UiTexts.AlreadyCorrected", StringComparison.Ordinal).ShouldBeGreaterThan(said);
+
+        // Only the other arm pins.
+        read.IndexOf("_pinned = asked", StringComparison.Ordinal)
+            .ShouldBeGreaterThan(read.IndexOf("else", said, StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// One method's body, anchored on the closing brace at its own indentation.
+    /// <c>SayingWhoIsWhoTests</c>' own helper, for the reason given there.
+    /// </summary>
+    private static string Body(string source, string signature)
+    {
+        var found = Regex.Match(
+            source,
+            Regex.Escape(signature) + @".*??
+[ ]{4}\}",
+            RegexOptions.Singleline);
+
+        found.Success.ShouldBeTrue($"the file no longer has a `{signature}`.");
+        return found.Value;
     }
 }

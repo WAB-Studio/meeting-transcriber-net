@@ -58,7 +58,12 @@
                 <Setter Property="MaxLines" Value="2" />
                 <Setter Property="TextTrimming" Value="CharacterEllipsis" />
                 <Setter Property="IsTextSelectionEnabled" Value="True" />
+                <Setter Property="SelectionHighlightColor" Value="{ThemeResource OliveBrush}" />
             </Style>
+
+            <!-- The small *Corregir* that stands at the end of words selected in a quotation: the
+                 pill the application already has. -->
+            <Style x:Key="TheSelectionsPress" TargetType="Button" BasedOn="{StaticResource PillButton}" />
 
             <!-- *una sola voz*, on the microphone's own card: olivo fill with papel ink, which is
                  the rank Olivo gives the selected option of a set — this one is settled and needs
@@ -90,7 +95,10 @@
 
             <!-- The press that corrects the name standing on a voice, beside its picker and not in
                  it: an act on the one chosen and not one more person to choose. -->
-            <Style x:Key="CorrectTheirName" TargetType="Button" BasedOn="{StaticResource ButtonAtTheMargin}" />
+            <Style x:Key="CorrectTheirName" TargetType="Button" BasedOn="{StaticResource ButtonAtTheMargin}">
+                <Setter Property="Height" Value="{StaticResource ControlHeight}" />
+                <Setter Property="MinHeight" Value="{StaticResource ControlHeight}" />
+            </Style>
 
             <!-- The one sentence standing in for every card's clip, on a meeting with nothing to
                  play — `ReadingAMeeting.xaml`'s own `FiledUnderNothing` rank: a real answer and not
@@ -199,9 +207,5 @@
         <!-- The one dialogue this screen shares with `ClassifyingAMeeting`: adding a person the
              corpus does not have yet, and correcting the name of one it already does. -->
         <local:AddingSomebody x:Name="AskingWhoTheyAre" />
-
-        <!-- And the one that corrects a word where it is read, over a voice's quotation: shared
-             with the meeting's own screen. -->
-        <local:CorrectingAWord x:Name="AskingHowAWordGoes" />
     </Grid>
 </UserControl>

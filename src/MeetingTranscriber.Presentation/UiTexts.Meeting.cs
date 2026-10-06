@@ -154,4 +154,7 @@ public static partial class UiTexts
 
     // The press on that card; docs/design.md §One verb per act's own verb for this act.
     public static UiText CorrectWords { get; } = new("Corregir palabras", "Correct words");
+
+    // The player's volume slider: its name in the automation tree, and nothing is drawn beside it.
+    public static UiText Volume { get; } = new("Volumen", "Volume");
 }

@@ -2,6 +2,7 @@ using MeetingTranscriber.Audio;
 using MeetingTranscriber.Domain.Time;
 
 using NAudio.Wave;
+using NAudio.Wave.SampleProviders;
 
 namespace MeetingTranscriber.Audio.Tests;
 
@@ -86,19 +87,37 @@ public class PlaybackTests
     }
 
     [Fact]
-    public void The_two_sides_of_a_meeting_are_folded_half_each()
+    public void One_side_speaking_is_heard_at_its_own_level_and_both_never_pass_full_scale()
     {
-        // One side at full scale and the other silent, which is the whole of what a fold can get
-        // wrong: half is the average, one is the fold taking a side, and anything else is a
-        // weighting nobody wrote down. Read through the provider Playback actually builds, so a
-        // package that moved a default underneath it lands here rather than in somebody's earbud.
-        var folded = Playback.BothSidesInBothEars(new Fabricated(channels: 2, [1f, 0f, 0f, 1f]));
+        // One side at 0.4 and the other silent: the fold may not halve it, which is what it did
+        // and what made every meeting 6 dB quieter than the file. Then both sides at full scale,
+        // where a plain sum is 2 and a hard clip would be 1: the limiter keeps it below.
+        var folded = Playback.BothSidesInBothEars(
+            new Fabricated(channels: 2, [0.4f, 0f, 0f, 0.4f, 1f, 1f, -1f, -1f]));
 
         folded.WaveFormat.Channels.ShouldBe(1);
 
-        var heard = new float[2];
-        folded.Read(heard, 0, heard.Length).ShouldBe(2);
-        heard.ShouldBe([0.5f, 0.5f]);
+        var heard = new float[4];
+        folded.Read(heard, 0, heard.Length).ShouldBe(4);
+
+        heard[0].ShouldBe(0.4f, 1e-6f);
+        heard[1].ShouldBe(0.4f, 1e-6f);
+        heard[2].ShouldBeLessThan(1f);
+        heard[2].ShouldBeGreaterThan(0.9f);
+        heard[3].ShouldBeGreaterThan(-1f);
+        heard[3].ShouldBeLessThan(-0.9f);
+    }
+
+    [Fact]
+    public void The_volume_scales_what_is_heard()
+    {
+        var folded = Playback.BothSidesInBothEars(new Fabricated(channels: 2, [0.4f, 0f]));
+        var scaled = new VolumeSampleProvider(folded) { Volume = 0.5f };
+
+        var heard = new float[1];
+        scaled.Read(heard, 0, 1).ShouldBe(1);
+
+        heard[0].ShouldBe(0.2f, 1e-6f);
     }
 
     [Fact]

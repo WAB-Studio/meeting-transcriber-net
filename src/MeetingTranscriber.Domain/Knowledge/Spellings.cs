@@ -67,6 +67,40 @@ public static class Spellings
         || character is '_'
         || CharUnicodeInfo.GetUnicodeCategory(character) is UnicodeCategory.NonSpacingMark;
 
+    /// <summary>
+    /// What is between the first and the last word character of a selection, several words kept, or
+    /// nothing when it holds none.
+    /// </summary>
+    /// <remarks>
+    /// The rule for words somebody selected on a screen, in the place the rule for what a word is
+    /// already lives: <em>Resident Evil,</em> is a two-word name with the sentence's comma on it, and
+    /// cutting at the first space would hand a correction half a name. Only the ends are trimmed, so
+    /// what is inside — a space, a hyphen, an apostrophe — stays as it was written.
+    /// </remarks>
+    public static string? TrimToWords(string? selection)
+    {
+        if (string.IsNullOrEmpty(selection))
+        {
+            return null;
+        }
+
+        var first = 0;
+
+        while (first < selection.Length && !IsWordCharacter(selection[first]))
+        {
+            first++;
+        }
+
+        var last = selection.Length - 1;
+
+        while (last >= first && !IsWordCharacter(selection[last]))
+        {
+            last--;
+        }
+
+        return first > last ? null : selection[first..(last + 1)];
+    }
+
     /// <summary>Every maximal run of word characters, in order, as written.</summary>
     public static IReadOnlyList<string> WordsOf(string text)
     {

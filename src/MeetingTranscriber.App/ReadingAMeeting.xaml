@@ -30,6 +30,8 @@
 
     <Grid x:Name="Root" RowSpacing="12">
         <Grid.Resources>
+            <local:TrackTime x:Key="TrackTime" />
+
             <Style x:Key="ReadingCard" TargetType="Border" BasedOn="{StaticResource Card}" />
 
             <!-- What the meeting was about, in the summary's own words. It is the one block on this
@@ -69,9 +71,64 @@
             <Style x:Key="Spoken" TargetType="TextBlock" BasedOn="{StaticResource TranscriptText}">
                 <Setter Property="TextWrapping" Value="Wrap" />
                 <Setter Property="IsTextSelectionEnabled" Value="True" />
+                <Setter Property="SelectionHighlightColor" Value="{ThemeResource OliveBrush}" />
             </Style>
 
             <Style x:Key="Data" TargetType="TextBlock" BasedOn="{StaticResource DataText}" />
+
+            <!-- The meeting's name as text, at the sub-screen rank; secondary ink when nobody named
+                 it. Two styles and not a colour set in code, so the code-behind chooses a style
+                 and never a colour. -->
+            <Style x:Key="TheTitle" TargetType="TextBlock" BasedOn="{StaticResource SubScreenTitleText}">
+                <Setter Property="MaxWidth" Value="560" />
+                <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+            </Style>
+
+            <Style x:Key="TheTitleNobodyNamed" TargetType="TextBlock" BasedOn="{StaticResource TheTitle}">
+                <Setter Property="Foreground" Value="{ThemeResource SecondaryTextBrush}" />
+            </Style>
+
+            <!-- What the meeting is doing, where the press that started it was: olivo while it runs,
+                 secondary ink while it waits its turn, and a ring that turns for both. -->
+            <Style x:Key="TheWorkRuns" TargetType="TextBlock" BasedOn="{StaticResource BodyText}">
+                <Setter Property="Foreground" Value="{ThemeResource OliveBrush}" />
+            </Style>
+
+            <Style x:Key="TheWorkWaits" TargetType="TextBlock" BasedOn="{StaticResource BodyText}">
+                <Setter Property="Foreground" Value="{ThemeResource SecondaryTextBrush}" />
+            </Style>
+
+            <Style x:Key="TheWorkRing" TargetType="ProgressRing">
+                <Setter Property="Width" Value="20" />
+                <Setter Property="Height" Value="20" />
+                <Setter Property="Foreground" Value="{ThemeResource OliveBrush}" />
+            </Style>
+
+            <!-- The neutral answer in a row of presses: never filled, secondary ink, at the margin
+                 rank. *Ignorar* and *Renombrar* are the same press on every screen and only the
+                 word changes; declared here because `Chrome()` reads this screen's resources. -->
+            <Style x:Key="TheNeutralOne" TargetType="Button" BasedOn="{StaticResource RowButtonAtTheMargin}" />
+
+            <!-- The small *Corregir* that stands at the end of words somebody selected. The pill the
+                 application already has, so a press that opens the corrections screen is shaped
+                 like the others that open something. -->
+            <Style x:Key="TheSelectionsPress" TargetType="Button" BasedOn="{StaticResource PillButton}" />
+
+            <!-- Play and pause as one glyph at the control height, the shape of a press that does
+                 one thing and says which in its name and tooltip. Waits on `IconButton` in the
+                 dictionary, which another change adds; until it lands this is the same press
+                 spelled from what is there: the margin rank, square at `ControlHeight`, a 1px rule. -->
+            <Style x:Key="ThePlayGlyph" TargetType="Button" BasedOn="{StaticResource ButtonAtTheMargin}">
+                <Setter Property="Width" Value="{StaticResource ControlHeight}" />
+                <Setter Property="MinWidth" Value="{StaticResource ControlHeight}" />
+                <Setter Property="Height" Value="{StaticResource ControlHeight}" />
+                <Setter Property="MinHeight" Value="{StaticResource ControlHeight}" />
+                <Setter Property="Padding" Value="0" />
+                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="BorderBrush" Value="{ThemeResource EmptyControlRingBrush}" />
+                <Setter Property="HorizontalContentAlignment" Value="Center" />
+                <Setter Property="VerticalContentAlignment" Value="Center" />
+            </Style>
 
             <!-- One thing this meeting was filed under: the whole path down the tree, as one chip.
                  The path and not its deepest node alone, because *ticket #4312* on its own says
@@ -139,34 +196,55 @@
             </Grid.ColumnDefinitions>
 
             <StackPanel Grid.Column="1" Spacing="2">
-                <!-- The name, and it is a field rather than a line of text because a meeting's
-                     name is the person's to set at any time after it was recorded. It commits
-                     when the field is left and when Enter is pressed, and never on each key: a
-                     write per keystroke is a row touched and a recovery card rewritten thirty
-                     times for one title.
+                <!-- One title line and one data line. The title is text, at the sub-screen rank, and
+                     *Renombrar* beside it swaps it for the field holding the name, selected: a
+                     meeting's name is the person's to set at any time after it was recorded, but a
+                     box standing open on every meeting made the name look like something to fill
+                     in. It commits when Enter is pressed or the field is left, and never on each
+                     key: a write per keystroke is a row touched and a recovery card rewritten thirty
+                     times for one title. Escape swaps back and writes nothing. The line stands at the
+                     field's height so swapping one for the other moves nothing under it.
 
-                     Nothing fills it in. A meeting nobody has named has an empty field with its
-                     header above it, which reads as one nobody has named — where a placeholder
-                     worked out from the date would read as a name the application chose. -->
-                <TextBox
-                    x:Name="NameBox"
-                    Style="{StaticResource TypedField}"
-                    HorizontalAlignment="Left"
-                    MinWidth="360"
-                    MaxWidth="560"
-                    LostFocus="OnNameLeft"
-                    KeyDown="OnNameKey"
-                    Header="{x:Bind In(loc:UiTexts.TheMeetingsName)}" />
+                     Nothing fills it in. A meeting nobody has named reads *Sin nombre* in secondary
+                     ink, which reads as one nobody has named — where a placeholder worked out from
+                     the date would read as a name the application chose. -->
+                <Grid ColumnSpacing="10" MinHeight="{StaticResource ControlHeight}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
 
-                <!-- When it was and how long it ran: the machine's own numbers, so the same in
-                     either language. -->
-                <TextBlock x:Name="WhenText" Style="{StaticResource DataText}" />
+                    <TextBlock
+                        x:Name="TitleText"
+                        Grid.Column="0"
+                        VerticalAlignment="Center"
+                        Style="{StaticResource TheTitle}" />
 
-                <TextBlock
-                    x:Name="StageText"
-                    Style="{StaticResource BodyText}"
-                    Foreground="{ThemeResource SecondaryTextBrush}"
-                    TextWrapping="Wrap" />
+                    <TextBox
+                        x:Name="NameBox"
+                        Grid.Column="0"
+                        Style="{StaticResource TypedField}"
+                        HorizontalAlignment="Left"
+                        MinWidth="360"
+                        MaxWidth="560"
+                        Visibility="Collapsed"
+                        LostFocus="OnNameLeft"
+                        KeyDown="OnNameKey"
+                        PlaceholderText="{x:Bind In(loc:UiTexts.TheMeetingsName)}"
+                        AutomationProperties.Name="{x:Bind In(loc:UiTexts.TheMeetingsName)}" />
+
+                    <Button
+                        x:Name="RenameButton"
+                        Grid.Column="1"
+                        VerticalAlignment="Center"
+                        Style="{StaticResource TheNeutralOne}"
+                        Click="OnRename"
+                        Content="{x:Bind In(loc:UiTexts.CorrectThisName)}" />
+                </Grid>
+
+                <!-- When it was, how long it ran and what it is doing now, on one line: the machine's
+                     own numbers and the one word the list says, so the same in either language. -->
+                <TextBlock x:Name="WhenText" Style="{StaticResource DataText}" TextWrapping="Wrap" />
             </StackPanel>
         </Grid>
 
@@ -197,28 +275,10 @@
                             </Grid.RowDefinitions>
 
                             <Grid Grid.Row="0" ColumnSpacing="10">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-
                                 <TextBlock
-                                    Grid.Column="0"
                                     VerticalAlignment="Center"
                                     Style="{StaticResource SectionTitle}"
                                     Text="{x:Bind In(loc:UiTexts.TheTranscript)}" />
-
-                                <!-- Only while words are selected on a line, and carrying them: the
-                                     same act the line's right-click offers, for a pointer that has
-                                     nothing to right-click with. -->
-                                <Button
-                                    x:Name="CorrectAWordButton"
-                                    AllowFocusOnInteraction="False"
-                                    Grid.Column="1"
-                                    Style="{StaticResource TakeTheStage}"
-                                    Click="OnCorrectTheSelection"
-                                    Content="{x:Bind In(loc:UiTexts.CorrectThisWord)}"
-                                    Visibility="Collapsed" />
                             </Grid>
 
                             <ItemsRepeater x:Name="TheTranscriptLines" Grid.Row="1">
@@ -388,13 +448,16 @@
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="140" />
             </Grid.ColumnDefinitions>
 
             <Button
                 x:Name="PlayButton"
                 Grid.Column="0"
-                Style="{StaticResource NormalButtonOnPaper}"
-                Click="OnPlayOrPause" />
+                Style="{StaticResource ThePlayGlyph}"
+                Click="OnPlayOrPause">
+                <FontIcon x:Name="PlayGlyph" Glyph="&#xE768;" />
+            </Button>
 
             <!-- How far into the meeting, against how long it is: two numbers read against each
                  other, so the data rank. -->
@@ -427,6 +490,7 @@
                     Foreground="{ThemeResource OliveBrush}"
                     Minimum="0"
                     StepFrequency="1000"
+                    ThumbToolTipValueConverter="{StaticResource TrackTime}"
                     ValueChanged="OnTrackMoved"
                     AutomationProperties.Name="{x:Bind In(loc:UiTexts.HowFarIntoTheMeeting)}" />
             </Grid>
@@ -436,6 +500,21 @@
                 Grid.Column="3"
                 VerticalAlignment="Center"
                 Style="{StaticResource DataText}" />
+
+            <!-- How loud it is played, apart from the machine's own volume. A slider because it is
+                 a quantity somebody sets by feel; five a step so a keyboard crosses it in twenty
+                 presses and not a hundred. -->
+            <Slider
+                x:Name="VolumeSlider"
+                Grid.Column="4"
+                VerticalAlignment="Center"
+                Foreground="{ThemeResource OliveBrush}"
+                Minimum="0"
+                Maximum="100"
+                StepFrequency="5"
+                Value="100"
+                ValueChanged="OnVolumeMoved"
+                AutomationProperties.Name="{x:Bind In(loc:UiTexts.Volume)}" />
         </Grid>
 
         <!-- Where the player would be, when it will not play. A machine with nothing to play
@@ -449,9 +528,5 @@
             Foreground="{ThemeResource PeakBrush}"
             TextWrapping="Wrap"
             Visibility="Collapsed" />
-
-        <!-- The dialogue that corrects one word where it is read: the third `docs/design.md`
-             §Notices allows, shared with the screen that names voices. -->
-        <local:CorrectingAWord x:Name="AskingHowAWordGoes" />
     </Grid>
 </UserControl>
