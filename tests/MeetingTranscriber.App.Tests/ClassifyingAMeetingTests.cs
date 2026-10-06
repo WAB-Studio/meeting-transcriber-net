@@ -37,6 +37,83 @@ public class ClassifyingAMeetingTests
             .ShouldNameItsWholeEnum("MeetingShape");
 
     /// <summary>
+    /// The screen has a word for every name a place can be called and a line for every chip.
+    /// </summary>
+    /// <remarks>
+    /// <c>PlaceName</c> is what a kind of meeting calls a level or a person, and a member this screen
+    /// cannot say is a pill drawn with no word over it. The chip's line is the other table: it is
+    /// read as its own because a chip with no description is a tooltip that shows nothing.
+    /// </remarks>
+    [Fact]
+    public void Every_shape_and_every_place_name_has_words_on_this_screen()
+    {
+        EnumTable.Read(
+                Screen,
+                "place",
+                "PlaceName",
+                Path.Combine("MeetingTranscriber.Domain", "Meetings", "MeetingShapes.cs"))
+            .ShouldNameItsWholeEnum("PlaceName");
+
+        EnumTable.Read(
+                Screen,
+                "meeting",
+                "MeetingShape",
+                Path.Combine("MeetingTranscriber.Domain", "Meetings", "MeetingShapes.cs"))
+            .ShouldNameItsWholeEnum("MeetingShape (as described)");
+    }
+
+    /// <summary>
+    /// What a pill offers is what its level's name holds, so nothing offers an organization where a
+    /// project is asked.
+    /// </summary>
+    /// <remarks>
+    /// Read inside the one place that lists a level's nodes, because the corpus holds all three
+    /// classes and the pill under <em>Materia</em> showing the organizations beside the projects was
+    /// the confusion this screen was changed for.
+    /// </remarks>
+    [Fact]
+    public void No_pill_offers_an_organization_where_a_project_is_asked()
+    {
+        var source = File.ReadAllText(AppSources.At(Screen).FullName);
+        var offering = Body(source, "private static IReadOnlyList<Node> WhatMayStandAt(");
+
+        offering.ShouldContain("MeetingShapes.Holds(name)");
+        offering.ShouldContain("node.Kind == holds");
+        offering.ShouldContain("BelongsToNobody(name)");
+
+        var top = Body(source, "private UIElement APill(");
+
+        top.ShouldContain("UiTexts.ANewOrganization");
+
+        // Work of nobody in particular is offered only under the two generic names.
+        top.ShouldContain("if (BelongsToNobody(name))");
+        top.ShouldContain("UiTexts.WorkThatIsNobodysInParticular");
+    }
+
+    /// <summary>
+    /// With no chip lit, each of the two columns the screen does not open is one press away, so
+    /// the crossings §5.3 stores are still fileable by hand.
+    /// </summary>
+    [Fact]
+    public void With_no_chip_lit_a_path_can_be_added_under_each_of_the_three_roles()
+    {
+        var source = File.ReadAllText(AppSources.At(Screen).FullName);
+        var columns = Body(source, "private void TheColumns(");
+
+        columns.ShouldContain("MeetingShape.FilledByHand");
+        columns.ShouldContain("$\"{role}-open\"");
+        columns.ShouldContain("AddAPath(role)");
+
+        var presses = Body(source, "private static UiText OpenColumn(");
+
+        presses.ShouldContain("MeetingNodeRole.Counterpart => UiTexts.OpenOtherOrganization");
+        presses.ShouldContain("MeetingNodeRole.About => UiTexts.OpenItIsAbout");
+
+        UiTexts.OpenOtherOrganization.Spanish.ShouldBe("Otra organización…");
+        UiTexts.OpenItIsAbout.Spanish.ShouldBe("Trata sobre…");
+    }
+
+    /// <summary>
     /// Every way a meeting relates to what it was about has a column on this screen.
     /// </summary>
     /// <remarks>

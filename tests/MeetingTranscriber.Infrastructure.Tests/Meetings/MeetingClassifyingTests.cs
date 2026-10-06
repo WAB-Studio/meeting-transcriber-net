@@ -530,6 +530,72 @@ public class MeetingClassifyingTests
     }
 
     /// <summary>
+    /// How often a node was filed under, in each role, is what the screen orders a pill's list by.
+    /// </summary>
+    /// <remarks>
+    /// By the pair and not by the node: the same organization is the employer of one meeting and the
+    /// client of another, and a list that offered it first in both columns on the strength of the
+    /// sum would be answering a question nobody asked.
+    /// </remarks>
+    [Fact]
+    public void How_often_a_node_was_used_under_a_role_is_read()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var human = new HumanLayer(context, TimeProvider.System);
+        var often = human.Root(NodeKind.Organization, "TechSed");
+        var once = human.Root(NodeKind.Organization, "Acme");
+        var started = UtcTimestamp.From(new DateTimeOffset(2026, 9, 25, 9, 0, 0, TimeSpan.Zero));
+
+        var first = MeetingRows.Recorded(context, started, ["uno"]);
+        var second = MeetingRows.Recorded(context, started + Duration.FromMilliseconds(60_000), ["dos"]);
+        var third = MeetingRows.Recorded(context, started + Duration.FromMilliseconds(120_000), ["tres"]);
+
+        human.Link(first, often, MeetingNodeRole.WorkOf);
+        human.Link(second, often, MeetingNodeRole.WorkOf);
+        human.Link(third, often, MeetingNodeRole.Counterpart);
+        human.Link(third, once, MeetingNodeRole.Counterpart);
+
+        var read = new MeetingClassifying(context, TimeProvider.System).Of(first);
+
+        read.NodesUsed[(often.Id, MeetingNodeRole.WorkOf)].ShouldBe(2);
+        read.NodesUsed[(often.Id, MeetingNodeRole.Counterpart)].ShouldBe(1);
+        read.NodesUsed[(once.Id, MeetingNodeRole.Counterpart)].ShouldBe(1);
+        read.NodesUsed.ContainsKey((once.Id, MeetingNodeRole.WorkOf)).ShouldBeFalse();
+    }
+
+    /// <summary>
+    /// How many meetings name somebody, in either way, is what the screen orders the people by.
+    /// </summary>
+    /// <remarks>
+    /// Somebody who attended and is what the meeting was about is two rows and one meeting, so the
+    /// count is of meetings: a person named twice in one is not twice as likely to be the one wanted.
+    /// </remarks>
+    [Fact]
+    public void How_often_somebody_was_named_is_read()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var human = new HumanLayer(context, TimeProvider.System);
+        var regular = human.Add("Vikram");
+        var passing = human.Add("Priya");
+        var started = UtcTimestamp.From(new DateTimeOffset(2026, 9, 25, 9, 0, 0, TimeSpan.Zero));
+
+        var first = MeetingRows.Recorded(context, started, ["uno"]);
+        var second = MeetingRows.Recorded(context, started + Duration.FromMilliseconds(60_000), ["dos"]);
+
+        human.Name(first, regular, MeetingPersonRole.Attended);
+        human.Name(first, regular, MeetingPersonRole.Subject);
+        human.Name(second, regular, MeetingPersonRole.Attended);
+        human.Name(second, passing, MeetingPersonRole.Attended);
+
+        var read = new MeetingClassifying(context, TimeProvider.System).Of(first);
+
+        read.PeopleUsed[regular.Id].ShouldBe(2);
+        read.PeopleUsed[passing.Id].ShouldBe(1);
+    }
+
+    /// <summary>
     /// A corpus holding the thirteen, every one of them filed through the screen's own save rather
     /// than written in.
     /// </summary>

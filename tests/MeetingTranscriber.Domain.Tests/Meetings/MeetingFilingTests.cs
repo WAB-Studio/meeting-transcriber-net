@@ -240,7 +240,10 @@ public class MeetingFilingTests
         filing.WorkOf.ShouldBe([ChosenPath.Empty]);
         filing.Counterpart.ShouldBe([ChosenPath.Empty]);
         filing.About.ShouldBeEmpty();
-        filing.Somebody.ShouldBeEmpty();
+
+        // The contact at the client is a place and not a person: nobody stands in it, and it is
+        // there with the toggle that story sets.
+        filing.Somebody.ShouldBe([new ChosenPerson(null, Attended: true, Subject: false)]);
         filing.Links.ShouldBeEmpty();
         filing.Named.ShouldBeEmpty();
     }

@@ -28,9 +28,11 @@ namespace MeetingTranscriber.App;
 /// <remarks>
 /// <para>
 /// Nothing on it names anything the corpus stores. There is no tree drawn, no word for a node, a
-/// role or a link, and no help panel: the columns are three sentences about the meeting and the
-/// shapes are fourteen meetings said by name, so somebody who has never heard of a three-level
-/// classification can file one.
+/// role or a link, and no help panel: the shapes are fourteen meetings said by name, and once one
+/// is lit every place it opens is called what that kind of meeting calls it — <em>Universidad</em>
+/// and <em>Materia</em> for a class, <em>Organizador</em> and <em>Conferencia</em> for a talk — so
+/// somebody who has never heard of a three-level classification can file one. What each name is
+/// of the four things the corpus stores is <see cref="MeetingShapes.Holds"/>'s.
 /// </para>
 /// <para>
 /// It decides nothing about the meeting. What a shape opens is <see cref="MeetingShapes"/>'s, what
@@ -64,8 +66,14 @@ public sealed partial class ClassifyingAMeeting : UserControl
     /// </remarks>
     private const double HowThickAGlyphIs = 2.4;
 
-    /// <summary>How wide the chevron between two pills is, and the `+` at the end of a path.</summary>
+    /// <summary>How wide the chevron between two pills is.</summary>
     private const double HowWideAGlyphIs = 11;
+
+    /// <summary>
+    /// How wide what a place for somebody is called is drawn before its picker, so the pickers of
+    /// two places stand in one line whichever of the two words they have.
+    /// </summary>
+    private const double HowWideAPlaceNameIs = 110;
 
     /// <summary>
     /// Which rows have been asked for one more level than they have chosen, by the column they are
@@ -235,19 +243,100 @@ public sealed partial class ClassifyingAMeeting : UserControl
         _ => throw new InvalidOperationException($"This screen has no name for the shape '{shape}'."),
     };
 
-    /// <summary>What one of the three columns is called.</summary>
+    /// <summary>One line on what kind of meeting a chip is, shown when it is pointed at.</summary>
     /// <remarks>
-    /// Plain Spanish about the meeting and never the name of the role: <em>es trabajo de</em> and
-    /// not <em>work of</em>. The last arm stops for the reason above, and it is what fires the day
-    /// a fourth way of relating a meeting to a node joins the closed vocabulary.
+    /// Said about the meeting and never about what choosing it opens, which is seen when it is
+    /// chosen. The last arm stops for the reason <see cref="Named(MeetingShape)"/>'s does.
     /// </remarks>
-    private static UiText Heading(MeetingNodeRole role) => role switch
+    private static UiText Described(MeetingShape meeting) => meeting switch
     {
-        MeetingNodeRole.WorkOf => UiTexts.ItIsWorkOf,
-        MeetingNodeRole.Counterpart => UiTexts.TheOtherSide,
+        MeetingShape.Class => UiTexts.DescribesClass,
+        MeetingShape.CasualCatchUp => UiTexts.DescribesCasualCatchUp,
+        MeetingShape.InterviewAsCandidate => UiTexts.DescribesInterviewAsCandidate,
+        MeetingShape.InterviewAsInterviewer => UiTexts.DescribesInterviewAsInterviewer,
+        MeetingShape.TwoProjects => UiTexts.DescribesTwoProjects,
+        MeetingShape.SellingToAClient => UiTexts.DescribesSellingToAClient,
+        MeetingShape.TeamMeeting => UiTexts.DescribesTeamMeeting,
+        MeetingShape.Conference => UiTexts.DescribesConference,
+        MeetingShape.BetweenTwoCompanies => UiTexts.DescribesBetweenTwoCompanies,
+        MeetingShape.HumanResources => UiTexts.DescribesHumanResources,
+        MeetingShape.RecurringOneToOne => UiTexts.DescribesRecurringOneToOne,
+        MeetingShape.Daily => UiTexts.DescribesDaily,
+        MeetingShape.AfterSalesSupport => UiTexts.DescribesAfterSalesSupport,
+        MeetingShape.FilledByHand => UiTexts.DescribesFilledByHand,
+        _ => throw new InvalidOperationException($"This screen has no description for the shape '{meeting}'."),
+    };
+
+    /// <summary>What a level of a path or a place for somebody is called, in the meeting's own word.</summary>
+    /// <remarks>
+    /// <c>Organization</c>, <c>Person</c> and <c>Conference</c> are the words those three names
+    /// already had in the catalogue, and are used rather than said again. The last arm stops, and it
+    /// is what fires the day a name joins <see cref="PlaceName"/> and this screen cannot say it.
+    /// </remarks>
+    private static UiText Named(PlaceName place) => place switch
+    {
+        PlaceName.Organization => UiTexts.Organization,
+        PlaceName.Project => UiTexts.PlaceProject,
+        PlaceName.Topic => UiTexts.PlaceTopic,
+        PlaceName.Person => UiTexts.AboutThisPerson,
+        PlaceName.University => UiTexts.PlaceUniversity,
+        PlaceName.Course => UiTexts.PlaceCourse,
+        PlaceName.Teacher => UiTexts.PlaceTeacher,
+        PlaceName.Company => UiTexts.PlaceCompany,
+        PlaceName.Interviewer => UiTexts.PlaceInterviewer,
+        PlaceName.Candidate => UiTexts.PlaceCandidate,
+        PlaceName.Client => UiTexts.PlaceClient,
+        PlaceName.Contact => UiTexts.PlaceContact,
+        PlaceName.Organizer => UiTexts.PlaceOrganizer,
+        PlaceName.Conference => UiTexts.TheShapeConference,
+        PlaceName.Team => UiTexts.PlaceTeam,
+        PlaceName.Case => UiTexts.PlaceCase,
+        PlaceName.OtherOrganization => UiTexts.PlaceOtherOrganization,
+        _ => throw new InvalidOperationException($"This screen has no word for the place '{place}'."),
+    };
+
+    /// <summary>What one of the three columns is headed by.</summary>
+    /// <remarks>
+    /// The work and the other side by what their first level is called, which is the whole of what
+    /// <em>es trabajo de</em> and <em>del otro lado</em> used to say and more. What it was about is
+    /// a different relation and not a kind of the first, so it keeps its own words. The last arm
+    /// stops, and it is what fires the day a fourth way of relating a meeting to a node joins the
+    /// closed vocabulary.
+    /// </remarks>
+    private UiText Heading(MeetingNodeRole role) => role switch
+    {
+        MeetingNodeRole.WorkOf => Named(NameAt(role, 0)),
+        MeetingNodeRole.Counterpart => Named(NameAt(role, 0)),
         MeetingNodeRole.About => UiTexts.ItIsAbout,
         _ => throw new InvalidOperationException($"This screen has no heading for the role '{role}'."),
     };
+
+    /// <summary>
+    /// What one level of a path is called under the chip that is lit: that kind of meeting's own
+    /// name for it, and the generic one where it has none.
+    /// </summary>
+    /// <remarks>
+    /// Where it has none is a column the kind does not open, a level past the ones it names, or
+    /// no chip lit — and a meeting filed deeper than its kind goes on being drawn, in the words a
+    /// person would use for any three-level path.
+    /// </remarks>
+    private PlaceName NameAt(MeetingNodeRole role, int level)
+    {
+        if (MeetingShapes.Names(_chosen.Shape).Levels.TryGetValue(role, out var named) && level < named.Count)
+        {
+            return named[level];
+        }
+
+        var generic = MeetingShapes.Names(null).Levels[role];
+        return generic[Math.Min(level, generic.Count - 1)];
+    }
+
+    /// <summary>What one of the places for somebody is called under the chip that is lit.</summary>
+    private PlaceName NameForSomebodyAt(int slot)
+    {
+        var named = MeetingShapes.Names(_chosen.Shape).Somebody;
+        return slot < named.Count ? named[slot] : PlaceName.Person;
+    }
 
     /// <summary>What one of the two toggles on a person's row says.</summary>
     /// <remarks>
@@ -304,11 +393,6 @@ public sealed partial class ClassifyingAMeeting : UserControl
     /// <summary>The mark between two pills of one path, which says one is inside the other.</summary>
     private Path Chevron() =>
         Glyph([new Point(9, 5), new Point(16, 12), new Point(9, 19)]);
-
-    /// <summary>The mark on a press that opens one more place to fill in.</summary>
-    private Path Plus() => Glyph(
-        [new Point(12, 5), new Point(12, 19)],
-        [new Point(5, 12), new Point(19, 12)]);
 
     private CorpusFolder Corpus() => _corpus
         ?? throw new InvalidOperationException(
@@ -443,6 +527,9 @@ public sealed partial class ClassifyingAMeeting : UserControl
         foreach (var shape in Enum.GetValues<MeetingShape>())
         {
             var chip = new Button { Content = In(Named(shape)), Style = HowAChipIsDrawn(shape) };
+
+            // One line on what kind of meeting it is, which is all a chip's name leaves unsaid.
+            ToolTipService.SetToolTip(chip, In(Described(shape)));
 
             chip.Click += (_, _) => ChooseTheShape(shape);
             TheShapes.Children.Add(chip);
@@ -760,11 +847,48 @@ public sealed partial class ClassifyingAMeeting : UserControl
 
     // ── The three columns ─────────────────────────────────────────────────────────────────────
 
+    /// <summary>
+    /// The columns the lit chip opens, the ones the draft already holds a path in, and always the
+    /// work; and, with no kind lit, a press for each of the others.
+    /// </summary>
+    /// <remarks>
+    /// A column nobody asked for is not drawn empty, which is what three sentences down the page
+    /// were. With a kind of meeting lit, what it does not open stays closed — that is what choosing
+    /// it says. With none lit, or <em>Ninguna — la lleno yo</em>, each absent column is one press
+    /// away, so the crossings §5.3 stores (a talk that is also somebody's work, two companies and a
+    /// project) are still fileable by hand.
+    /// </remarks>
     private void TheColumns(MeetingAsClassified read)
     {
+        var byHand = _chosen.Shape is null or MeetingShape.FilledByHand;
+
         foreach (var role in Enum.GetValues<MeetingNodeRole>())
         {
+            var opened = role is MeetingNodeRole.WorkOf
+                || (_chosen.Shape is { } lit && MeetingShapes.Opens(lit).Paths(role) > 0)
+                || _chosen.Column(role).Count > 0;
+
+            if (!opened && !byHand)
+            {
+                continue;
+            }
+
             var column = new StackPanel { Spacing = 8 };
+
+            if (!opened)
+            {
+                var open = new Button
+                {
+                    Content = In(OpenColumn(role)),
+                    Style = Chrome("AnOptionalPress"),
+                };
+
+                AutomationProperties.SetAutomationId(open, $"{role}-open");
+                open.Click += (_, _) => AddAPath(role);
+                column.Children.Add(open);
+                AddAColumn(column);
+                continue;
+            }
 
             column.Children.Add(new TextBlock
             {
@@ -796,11 +920,28 @@ public sealed partial class ClassifyingAMeeting : UserControl
             add.Click += (_, _) => AddAPath(role);
             column.Children.Add(add);
 
-            Columns.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            Grid.SetColumn(column, Columns.ColumnDefinitions.Count - 1);
-            Columns.Children.Add(column);
+            AddAColumn(column);
         }
     }
+
+    private void AddAColumn(StackPanel column)
+    {
+        Columns.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        Grid.SetColumn(column, Columns.ColumnDefinitions.Count - 1);
+        Columns.Children.Add(column);
+    }
+
+    /// <summary>What the press that opens a column by hand says.</summary>
+    /// <remarks>
+    /// Only the two a person may open: the work column is always there. The last arm stops for the
+    /// reason <see cref="Heading"/>'s does.
+    /// </remarks>
+    private static UiText OpenColumn(MeetingNodeRole role) => role switch
+    {
+        MeetingNodeRole.Counterpart => UiTexts.OpenOtherOrganization,
+        MeetingNodeRole.About => UiTexts.OpenItIsAbout,
+        _ => throw new InvalidOperationException($"This screen has no press that opens the column for '{role}'."),
+    };
 
     /// <summary>One row of a column: the pills down the tree, and the press that opens one more.</summary>
     private UIElement APath(MeetingAsClassified read, MeetingNodeRole role, int row, ChosenPath path)
@@ -821,17 +962,20 @@ public sealed partial class ClassifyingAMeeting : UserControl
             line.Children.Add(APill(read, role, row, path, level));
         }
 
-        // Only where the tree has room. What a node of each class holds is Node.Holds's, which is
-        // also what caps the depth — so a topic never grows a child and nothing here counts levels.
+        // Only where the tree has room, and reading what the next level is called. What a node of
+        // each class holds is Node.Holds's, which is also what caps the depth — so a topic never
+        // grows a child and nothing here counts levels.
         if (levels == path.Nodes.Count
             && Deepest(read, path) is { } deepest
             && Node.Holds(deepest.Kind) is not null)
         {
-            var deeper = new Button { Style = Chrome("AddALevel"), Content = Plus() };
+            var deeper = new Button
+            {
+                Style = Chrome("AnOptionalPress"),
+                Content = In(Named(NameAt(role, levels))),
+            };
 
-            // A glyph with no name is nothing to a screen reader.
-            AutomationProperties.SetName(deeper, In(UiTexts.AddALevel));
-
+            AutomationProperties.SetAutomationId(deeper, $"{role}-{row}-deeper");
             deeper.Click += (_, _) => OpenOneMoreLevel(role, row);
             line.Children.Add(deeper);
         }
@@ -862,18 +1006,23 @@ public sealed partial class ClassifyingAMeeting : UserControl
             : null;
 
         var extras = new List<(UiText Words, Action Chose)>();
+        var name = NameAt(role, level);
 
         if (level == 0)
         {
-            // Two entries and never a question. What may stand at the top of a tree is an
-            // organization or a body of work belonging to nobody in particular, and this is how the
-            // second one gets in without the screen saying the word *iniciativa* to anybody.
+            // A new organization, and under the generic names also a body of work belonging to nobody
+            // in particular: what may stand at the top of a tree is those two, and a level that
+            // says what it is (a university, a client) is only ever the first.
             extras.Add((
                 UiTexts.ANewOrganization,
                 () => Naming(AFieldOnAPill.ANewOne(role, row, level, NodeKind.Organization))));
-            extras.Add((
-                UiTexts.WorkThatIsNobodysInParticular,
-                () => Naming(AFieldOnAPill.ANewOne(role, row, level, NodeKind.Initiative))));
+
+            if (BelongsToNobody(name))
+            {
+                extras.Add((
+                    UiTexts.WorkThatIsNobodysInParticular,
+                    () => Naming(AFieldOnAPill.ANewOne(role, row, level, NodeKind.Initiative))));
+            }
         }
         else
         {
@@ -886,15 +1035,15 @@ public sealed partial class ClassifyingAMeeting : UserControl
         var pill = OneOfThese.Build(
             In,
             Chrome("Picker"),
-            [.. WhatMayStandAt(read, path, level).Select(node => (node.Id, node.Name))],
+            [.. WhatMayStandAt(read, role, path, level, name, standing).Select(node => (node.Id, node.Name))],
             standing,
 
             // Nothing chosen empties this pill and everything to the right of it, because what a
             // deeper pill offered was the children of this one.
             chosen => PutAt(role, row, level, chosen),
             extras,
-            UiTexts.NoneOfThese,
-            In(Heading(role)),
+            Named(name),
+            In(Named(name)),
             APillAt(role, row, level),
             () => _drawing);
 
@@ -953,20 +1102,47 @@ public sealed partial class ClassifyingAMeeting : UserControl
     private static string APlaceAt(int slot) => $"who-{slot}";
 
     /// <summary>
-    /// What may stand at one level of a path: every root at the first, and the children of the pill
-    /// to the left after that.
+    /// What may stand at one level of a path: the nodes of the class that level's name holds, among
+    /// every root at the first level and the children of the pill to the left after that — the ones
+    /// most meetings are filed under in this role first, then by name.
     /// </summary>
-    private static IReadOnlyList<Node> WhatMayStandAt(MeetingAsClassified read, ChosenPath path, int level)
+    /// <remarks>
+    /// What stands there now is offered whatever its class, so a node the draft holds is never a
+    /// pill showing nothing. Ordering is by use and is the corpus's: the screen asks
+    /// <see cref="MeetingAsClassified.NodesUsed"/> and decides nothing about it.
+    /// </remarks>
+    private static IReadOnlyList<Node> WhatMayStandAt(
+        MeetingAsClassified read, MeetingNodeRole role, ChosenPath path, int level, PlaceName name, Guid? standing)
     {
-        if (level == 0)
-        {
-            return [.. read.Tree.Where(node => node.ParentId is null)];
-        }
+        // Below the first level the children of a node are all of the one class it holds, so there
+        // is nothing to filter and the name is only wording. At the first level the roots are of
+        // two classes, and the name says which is asked: an organization of a kind, or — only under
+        // the two generic names, where nothing says what the work is of — work that belongs to
+        // nobody in particular as well.
+        var holds = MeetingShapes.Holds(name);
 
-        return level <= path.Nodes.Count
-            ? [.. read.Tree.Where(node => node.ParentId == path.Nodes[level - 1])]
-            : [];
+        var under = level == 0
+            ? read.Tree.Where(node => node.ParentId is null
+                && (node.Kind == holds || node.Id == standing || (BelongsToNobody(name) && node.Kind is NodeKind.Initiative)))
+            : level <= path.Nodes.Count
+                ? read.Tree.Where(node => node.ParentId == path.Nodes[level - 1])
+                : [];
+
+        return
+        [
+            .. under
+                .OrderByDescending(node => read.NodesUsed.GetValueOrDefault((node.Id, role)))
+                .ThenBy(node => node.Name, StringComparer.Ordinal),
+        ];
     }
+
+    /// <summary>
+    /// Whether this first level is one where work belonging to nobody in particular may stand: only
+    /// under the generic names, because <em>Universidad</em> or <em>Cliente</em> already says what
+    /// the place is.
+    /// </summary>
+    private static bool BelongsToNobody(PlaceName name) =>
+        name is PlaceName.Organization or PlaceName.OtherOrganization;
 
     private static Node? Deepest(MeetingAsClassified read, ChosenPath path) =>
         path.Deepest is { } node ? read.Tree.FirstOrDefault(found => found.Id == node) : null;
@@ -1399,10 +1575,13 @@ public sealed partial class ClassifyingAMeeting : UserControl
         // install, who is drawn above and is not a place. Two rows for one person is a meeting
         // naming somebody twice — and the corpus cannot hold that, so it would come back as one row
         // with badges nobody set on it.
+        // The ones most meetings name first, then by name.
         var offered = read.Everybody
             .Select(found => found.Person)
             .Where(found => found.Id != read.Me?.Id)
             .Where(found => found.Id == person.PersonId || !StandsInAnotherPlace(found.Id, slot))
+            .OrderByDescending(found => read.PeopleUsed.GetValueOrDefault(found.Id))
+            .ThenBy(found => found.DisplayName, StringComparer.Ordinal)
             .Select(found => (found.Id, Name: found.DisplayName))
             .ToArray();
 
@@ -1445,8 +1624,25 @@ public sealed partial class ClassifyingAMeeting : UserControl
             ? BesideIt(picker, APlaceAt(slot), () => _ = AskWhoTheyAre(read, slot, them))
             : picker;
 
-        Grid.SetColumn(place, 0);
-        row.Children.Add(place);
+        // What this kind of meeting calls them, before the picker: a teacher, a candidate, a
+        // contact.
+        var called = new TextBlock
+        {
+            Text = In(Named(NameForSomebodyAt(slot))),
+            Style = Chrome("ColumnHeading"),
+            MinWidth = HowWideAPlaceNameIs,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+
+        var labelled = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 9,
+            Children = { called, place },
+        };
+
+        Grid.SetColumn(labelled, 0);
+        row.Children.Add(labelled);
 
         var badges = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
         var pressed = new List<(Button Button, MeetingPersonRole Role)>();
