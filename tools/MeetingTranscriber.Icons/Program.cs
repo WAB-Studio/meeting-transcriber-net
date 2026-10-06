@@ -1,5 +1,7 @@
 using System.Xml.Linq;
+
 using SkiaSharp;
+
 using Svg.Skia;
 
 namespace MeetingTranscriber.Icons;
