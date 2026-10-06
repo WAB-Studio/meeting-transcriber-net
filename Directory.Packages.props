@@ -40,6 +40,10 @@
          target framework would be shipping an older or a newer security assembly into a test
          project's bin for no reason. Ordinary bump; nothing here is load-bearing the way the three
          pins above are. -->
+    <!-- Renders Assets/Mark.svg into the application's logos, in tools/MeetingTranscriber.Icons
+         alone: nothing under src/ references it, so none of Skia's native binaries reach the MSIX.
+         docs/packages.md carries the row. -->
+    <PackageVersion Include="Svg.Skia" Version="5.2.3" />
     <PackageVersion Include="System.Security.Cryptography.Pkcs" Version="10.0.12" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.5" />
     <PackageVersion Include="xunit.v3" Version="3.2.2" />

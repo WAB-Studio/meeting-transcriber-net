@@ -90,6 +90,14 @@ public partial class App : Application
     }
 
     /// <summary>
+    /// The application's mark as the window's icon, for its title bar and Alt+Tab: the .ico that
+    /// tools/MeetingTranscriber.Icons renders and the package carries beside the program. Set
+    /// explicitly rather than left to whatever the window class picks up from the executable.
+    /// </summary>
+    private static readonly string TheMark =
+        Path.Combine(AppContext.BaseDirectory, "Assets", "MeetingTranscriber.ico");
+
+    /// <summary>
     /// Brings a corpus behind this build's schema up to it, before any screen reads it. The
     /// machine's words when something <see cref="ScreenFailures.Reportable"/> stopped it, and
     /// <c>null</c> otherwise: the window opens either way and says them on its report.
@@ -129,6 +137,7 @@ public partial class App : Application
         // The title bar is the one part of a window the application's theme does not reach, so it
         // is told to follow the app's own mode, which is Windows' while `RequestedTheme` is unset.
         window.AppWindow.TitleBar.PreferredTheme = TitleBarTheme.UseDefaultAppMode;
+        window.AppWindow.SetIcon(TheMark);
         window.LanguageChosen += OnLanguageChosen;
         window.PackagingChecksAsked += OnPackagingChecksAsked;
         window.CorpusChosen += OnCorpusChosen;
@@ -294,6 +303,7 @@ public partial class App : Application
 
         var window = new PackagingChecksWindow(_language);
         window.AppWindow.TitleBar.PreferredTheme = TitleBarTheme.UseDefaultAppMode;
+        window.AppWindow.SetIcon(TheMark);
         window.LanguageChosen += OnLanguageChosen;
         window.Closed += (_, _) => _checks = null;
 

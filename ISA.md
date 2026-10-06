@@ -1,6 +1,6 @@
 ﻿---
 phase: climbing
-progress: 203/293
+progress: 205/293
 updated: 2026-10-05
 ---
 
@@ -369,8 +369,8 @@ Board: 7 · Distribución y backup
 - [ ] ISC-215: The installed application is called Meeting Transcriber wherever Windows lists it, never by the name of a project in this repository.
 - [ ] ISC-216: Installing the application puts a shortcut to it on the desktop.
 - [ ] ISC-217: The installed application is shown by its own mark wherever Windows draws it, never by a placeholder or a generic icon.
-- [ ] ISC-217.1: Every image the package names for Windows to draw is the application's mark, at every scale and target size Windows chooses between.
-- [ ] ISC-217.2: The mark the taskbar and Start draw with nothing behind it stands out from a light taskbar and from a dark one.
+- [x] ISC-217.1: Every image the package names for Windows to draw is the application's mark, at every scale and target size Windows chooses between.
+- [x] ISC-217.2: The mark the taskbar and Start draw with nothing behind it stands out from a light taskbar and from a dark one.
 - [ ] ISC-217.3: The application's window carries the mark in its title bar.
 - [ ] ISC-217.4: The desktop shortcut the install makes shows the mark.
 
@@ -866,3 +866,5 @@ Board: 7 · Distribución y backup
 - ISC-208 — `LiveDeepgramTests.A_run_that_ended_leaves_the_folder_free_for_the_next_one` (`tests/MeetingTranscriber.Cli.Tests`), green 2026-10-01.
 - ISC-191.1 — `SayingWhoIsWhoTests.A_voice_nobody_ever_heard_alone_says_so_where_its_clip_would_be` (`tests/MeetingTranscriber.App.Tests`), `WhoIsWhoTests.A_voice_is_offered_the_longest_stretch_it_spoke_alone_in` and `.A_voice_that_never_spoke_alone_is_offered_nothing` (`tests/MeetingTranscriber.Domain.Tests`), green 2026-10-01. Not reached: the label on a running window.
 - ISC-191 — held by its three leaves, `ISC-191.1` to `ISC-191.3`, green 2026-10-01.
+- ISC-217.1 — `ApplicationIconTests.Every_image_the_manifest_names_is_there_at_every_scale_and_target_size`, `.No_image_Windows_is_handed_is_a_template_placeholder`, `.The_mark_rendered_is_the_one_the_app_bar_draws` and `.The_images_were_drawn_from_the_mark_and_the_palette_as_they_stand` (`tests/MeetingTranscriber.App.Tests`) green 2026-10-05; red that day with the template's images put back, 2 of 7 failing, and with `Mark.svg`'s arcs swapped, the stamp and the app bar both failing. The `.appxrecipe` of a solution build lists every image and the `.ico`. Not reached: an installed Start menu.
+- ISC-217.2 — `ApplicationIconTests.The_taskbar_mark_is_drawn_over_nothing_in_the_ink_of_the_taskbar_it_sits_on` (`tests/MeetingTranscriber.App.Tests`) green 2026-10-05, every target size transparent at its corners and in its theme's `InkBrush`; red that day with the light taskbar's image copied over the dark one's. Not reached: which variant an installed shell picks, which is a person looking at a light and a dark taskbar.
