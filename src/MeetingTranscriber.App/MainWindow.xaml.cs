@@ -14,6 +14,9 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Controls.Primitives;
+using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
 
 // WinUI has a Duration of its own — an animation's, in ticks — and this file is one of the two
 // places in the application where the domain's meets it. Aliased rather than qualified at the use,
@@ -90,11 +93,20 @@ public sealed partial class MainWindow : Window
     private readonly List<TextLine> _report = [];
 
     /// <summary>
-    /// What asks the recording what it is hearing. Once a second, which is what the metering loop
-    /// at a prompt does: it reads the meters, and it asks whether the program channel 0 is
-    /// following has gone silent for long enough to be the wrong one.
+    /// What asks the recording the questions that only change by the second: whether the program
+    /// channel 0 is following has gone silent for long enough to be the wrong one, whether it
+    /// ended, and what the clock and the strip say.
     /// </summary>
     private readonly DispatcherTimer _watch = new() { Interval = TimeSpan.FromSeconds(1) };
+
+    /// <summary>
+    /// What reads the meters, about twenty times a second. A meter that is drawn once a second
+    /// cannot rise when somebody speaks or fall smoothly afterwards, and <c>docs/design.md</c>
+    /// §Its ballistics says it does both. The bar takes every reading; the words under it do not,
+    /// for the reason <see cref="_heard"/> gives.
+    /// </summary>
+    private readonly DispatcherTimer _meters = new() { Interval = TimeSpan.FromMilliseconds(50) };
+
 
     private UiLanguage _language;
     private readonly ScreenStatus _status = new();
@@ -141,7 +153,25 @@ public sealed partial class MainWindow : Window
     /// </remarks>
     private int _lookQueued;
 
-    private RecorderSource[] _sources;
+    /// <summary>
+    /// What channel 0's picker offers after the whole machine, in the order it lists them: one
+    /// program per application, each with the title of its first window. The title is for a person
+    /// and is never what a choice is compared on — that is the program's process.
+    /// </summary>
+    private OfferedProgram[] _offered = [];
+
+    /// <summary>
+    /// The sources the next meeting may record, with the whole machine first: <see cref="_offered"/>
+    /// as sources, which is what a choice is compared against.
+    /// </summary>
+    private RecorderSource[] _sources = [RecorderSource.TheWholeMachine];
+
+    /// <summary>
+    /// Which of the sub-screens had the room the last time the arrangement was set, or none. What
+    /// says whether the recorder card is put away at once or travels: only the raised list
+    /// travels, and coming back from a sub-screen is not the list.
+    /// </summary>
+    private bool _aSubScreenHadTheRoom;
 
     private CorpusDbContext? _context;
     private MeetingRecording? _recording;
@@ -194,10 +224,11 @@ public sealed partial class MainWindow : Window
     private bool _openingAnotherProgram;
 
     /// <summary>
-    /// What channel 0's picker offers while <see cref="_choosingAnotherProgram"/>: the programs
-    /// running when <em>Cambiar</em> was pressed, less the one it follows. Never the whole machine.
+    /// What channel 0's picker offers while <see cref="_choosingAnotherProgram"/>: the programs on
+    /// offer when <em>Cambiar</em> was pressed or the list was opened, less the one it follows.
+    /// Never the whole machine.
     /// </summary>
-    private AudioProcess[] _programsToMoveTo = [];
+    private OfferedProgram[] _programsToMoveTo = [];
 
     /// <summary>
     /// Whether opening the microphone again has been asked for and has not come back. The same
@@ -207,19 +238,19 @@ public sealed partial class MainWindow : Window
     private bool _openingTheMicrophoneAgain;
 
     /// <summary>
-    /// What each channel read the last time the devices were asked, which is once a second while a
-    /// meeting runs. Kept rather than asked for again on every redraw: asking empties the meters,
-    /// so a redraw that asked would show a channel somebody is talking into as hearing nothing.
+    /// What each channel read the last time the devices were asked, which is about twenty times a
+    /// second while a meeting runs. Kept rather than asked for again on every redraw: asking
+    /// empties the meters, so a redraw that asked would show a channel somebody is talking into as
+    /// hearing nothing.
     /// </summary>
     private IReadOnlyList<ChannelReading> _channels = [];
 
     /// <summary>
-    /// What this machine is playing through, as of the last time it moved. Asked when a meeting
-    /// starts and again when Windows says the default changed, which is the only thing that moves
-    /// it — so a machine that answers is not asked sixty times a minute for one answer. What a
-    /// refusal does is <see cref="WhatTheMachinePlaysThrough"/>'s and is not decided here.
+    /// What the words under the bars are written from: the loudest of a quarter of a second, and not
+    /// the reading just taken, which may be the stretch between two words. The rule is
+    /// <see cref="MeterWords"/>'s.
     /// </summary>
-    private readonly WhatTheMachinePlaysThrough _playback = new();
+    private readonly MeterWords _words = new();
 
     private RecorderChoices _chosen = RecorderChoices.Nothing;
 
@@ -234,6 +265,7 @@ public sealed partial class MainWindow : Window
         InitializeComponent();
 
         _watch.Tick += OnWatch;
+        _meters.Tick += OnMeters;
         _drawnOn = DispatcherQueue;
         Closed += OnClosed;
 
@@ -268,6 +300,7 @@ public sealed partial class MainWindow : Window
 
         Corrections.Open(corpus);
         Corrections.Left += OnLeftTheCorrections;
+        Corrections.MayGoBackChanged += OnMayGoBackChanged;
 
         // The fourth, and the one that is not about a meeting. The language is raised on up from
         // it rather than answered there: which language the application is read in is the
@@ -284,7 +317,7 @@ public sealed partial class MainWindow : Window
 
         var microphones = Ask(AudioDevices.Microphones, UiTexts.WindowsDidNotSayWhatMicrophonesThereAre);
         _microphones = [.. microphones ?? []];
-        _sources = SourcesNow();
+        ReadThePrograms();
 
         // A report line and not the status one. The status says what the screen is doing and is
         // rewritten every time anything changes, so a machine with no microphone would announce it
@@ -299,6 +332,16 @@ public sealed partial class MainWindow : Window
         {
             Say(UiTexts.NoMicrophoneOnThisMachine);
         }
+
+        // The way back is the bar's, and so is the keyboard's: Alt+Left goes back through the same
+        // door the button does, so a screen that refuses to be left refuses both.
+        var back = new KeyboardAccelerator
+        {
+            Key = Windows.System.VirtualKey.Left,
+            Modifiers = Windows.System.VirtualKeyModifiers.Menu,
+        };
+        back.Invoked += OnBackAccelerated;
+        Content.KeyboardAccelerators.Add(back);
 
         ReadIn(language);
 
@@ -340,7 +383,7 @@ public sealed partial class MainWindow : Window
     {
         _language = language;
         Bindings.Update();
-        Title = UiTexts.RecordAMeeting.In(language);
+        Title = UiTexts.TheApplicationsName.In(language);
 
         FillThePickers();
         Render();
@@ -415,15 +458,33 @@ public sealed partial class MainWindow : Window
             // Reading.IsShowingAMeeting is already true for the whole of a node's story. It is named
             // anyway, on the same rule Classifying.IsOpen and Voices.IsOpen already are for the same
             // accident.
-            TheRoomBelowHasTheWindow = Meetings.HasTheWholeWindow
-                || Reading.IsShowingAMeeting
-                || Classifying.IsOpen
-                || Voices.IsOpen
-                || Corrections.IsOpen
-                || Settings.IsOpen
-                || NodeStory.IsShowingANode,
+            TheRoomBelowHasTheWindow = Meetings.HasTheWholeWindow || TheSubScreenWithTheRoom() is not null,
         };
     }
+
+    /// <summary>
+    /// Which sub-screen has the room, or none when the list does. The one place that says so, and
+    /// the order is what says which wins: the settings first, because they are reached from the
+    /// window itself and not from a meeting; then filing, naming the voices and correcting words,
+    /// which are reached from the meeting and are never open beside each other; then a node's
+    /// story, and last the meeting itself, which goes on holding what it was showing underneath
+    /// every one of them.
+    /// </summary>
+    /// <remarks>
+    /// The back button asks it too, so the screen it leaves is the screen that is showing. Read off
+    /// the six controls rather than kept, for the reason every other field of
+    /// <see cref="Screen"/> is. <c>NodeStory.IsShowingANode</c> and the others are redundant with
+    /// <c>Reading.IsShowingAMeeting</c> by the accident of there being one door into each, and are
+    /// named anyway.
+    /// </remarks>
+    private FrameworkElement? TheSubScreenWithTheRoom() =>
+        Settings.IsOpen ? Settings
+        : Classifying.IsOpen ? Classifying
+        : Voices.IsOpen ? Voices
+        : Corrections.IsOpen ? Corrections
+        : NodeStory.IsShowingANode ? NodeStory
+        : Reading.IsShowingAMeeting ? Reading
+        : null;
 
     /// <summary>
     /// What the meters read as for a screen in <paramref name="state"/>, off what the devices last
@@ -436,8 +497,7 @@ public sealed partial class MainWindow : Window
     /// <see cref="ReadTheDevices"/> moves and only on the tick. A method rather than a value passed
     /// down because <see cref="Screen"/> is built by nine handlers that have no meters in hand.
     /// </remarks>
-    private RecordingMeters Meters(RecorderState state) =>
-        RecordingMeters.Of(state, _playback.Standing, _channels);
+    private RecordingMeters Meters(RecorderState state) => RecordingMeters.Of(state, _channels);
 
     /// <summary>
     /// Sets every control from the one answer. Nothing here decides anything: it is the reading of
@@ -487,7 +547,6 @@ public sealed partial class MainWindow : Window
         Mine.PickerIsLive = choosing;
         TheOthers.PickerIsLive = choosing || screen.Allows(RecorderPress.FollowAnotherProgram);
         SpokenPicker.IsEnabled = choosing;
-        RefreshTheMachineButton.IsEnabled = choosing;
 
         // Once, and read twice. The stopwatch on the card and the length on the strip are the same
         // meeting's clock said two ways, and #204's second decision is that nothing on this screen
@@ -594,9 +653,9 @@ public sealed partial class MainWindow : Window
     /// </summary>
     /// <remarks>
     /// The program's name and not what the picker shows, which is <see cref="NameOf"/> and puts
-    /// the process id after it. That number is there to tell three programs called Teams apart
-    /// while somebody is choosing between them; on a strip about the one already chosen it is a
-    /// number answering a question nobody is asking, and `MainAbierto` draws the name alone. The
+    /// the title of its window after it. That title is there to tell two instances of one
+    /// application apart while somebody is choosing between them; on a strip about the one already
+    /// chosen it answers a question nobody is asking, and `MainAbierto` draws the name alone. The
     /// microphone is the maker's name for the same reason — <c>DeviceLines</c> adds
     /// *(predeterminado)*, which says what Windows would have used had nobody said.
     /// <para>
@@ -640,21 +699,25 @@ public sealed partial class MainWindow : Window
     };
 
     /// <summary>
-    /// Asks the devices what they are hearing, which is the once-a-second half of the meters and
-    /// the only thing that may do it.
+    /// Asks the devices what they are hearing, which is the meters' half that reads and the only
+    /// thing that may do it.
     /// </summary>
     /// <remarks>
     /// Reading a level empties it — that is what makes a meter the stretch since somebody last
-    /// looked — so this is called from the tick and from the moment a meeting starts, and never
-    /// from a redraw. A press that read the meters again would find the stretch since a moment
-    /// ago, which is nothing, and print the muted-channel answer over a channel somebody is
+    /// looked — so this is called from the meters' tick and from the moment a meeting starts, and
+    /// never from a redraw. A press that read the meters again would find the stretch since a
+    /// moment ago, which is nothing, and print the muted-channel answer over a channel somebody is
     /// talking into.
     /// <para>
-    /// So what every other press sees is up to a second old, and none of them closes that window
-    /// by reading again — a press that emptied both meters to refresh one fact would leave the
-    /// healthy channel reading quieter than it was. What covers it instead is that each press is
-    /// marked in flight while it runs, and that the engine answers the same question under its own
-    /// lock when the press arrives.
+    /// So what every other press sees is up to fifty milliseconds old, and none of them closes
+    /// that window by reading again — a press that emptied both meters to refresh one fact would
+    /// leave the healthy channel reading quieter than it was. What covers it instead is that each
+    /// press is marked in flight while it runs, and that the engine answers the same question under
+    /// its own lock when the press arrives.
+    /// </para>
+    /// <para>
+    /// The reading is kept twice: whole, for what is drawn at once, and by <see cref="_words"/>,
+    /// which keeps the loudest of the stretch the words cover.
     /// </para>
     /// </remarks>
     private void ReadTheDevices()
@@ -665,30 +728,12 @@ public sealed partial class MainWindow : Window
         }
 
         _channels = ChannelReading.ReadFrom(recording);
+        _words.Take(_channels, Environment.TickCount64);
     }
 
     /// <summary>
-    /// Asks which endpoint the machine is playing through, which is what says whether the room is
-    /// hearing the other side of the meeting a second time.
-    /// </summary>
-    /// <remarks>
-    /// Asked when a meeting starts and when Windows says the default moved, and at no other
-    /// moment. It used to be asked once a second beside the meters, on the argument that the
-    /// answer changes under a running meeting — which is true, and what changes it is exactly the
-    /// event this window is now told about. Sixty questions a minute to notice one of them was the
-    /// application not being told; being told is the same warning, sooner, for one question per
-    /// headset.
-    /// <para>
-    /// What a machine that will not say costs is <see cref="WhatTheMachinePlaysThrough"/>'s and not
-    /// this window's, which is the whole reason that type exists: the rule is one a build agent can
-    /// run, and nothing in this file decides it.
-    /// </para>
-    /// </remarks>
-    private void ReadWhatTheMachinePlaysThrough() => _playback.Ask(AudioDevices.Playback);
-
-    /// <summary>
-    /// Sets the meters from what was last read: what each channel is capturing, how loud it has
-    /// been, whether its device is gone, and whether the room is hearing the other side twice.
+    /// Sets the meters from what was last read: how loud each channel is, what it is capturing,
+    /// and whether its device is gone.
     /// </summary>
     /// <remarks>
     /// Nothing here decides any of it, and nothing here asks a device anything. What says whether
@@ -711,9 +756,14 @@ public sealed partial class MainWindow : Window
         var others = meters.On(AudioChannel.Loopback);
         var mine = meters.On(AudioChannel.Microphone);
 
-        // *Sin señal* is channel 0's alone: channel 1 is a microphone, and a quiet one is nada.
-        Show(others, TheOthers, screen.TheNoticeIsOnScreen);
-        Show(mine, Mine, noSignal: false);
+        // The bar is drawn from the reading just taken and the words from the loudest of the
+        // stretch they cover, which is what keeps a pause between two words from reading as
+        // nothing arriving. *Sin señal* is the others' alone: the microphone is a microphone, and a
+        // quiet one is nada.
+        var worded = RecordingMeters.Of(screen.State, _words.Said);
+
+        Show(others, worded.On(AudioChannel.Loopback), TheOthers, screen.TheNoticeIsOnScreen);
+        Show(mine, worded.On(AudioChannel.Microphone), Mine, noSignal: false);
 
         // The notice. Told from here, which runs every tick, so it appears on the tick the report
         // does; the sentence and its two presses are in the row under the card, in the tree
@@ -728,14 +778,12 @@ public sealed partial class MainWindow : Window
                 : UiTexts.NothingCameFromThatProgram,
             Capturing(_recording?.FollowingNow?.Name));
 
-        // Each of the three named where its words are, rather than reached through the row above.
-        // A live region that nothing hands a sentence to renders blank and announces nothing, which
-        // is the same failure as one bound in the XAML wearing different clothes — so the rule is
-        // that every one of them appears in a call to Tell, and LiveRegionTests holds the screen to
-        // it by name. Passing the control down through Show hid these two from that check, which is
-        // how the check found them.
-        Tell(HeardTwice, meters.TheOthersAreHeardTwice, UiTexts.TheOthersAreHeardTwice);
-
+        // Each of them named where its words are, rather than reached through the row above. A live
+        // region that nothing hands a sentence to renders blank and announces nothing, which is the
+        // same failure as one bound in the XAML wearing different clothes — so the rule is that
+        // every one of them appears in a call to Tell, and LiveRegionTests holds the screen to it
+        // by name.
+        //
         // The two that name a device and a moment. `docs/design/Fallo` draws both: what stopped
         // responding and at what time, then what that channel heard from then on being gone. The
         // name is what this machine gave the device and the time is read off a clock, so both go in
@@ -804,10 +852,13 @@ public sealed partial class MainWindow : Window
 
     /// <summary>What one channel's meter reads as: how loud it is, and the loudest it has been.</summary>
     /// <remarks>
+    /// <paramref name="reading"/> is what is drawn and <paramref name="worded"/> is what is said.
+    /// <para>
     /// Taking the control rather than being written twice, because the two strips are one rule with
     /// nothing to tell them apart but which channel they are, and a second copy of it is a second
     /// chance to set the wrong one. What the two really do differ in — which sentence they say when
     /// the device is gone — is said where the line is, in <see cref="ShowTheMeters"/>.
+    /// </para>
     /// <para>
     /// The words are set here and the drawing is the meter's. A <see cref="ChannelStrip"/> is one
     /// control used twice, so it cannot hold words for either channel; and it would otherwise have
@@ -822,7 +873,7 @@ public sealed partial class MainWindow : Window
     /// every meter said it loudest where nothing had happened.
     /// </para>
     /// </remarks>
-    private void Show(ChannelReading? reading, ChannelStrip strip, bool noSignal)
+    private void Show(ChannelReading? reading, ChannelReading? worded, ChannelStrip strip, bool noSignal)
     {
         // Cleared and not left standing. The reading belongs to a meeting that is over — but the
         // next meeting's first frame is drawn from these controls, and the last one's level is not
@@ -868,7 +919,11 @@ public sealed partial class MainWindow : Window
         // back as data. Having measured nothing is a sentence and the reading hands back none, so
         // the word for it comes from the catalogue — which is also what this screen exists to show:
         // an empty bar and a bar nothing has drawn yet look the same.
-        strip.LoudnessSaid = reading.Loudness ?? In(UiTexts.NothingIsArriving);
+        //
+        // From the loudest of the stretch the words cover and not from the reading that was just
+        // taken, which may be the fifty milliseconds between two words. Until the first stretch is
+        // over there is no such reading, and the one taken is all there is.
+        strip.LoudnessSaid = (worded ?? reading).Loudness ?? In(UiTexts.NothingIsArriving);
 
         // The peak comes back from the call that draws the bar, because drawing is what moves it.
         //
@@ -883,23 +938,23 @@ public sealed partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Says which channel each strip is: the mono chip, the role beside it, and what its picker
-    /// chooses, for somebody who cannot see the two texts.
+    /// Says which channel each strip is: the role beside it, and what its picker chooses, for
+    /// somebody who cannot see the text.
     /// </summary>
     /// <remarks>
     /// Every word of it is the catalogue's and is said again on every language change, which is why
     /// it is a call from <see cref="FillThePickers"/> rather than a binding inside
     /// <see cref="ChannelStrip"/>: one control is used for both channels, and a control that named
     /// itself would be a second place that has to agree with the contract about which channel is
-    /// which. What a probe finds them by is not said here, because an automation id nobody hears is
-    /// not a word and does not change with the language — that is set once, when the window opens.
+    /// which. No channel number is among the words — a strip is named by what it hears — and what
+    /// a probe finds them by is not said here either, because an automation id nobody hears is not
+    /// a word and does not change with the language: that is set once, when the window opens.
     /// </remarks>
     private void NameTheChannels()
     {
-        TheOthers.Describe(
-            In(UiTexts.Channel0), In(UiTexts.TheOthersRole), In(UiTexts.WhatToRecordFromThisMachine));
+        TheOthers.Describe(In(UiTexts.TheOthersRole), In(UiTexts.WhatToRecordFromThisMachine));
 
-        Mine.Describe(In(UiTexts.Channel1), In(UiTexts.MyRole), In(UiTexts.Microphone));
+        Mine.Describe(In(UiTexts.MyRole), In(UiTexts.Microphone));
     }
 
     /// <summary>
@@ -980,26 +1035,23 @@ public sealed partial class MainWindow : Window
             .RaiseAutomationEvent(AutomationEvents.LiveRegionChanged);
     }
 
-    /// <summary>What the screen says about itself, which is one line and always the same one.</summary>
+    /// <summary>What the screen says about itself, which is one line and almost always none.</summary>
     /// <exception cref="InvalidOperationException">
     /// The screen is in a state this window has no line for.
     /// </exception>
     /// <remarks>
-    /// The last arm stops rather than leaving the previous line standing, which is
-    /// <see cref="RecorderStates.Reaches"/> on a state it does not have and
-    /// <c>Configuracion.SayWhereTheCorpusIs</c> on a refusal it has no words for: the three tables
-    /// this application draws a screen from agree that an unknown key stops. Of the three this is
-    /// the one whose silence would be hardest to see — a status line that keeps saying what it
-    /// last said looks like a screen with nothing wrong in it, and somebody reads "recording" off
-    /// a window that is doing something else. A state added to <see cref="RecorderState"/> and not
-    /// given a line here is a fault of the code, which nothing a person does can reach.
+    /// The status line keeps one sentence: the refusal of a recording with nowhere to put it. The
+    /// other five states say nothing here, and that is a decision and not a gap — the stopwatch, the
+    /// strip, the saving card and the presses already say each of them, and a sentence repeating
+    /// them is one more line to read about something that is on screen twice.
     /// <para>
-    /// It carries no test of the kind <c>CorpusTextTests</c> is for the corpus table, and the
-    /// difference is where the two would first be met. A corpus refusal fires only for somebody
-    /// whose folder is in that particular state, which a developer may never be in, so the throw
-    /// there could reach a person before anybody saw it. This runs on every refresh in every state
-    /// the screen passes through, and a state with no line here stops the window from opening on
-    /// the first run after it was added.
+    /// There is still one arm per state, and the last arm stops rather than leaving the previous
+    /// line standing, which is <see cref="RecorderStates.Reaches"/> on a state it does not have and
+    /// <c>Configuracion.SayWhereTheCorpusIs</c> on a refusal it has no words for: the tables this
+    /// application draws a screen from agree that an unknown key stops. A state added to
+    /// <see cref="RecorderState"/> and not given an arm here is a fault of the code, which nothing
+    /// a person does can reach, and it stops the window from opening on the first run after it was
+    /// added.
     /// </para>
     /// </remarks>
     private void Announce(RecorderState state)
@@ -1010,19 +1062,19 @@ public sealed partial class MainWindow : Window
                 Status(UiTexts.ChangeWhereTheCorpusIsFromSettings);
                 break;
             case RecorderState.Choosing:
-                Status(UiTexts.ReadyToRecord);
+                Hush();
                 break;
             case RecorderState.Recording:
-                Status(UiTexts.RecordingMeeting, TheMeetingBeingRecorded().MeetingId);
+                Hush();
                 break;
             case RecorderState.Paused:
-                Status(UiTexts.PausedAndTheClockKeepsRunning);
+                Hush();
                 break;
             case RecorderState.Starting:
-                Status(UiTexts.OpeningTheDevices);
+                Hush();
                 break;
             case RecorderState.Finishing:
-                Status(UiTexts.MakingTheMeeting);
+                Hush();
                 break;
             default:
                 throw new InvalidOperationException(
@@ -1210,12 +1262,16 @@ public sealed partial class MainWindow : Window
     private void FillThePickers()
     {
         NameTheChannels();
+        FillTheMicrophones();
+        FillTheSources();
+        FillTheSpoken();
+    }
 
+    private void FillTheMicrophones() =>
         // A device's name is what its maker called it, so it is data and has no language. The row
         // is not only the name, though, and what this application adds around it is words: which
         // entry an endpoint gets is DeviceLines', and the entry carries the name inside it, so
-        // neither the word nor the bracket is picked on this line. The source picker beside it
-        // still is — AudioProcess.ToString says why, and it is not settled here.
+        // neither the word nor the bracket is picked on this line.
         //
         // Each strip is told what it offers and what is chosen in one call, and the strip's own
         // flag is the whole of what keeps that from being read as somebody choosing — the window's
@@ -1227,14 +1283,18 @@ public sealed partial class MainWindow : Window
                 : Array.FindIndex(_microphones, device =>
                     device.Id.Equals(_chosen.Microphone.Id, StringComparison.OrdinalIgnoreCase)));
 
-        // Channel 0's picker offers one of two lists. The programs it may be moved onto while
-        // *Cambiar* has it open, with nothing chosen: the one it follows is not among them, so
-        // there is nothing to show as selected. Otherwise the sources the next meeting may record.
-        // Either way a language change offers the same list again.
+    /// <summary>
+    /// Channel 0's picker, which offers one of two lists. The programs it may be moved onto while
+    /// *Cambiar* has it open, with nothing chosen: the one it follows is not among them, so there
+    /// is nothing to show as selected. Otherwise the sources the next meeting may record. Either
+    /// way a language change offers the same list again.
+    /// </summary>
+    private void FillTheSources()
+    {
         if (_choosingAnotherProgram)
         {
             TheOthers.Offer(
-                [.. _programsToMoveTo.Select(program => NameOf(RecorderSource.Following(program)))],
+                [.. _programsToMoveTo.Select(program => Named(program.Process, program.Title))],
                 -1);
         }
         else
@@ -1243,7 +1303,10 @@ public sealed partial class MainWindow : Window
                 [.. _sources.Select(NameOf)],
                 _chosen.Source is null ? -1 : Array.IndexOf(_sources, _chosen.Source));
         }
+    }
 
+    private void FillTheSpoken()
+    {
         _filling = true;
         try
         {
@@ -1259,21 +1322,49 @@ public sealed partial class MainWindow : Window
     }
 
     /// <summary>
-    /// What is running now, with the whole machine first. First because it is the answer that is
-    /// always available and always right about what it records, where following a program is the
-    /// one that can turn out to have been the wrong process.
+    /// What the machine offers to follow, one entry per application the way a recorder lists
+    /// windows, with the whole machine first. First because it is the answer that is always
+    /// available and always right about what it records, where following a program is the one that
+    /// can turn out to have been the wrong process.
     /// </summary>
-    private RecorderSource[] SourcesNow() =>
-    [
-        RecorderSource.TheWholeMachine,
-        .. RecorderScreen.ProgramsChannelZeroMayMoveTo(
-                Ask(AudioProcesses.Running, UiTexts.WindowsDidNotSayWhatIsPlaying) ?? [],
-                followingNow: null)
-            .Select(RecorderSource.Following),
-    ];
+    /// <remarks>
+    /// A browser of twenty processes is one entry and a program that only plays is offered under
+    /// its own name; <see cref="AudioPrograms"/> decides that and <see cref="RecorderScreen"/> the
+    /// order, so the list and the one <em>Cambiar</em> offers cannot disagree. What is followed is
+    /// the application's root process, so what a choice is compared on is still the process and
+    /// never the title.
+    /// </remarks>
+    private void ReadThePrograms()
+    {
+        // A machine that would not say leaves the list where it was: an empty offer written from a
+        // refusal would drop the program somebody chose, which reads as the program having gone.
+        if (Ask(AudioPrograms.Offered, UiTexts.WindowsDidNotSayWhatIsPlaying) is not { } offered)
+        {
+            return;
+        }
 
-    private string NameOf(RecorderSource source) =>
-        source.IsTheWholeMachine ? In(UiTexts.EverythingThisMachinePlays) : source.Follow!.ToString();
+        _offered = [.. RecorderScreen.ProgramsOnOffer(offered, followingNow: null)];
+
+        _sources =
+        [
+            RecorderSource.TheWholeMachine,
+            .. _offered.Select(program => RecorderSource.Following(program.Process)),
+        ];
+    }
+
+    /// <summary>
+    /// What a source is called in channel 0's picker: the whole machine in words, and a program by
+    /// its name and the title of its first window.
+    /// </summary>
+    private string NameOf(RecorderSource source) => source.IsTheWholeMachine
+        ? In(UiTexts.EverythingThisMachinePlays)
+        : Named(
+            source.Follow!,
+            _offered.FirstOrDefault(program => program.Process.Id == source.Follow!.Id)?.Title ?? string.Empty);
+
+    /// <summary>A program as a person reads it: its name, and what its window says where it has one.</summary>
+    private static string Named(AudioProcess program, string title) =>
+        title.Length == 0 ? program.Name : ScreenNumbers.Beside(program.Name, title);
 
     /// <summary>
     /// Asks the machine what it has, and answers nothing rather than failing to open when it will
@@ -1342,7 +1433,7 @@ public sealed partial class MainWindow : Window
         {
             if (chosen >= 0 && chosen < _programsToMoveTo.Length)
             {
-                MoveChannelZeroTo(_programsToMoveTo[chosen]);
+                MoveChannelZeroTo(_programsToMoveTo[chosen].Process);
             }
 
             return;
@@ -1369,27 +1460,67 @@ public sealed partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Everything this machine offers, asked again. A choice it no longer offers is dropped rather
-    /// than carried into a recording that would open a device that has gone or follow a process id
-    /// nothing owns.
+    /// Somebody opened channel 0's list, so the programs are read again before they choose from it.
+    /// A choice the machine no longer offers is dropped rather than carried into a recording that
+    /// would follow a process id nothing owns.
     /// </summary>
     /// <remarks>
-    /// Both pickers and not only the programs, which is what it used to be. The microphones keep up
-    /// on their own now, and a press that refreshed one of the two would be a control that looks
-    /// broken beside the one it does not touch — but the reason it asks about them is the session
-    /// where Windows refused to say when devices change at all. There the machine answers perfectly
-    /// well and nothing ever asks it again, and one press turns that from a dead session into a
-    /// degraded one. Programs have no notification of their own: nothing tells an application that
-    /// a meeting was just started in a browser tab.
+    /// This is what stands where a press that refreshed the list used to. Programs have no
+    /// notification of their own — nothing tells an application that a meeting was just started in a
+    /// browser tab — so the answer is taken when somebody is about to need it, under the same
+    /// conditions the press had: while the screen is choosing, and while <em>Cambiar</em> has the
+    /// list open offering programs to move to. Only this list is filled again, so the one being
+    /// opened is not the one that loses its place.
     /// </remarks>
-    private void OnRefreshTheMachine(object sender, RoutedEventArgs e)
+    private void OnSourcesOpened(object? sender, EventArgs e)
     {
+        var screen = Screen();
+
+        if (screen.State == RecorderState.Choosing)
+        {
+            ReadThePrograms();
+
+            var chosen = _chosen.AsTheSourcesAreNow(_sources);
+            var dropped = chosen != _chosen;
+            _chosen = chosen;
+
+            FillTheSources();
+
+            if (dropped)
+            {
+                Refresh();
+            }
+
+            return;
+        }
+
+        if (_choosingAnotherProgram
+            && _recording is { } recording
+            && Ask(AudioPrograms.Offered, UiTexts.WindowsDidNotSayWhatIsPlaying) is { } offered)
+        {
+            _programsToMoveTo = [.. RecorderScreen.ProgramsOnOffer(offered, recording.FollowingNow)];
+            FillTheSources();
+        }
+    }
+
+    /// <summary>
+    /// Somebody opened the microphone list, so the microphones are read again before they choose
+    /// from it. Only while the screen is choosing, which is when the press that did this was alive.
+    /// </summary>
+    /// <remarks>
+    /// The list keeps up with Windows on its own and this is for the session where Windows refused
+    /// to say when devices change at all: the machine answers perfectly well there and nothing ever
+    /// asks it again, so opening the list is what turns a dead session into a degraded one.
+    /// </remarks>
+    private void OnMicrophonesOpened(object? sender, EventArgs e)
+    {
+        if (Screen().State != RecorderState.Choosing)
+        {
+            return;
+        }
+
         LookAtTheMicrophonesAgain();
-
-        _sources = SourcesNow();
-        _chosen = _chosen.AsTheSourcesAreNow(_sources);
-
-        FillThePickers();
+        FillTheMicrophones();
         Refresh();
     }
 
@@ -1426,10 +1557,6 @@ public sealed partial class MainWindow : Window
     /// which is the coupling that file's scoping exists to prevent. Nothing is lost by waiting:
     /// what the next meeting records is chosen when this screen is choosing, and stopping asks
     /// again.
-    /// <para>
-    /// What the machine plays through is this screen's own question and nobody else's, so it is
-    /// asked whenever there is a meeting for the answer to be a warning about.
-    /// </para>
     /// </remarks>
     private void LookAtTheDevicesAgain()
     {
@@ -1445,13 +1572,6 @@ public sealed partial class MainWindow : Window
             LookAtTheMicrophonesAgain();
             FillThePickers();
             Refresh();
-            return;
-        }
-
-        if (_recording is not null)
-        {
-            ReadWhatTheMachinePlaysThrough();
-            ShowTheMeters(Screen());
         }
     }
 
@@ -1524,33 +1644,43 @@ public sealed partial class MainWindow : Window
     /// </remarks>
     private void ShowWhatTheRoomIsShowing(RecorderScreen screen)
     {
-        // Seven now, and the order is what says which wins. The settings are first because they
-        // are reached from the window itself and not from a meeting: the gear is pressable
-        // whatever the room below is showing, so a screen underneath goes on holding whatever it
-        // was holding and gets it back when this closes. Then filing, which is reached from the
-        // meeting — so the meeting screen is still holding one, with its recording paused, for the
-        // whole of it, and asking it whether it has the window would put two screens in one room.
-        // Naming the voices is reached from the meeting too, on exactly the same terms as filing,
-        // and wins over it because the two are never both open at once — nothing on either screen
-        // opens the other. Correcting words is reached from the meeting on the same terms again,
-        // and is never open beside either. A node's story is reached from the meeting as well, so
-        // the meeting screen goes on holding one underneath it for the whole of it too.
-        var settings = Settings.IsOpen;
-        var classifying = !settings && Classifying.IsOpen;
-        var voices = !settings && !classifying && Voices.IsOpen;
-        var corrections = !settings && !classifying && !voices && Corrections.IsOpen;
-        var story = !settings && !classifying && !voices && !corrections && NodeStory.IsShowingANode;
-        var reading = !settings && !classifying && !voices && !corrections && !story && Reading.IsShowingAMeeting;
+        var room = TheSubScreenWithTheRoom();
 
-        Settings.Visibility = settings ? Visibility.Visible : Visibility.Collapsed;
-        Classifying.Visibility = classifying ? Visibility.Visible : Visibility.Collapsed;
-        Voices.Visibility = voices ? Visibility.Visible : Visibility.Collapsed;
-        Corrections.Visibility = corrections ? Visibility.Visible : Visibility.Collapsed;
-        NodeStory.Visibility = story ? Visibility.Visible : Visibility.Collapsed;
-        Reading.Visibility = reading ? Visibility.Visible : Visibility.Collapsed;
-        Meetings.Visibility = settings || classifying || voices || corrections || story || reading
-            ? Visibility.Collapsed
-            : Visibility.Visible;
+        // A sub-screen takes the room at once and nothing travels for it: the recorder card goes,
+        // the strip stays when a meeting is under way, a report that holds a failure stays too —
+        // a stop that failed under the settings is not something to find on the way back — and the screen fills everything
+        // between the bar and the foot, arriving by a fade. Only the raised list travels, and
+        // coming back from a sub-screen is not the list.
+        foreach (var candidate in new FrameworkElement[] { Settings, Classifying, Voices, Corrections, NodeStory, Reading })
+        {
+            var has = ReferenceEquals(candidate, room);
+
+            if (has != ScreenMotion.IsShowing(candidate))
+            {
+                if (has)
+                {
+                    ScreenMotion.Fade(candidate, arriving: true);
+                }
+                else
+                {
+                    ScreenMotion.Put(candidate, showing: false);
+                }
+            }
+
+        }
+
+        PlaceTheSubScreens(screen);
+
+        Meetings.Visibility = room is null ? Visibility.Visible : Visibility.Collapsed;
+
+        // The way back, and the way to the settings. The bar's back button is for a sub-screen and
+        // never for the raised list; it is drawn dead while the screen it would leave refuses to be
+        // left. The settings press is not on screen while a sub-screen has the room, because the
+        // way out of one is the bar's.
+        BackButton.Visibility = room is null ? Visibility.Collapsed : Visibility.Visible;
+        BackButton.IsEnabled = !ReferenceEquals(room, Corrections) || Corrections.MayGoBack;
+        SettingsButton.Visibility = room is null ? Visibility.Visible : Visibility.Collapsed;
+        ShowTheReport();
 
         // Where each is heading and not where it is: something on its way out is still visible for
         // the whole of the move, so reading its visibility here would drop the press that reversed
@@ -1561,16 +1691,139 @@ public sealed partial class MainWindow : Window
         // LiveRegionTests holds that by reading these calls — so the name of each half has to be
         // at the call rather than inside a local function, where the only name the source carries
         // is the parameter's. That is the same trade `Tell` already makes for the same check.
+        var travels = room is null && !_aSubScreenHadTheRoom;
+
         if (screen.TheRecorderIsOnScreen != ScreenMotion.IsShowing(RecordingCard))
         {
-            ScreenMotion.ArriveOrLeave(RecordingCard, screen.TheRecorderIsOnScreen, Move.Travelling);
+            if (travels)
+            {
+                ScreenMotion.ArriveOrLeave(RecordingCard, screen.TheRecorderIsOnScreen, Move.Travelling);
+            }
+            else
+            {
+                ScreenMotion.Put(RecordingCard, screen.TheRecorderIsOnScreen);
+            }
         }
 
         if (screen.TheStripIsOnScreen != ScreenMotion.IsShowing(TheStrip))
         {
-            ScreenMotion.ArriveOrLeave(TheStrip, screen.TheStripIsOnScreen, Move.Travelling);
+            if (travels)
+            {
+                ScreenMotion.ArriveOrLeave(TheStrip, screen.TheStripIsOnScreen, Move.Travelling);
+            }
+            else
+            {
+                ScreenMotion.Put(TheStrip, screen.TheStripIsOnScreen);
+            }
+        }
+
+        _aSubScreenHadTheRoom = room is not null;
+    }
+
+    /// <summary>
+    /// The report under the card, which is on screen only while it holds a line and only while the
+    /// card it is under is: it says what failed, and a sub-screen that has taken the room has taken
+    /// the report's.
+    /// </summary>
+    private void ShowTheReport()
+    {
+        TheReport.Visibility = _report.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+
+        // What a sub-screen stands under depends on whether the report is on screen, so it is
+        // placed again when the report appears or goes.
+        PlaceTheSubScreens(Screen());
+    }
+
+    /// <summary>
+    /// Where the sub-screens stand: with nothing on the row above them — no strip, because no
+    /// meeting is under way, and no report, because nothing failed — they fill the rows the card
+    /// gave up and reach the bar. A grid spaces its rows even when they are empty, and three rows of
+    /// spacing between the bar and a screen was what stopped the settings reaching the top.
+    /// </summary>
+    private void PlaceTheSubScreens(RecorderScreen screen)
+    {
+        var rowAbove = screen.TheStripIsOnScreen || _report.Count > 0;
+
+        foreach (var candidate in new FrameworkElement[] { Settings, Classifying, Voices, Corrections, NodeStory, Reading })
+        {
+            Grid.SetRow(candidate, rowAbove ? 3 : 1);
+            Grid.SetRowSpan(candidate, rowAbove ? 1 : 3);
         }
     }
+
+    /// <summary>
+    /// The app bar's way back, which leaves whichever sub-screen has the room, and does nothing when
+    /// none does.
+    /// </summary>
+    private void OnBack(object sender, RoutedEventArgs e) => GoBack();
+
+    /// <summary>The same door for the keyboard: Alt+Left goes back the way the button does.</summary>
+    private void OnBackAccelerated(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
+    {
+        // Handled only when there is something to go back from: Alt+Left on the main screen or
+        // the raised list is nobody's business here, and a focused control may want it.
+        if (TheSubScreenWithTheRoom() is null)
+        {
+            return;
+        }
+
+        args.Handled = true;
+        GoBack();
+    }
+
+    /// <summary>
+    /// Leaves the sub-screen that has the room, by asking that screen to go back — which is the one
+    /// call each of the six answers, and where a screen that refuses to be left says so. The refusal
+    /// is not repeated here: the corrections screen declines mid-save in its own call, so the button
+    /// and the keyboard cannot disagree about it.
+    /// </summary>
+    /// <remarks>
+    /// Nothing happens while a dialogue is open over the window, in case the accelerator reaches the
+    /// root under a modal one: leaving a screen from under a question it has asked is one more way
+    /// to answer it without having read it.
+    /// </remarks>
+    private void GoBack()
+    {
+        if (Content.XamlRoot is { } root
+            && VisualTreeHelper.GetOpenPopupsForXamlRoot(root).Any(popup => popup.Child is ContentDialog))
+        {
+            return;
+        }
+
+        var room = TheSubScreenWithTheRoom();
+
+        if (ReferenceEquals(room, Settings))
+        {
+            Settings.GoBack();
+        }
+        else if (ReferenceEquals(room, Classifying))
+        {
+            Classifying.GoBack();
+        }
+        else if (ReferenceEquals(room, Voices))
+        {
+            Voices.GoBack();
+        }
+        else if (ReferenceEquals(room, Corrections))
+        {
+            Corrections.GoBack();
+        }
+        else if (ReferenceEquals(room, NodeStory))
+        {
+            NodeStory.GoBack();
+        }
+        else if (ReferenceEquals(room, Reading))
+        {
+            Reading.GoBack();
+        }
+    }
+
+    /// <summary>
+    /// The corrections screen can or cannot be left now, so the bar's button is drawn alive or dead
+    /// without waiting for the next refresh.
+    /// </summary>
+    private void OnMayGoBackChanged(object? sender, EventArgs e) =>
+        BackButton.IsEnabled = !ReferenceEquals(TheSubScreenWithTheRoom(), Corrections) || Corrections.MayGoBack;
 
     /// <summary>
     /// Somebody opened one of the meetings on the list.
@@ -1792,12 +2045,20 @@ public sealed partial class MainWindow : Window
         // else — a machine that would not say answers with the whole machine and nothing more,
         // which reads as the program having gone, and that is the answer to give when this is what
         // stands between somebody and a recording of the wrong process.
+        //
+        // Against what is running and not against what is on offer. The offer is one entry per
+        // application with a window or a session, and a program whose window was closed is still
+        // running and still what was chosen: dropping it for having left the list would refuse a
+        // recording of a program that is right there.
         if (_chosen.Source is { IsTheWholeMachine: false })
         {
-            _sources = SourcesNow();
+            var running = Ask(AudioProcesses.Running, UiTexts.WindowsDidNotSayWhatIsPlaying) ?? [];
 
-            if (_chosen.AsTheSourcesAreNow(_sources) is var still && still != _chosen)
+            if (_chosen.AsTheSourcesAreNow(
+                    [RecorderSource.TheWholeMachine, .. running.Select(RecorderSource.Following)])
+                is var still && still != _chosen)
             {
+                ReadThePrograms();
                 _chosen = still;
                 FillThePickers();
                 Say(UiTexts.ThatProgramIsNoLongerRunning);
@@ -1820,11 +2081,7 @@ public sealed partial class MainWindow : Window
         // the previous meeting's devices and levels under the new one for as long as the first tick
         // takes to arrive.
         _channels = [];
-
-        // The same fact about what this machine plays through. It holds an answer across a machine
-        // that hiccuped inside a meeting, and has no business carrying one between two — the
-        // method says why.
-        _playback.ForgetTheLastMeeting();
+        _words.Forget();
 
         // And the one thing on this screen that outlives a tick. A meter's retained peak does not
         // decay — that is what makes it a memory rather than a reading — so the mark left standing
@@ -1874,12 +2131,11 @@ public sealed partial class MainWindow : Window
             _context = started.Context;
             _recording = started.Recording;
             _watch.Start();
+            _meters.Start();
 
-            // Once here, so the meters and the line about the room are up with the meeting rather
-            // than a second into it. The meters are the tick's from here on; what the machine plays
-            // through is nobody's until Windows says it moved.
+            // Once here, so the meters are up with the meeting rather than a tick into it. They are
+            // the meters' timer's from here on.
             ReadTheDevices();
-            ReadWhatTheMachinePlaysThrough();
         }
         catch (Exception refused) when (ScreenFailures.Reportable(refused))
         {
@@ -1927,6 +2183,7 @@ public sealed partial class MainWindow : Window
         }
 
         _watch.Stop();
+        _meters.Stop();
         _step = RecorderStep.Finishing;
 
         // The meeting is in the corpus from the moment record was pressed, so the list below can
@@ -1952,35 +2209,21 @@ public sealed partial class MainWindow : Window
             // them nothing states.
             var told = new Watching(_drawnOn, ShowTheSave);
 
-            var finished = await Task.Run(() =>
+            // Nothing is said when it worked: the meeting is in the list below and that is the
+            // answer. What a stop queued is on that row as its status, read out of the corpus, and
+            // a sentence here about it would be a second account of the same fact that could
+            // disagree with the first. The report says what failed, and only that.
+            await Task.Run(() =>
             {
                 try
                 {
-                    return recording.Stop(Now(), told);
+                    recording.Stop(Now(), told);
                 }
                 finally
                 {
                     context.Dispose();
                 }
             });
-
-            Say(
-                UiTexts.TheMeetingIsRecorded,
-                finished.MeetingId,
-                ScreenNumbers.Long(finished.Length),
-                finished.Audio.RelativePath);
-
-            // Said out loud, every time, and read off what stopping really wrote rather than off
-            // what the settings said it should. The two come apart on the recovery path, where a
-            // meeting that already carries the job is finished again and queues nothing — and a
-            // window that announced a charge it did not make is the one sentence a person has about
-            // their own money at the moment it is spent.
-            //
-            // Two arms and not a table over `JobKind`, because `WhatStoppingStarts` answers at most
-            // transcription and says why: everything else is a stage a meeting that has just
-            // stopped cannot be at. The day that changes, `WhatStoppingStartsTests` goes red before
-            // this line does, which is where somebody finds out.
-            Say(finished.Queued.Count == 0 ? UiTexts.NothingWasQueued : UiTexts.TranscribingWasQueued);
         }
         catch (Exception broke) when (ScreenFailures.Reportable(broke))
         {
@@ -2019,7 +2262,7 @@ public sealed partial class MainWindow : Window
             // exactly that reason. The microphone is a device and stays chosen.
             _chosen = _chosen with { Source = null, Spoken = null };
             _choosingAnotherProgram = false;
-            _sources = SourcesNow();
+            ReadThePrograms();
 
             if (!_closed)
             {
@@ -2070,11 +2313,6 @@ public sealed partial class MainWindow : Window
             // Off this thread like the other two: it opens one device, stops another and lets a
             // third go. Unlike the other two, the meeting is being recorded the whole time.
             await Task.Run(recording.RecordTheWholeMachine);
-
-            if (!_closed)
-            {
-                Say(UiTexts.NowRecordingTheWholeMachine);
-            }
         }
         catch (Exception refused) when (ScreenFailures.Reportable(refused))
         {
@@ -2107,9 +2345,9 @@ public sealed partial class MainWindow : Window
     /// <remarks>
     /// Nothing moves here; the move is a pick in the picker, which is what lets the meter be in
     /// view for the choice. Nothing says "no other program is playing" either, because
-    /// <see cref="AudioProcesses.Running"/> is every process the session can see and not what is
-    /// playing, so it is never empty on a running Windows. A refusal to say is <c>null</c>, which
-    /// <see cref="Ask"/> has already reported and which is never read as an empty list.
+    /// <see cref="AudioPrograms.Offered"/> always holds this machine's own applications, so it is
+    /// never empty on a running Windows. A refusal to say is <c>null</c>, which <see cref="Ask"/>
+    /// has already reported and which is never read as an empty list.
     /// </remarks>
     private void OnChooseAnotherProgram(object sender, RoutedEventArgs e)
     {
@@ -2118,12 +2356,12 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        if (Ask(AudioProcesses.Running, UiTexts.WindowsDidNotSayWhatIsPlaying) is not { } running)
+        if (Ask(AudioPrograms.Offered, UiTexts.WindowsDidNotSayWhatIsPlaying) is not { } offered)
         {
             return;
         }
 
-        _programsToMoveTo = [.. RecorderScreen.ProgramsChannelZeroMayMoveTo(running, recording.FollowingNow)];
+        _programsToMoveTo = [.. RecorderScreen.ProgramsOnOffer(offered, recording.FollowingNow)];
         _choosingAnotherProgram = true;
         FillThePickers();
         Refresh();
@@ -2172,7 +2410,7 @@ public sealed partial class MainWindow : Window
             {
                 // The program stopped between the list and the pick.
                 _choosingAnotherProgram = false;
-                Say(UiTexts.ThatProgramStoppedBeforeChannel0Moved, program.Name);
+                Say(UiTexts.ThatProgramStoppedBeforeTheOthersMoved, program.Name);
                 return;
             }
 
@@ -2184,11 +2422,6 @@ public sealed partial class MainWindow : Window
 
             _nothingCame = false;
             _wentAway = false;
-
-            if (!_closed)
-            {
-                Say(UiTexts.NowFollowingAnotherProgram, program.Name);
-            }
         }
         catch (Exception refused) when (ScreenFailures.Reportable(refused))
         {
@@ -2285,8 +2518,8 @@ public sealed partial class MainWindow : Window
     }
 
     /// <summary>
-    /// The second. It reads what each channel is hearing onto the screen, and asks the recording
-    /// whether the program channel 0 is following has ended or has brought back nothing at all.
+    /// The second. It asks the recording whether the program channel 0 is following has ended or
+    /// has brought back nothing at all, and moves the clock and the strip on.
     /// </summary>
     /// <remarks>
     /// The silence report is never asked for while the meeting is paused. A paused recording hears
@@ -2294,8 +2527,9 @@ public sealed partial class MainWindow : Window
     /// perfectly well — and an offer, once made, stays made until channel 0 moves. The program
     /// having gone is asked throughout, paused or not: a process ending is not a level, and it is
     /// said at once and offered on resume. Neither is asked while a move is in flight, which is
-    /// about to count the silence, and take the watch, again. The meters are read either way: what a paused
-    /// meeting is recording is silence, and showing that is how somebody sees the pause took.
+    /// about to count the silence, and take the watch, again. The meters are not this timer's:
+    /// they are read either way, paused included, because what a paused meeting is recording is
+    /// silence and showing that is how somebody sees the pause took.
     /// </remarks>
     private void OnWatch(object? sender, object e)
     {
@@ -2304,11 +2538,9 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        ReadTheDevices();
-
-        // The whole screen only when the offer has just appeared, and the clock, the strip and the
-        // meters otherwise — the three things a second changes, and the strip because the length
-        // on it is the same clock. What the rest of it says does not change with a second passing
+        // The whole screen only when the offer has just appeared, and the clock and the strip
+        // otherwise — the two things a second changes, and the strip because the length on it is
+        // the same clock. What the rest of it says does not change with a second passing
         // — the buttons, the pickers and the status line all answer to a press — so redrawing them
         // once a second would be a second's worth of work to say what it already said, and it
         // would take a selection out of the report every time it ran.
@@ -2336,7 +2568,27 @@ public sealed partial class MainWindow : Window
 
         ShowTheClock(clock);
         ShowTheStrip(screen, clock);
-        ShowTheMeters(screen);
+    }
+
+    /// <summary>
+    /// The meters' tick: read what each channel is hearing and draw it. The bar takes every
+    /// reading, so it rises when somebody speaks and falls on its own afterwards; the words under
+    /// it are written from the loudest of a quarter of a second, because a reading empties the level
+    /// and the pause between two words would otherwise read as nobody speaking.
+    /// </summary>
+    /// <remarks>
+    /// Guarded the way the second's tick is, and for the same reason: a press that is still opening
+    /// or closing a device owns the recording until it comes back.
+    /// </remarks>
+    private void OnMeters(object? sender, object e)
+    {
+        if (_recording is null || _step != RecorderStep.Nothing)
+        {
+            return;
+        }
+
+        ReadTheDevices();
+        ShowTheMeters(Screen());
     }
 
     /// <summary>
@@ -2357,6 +2609,7 @@ public sealed partial class MainWindow : Window
     {
         _closed = true;
         _watch.Stop();
+        _meters.Stop();
 
         // The list below has a press of its own that outlives the handler that started it —
         // keeping a recording is the same minutes of work stopping is — and it is told for the
@@ -2433,10 +2686,18 @@ public sealed partial class MainWindow : Window
         Render();
     }
 
+    /// <summary>The status line saying nothing, which is what a state the screen already shows says.</summary>
+    private void Hush()
+    {
+        _status.Nothing();
+        Render();
+    }
+
     private void Render()
     {
         OutputText.Text = string.Join(Environment.NewLine, _report.Select(line => line.In(_language)));
         StatusText.Text = _status.In(_language);
+        ShowTheReport();
     }
 
     /// <summary>

@@ -30,19 +30,6 @@ public sealed record AudioDevice(string Id, string Name, bool IsDefault)
     public EndpointKind Kind { get; init; } = EndpointKind.Unsaid;
 
     /// <summary>
-    /// Whether what is played through this endpoint comes out into the room, where the microphone
-    /// recording the meeting hears it a second time.
-    /// </summary>
-    /// <remarks>
-    /// Speakers and nothing else, including the endpoint that did not say. What this feeds is a
-    /// warning that costs nothing to be sure of, and its whole worth is that it is never wrong:
-    /// told once that the room can hear them while they are wearing headphones, nobody reads the
-    /// line again. Measuring how much of channel 0 really comes back in on channel 1 is the audio
-    /// engine's, and it is not this.
-    /// </remarks>
-    public bool PlaysIntoTheRoom => Kind is EndpointKind.Speakers;
-
-    /// <summary>
     /// How a report or a log names it: the maker's name, and whether Windows reaches for this one
     /// when nothing was asked for.
     /// </summary>

@@ -33,7 +33,10 @@
              that these stopped being the platform's brushes standing in for a palette nothing had
              reached yet — and OlivoTests now fails the build over a value typed in here. -->
         <Grid.Resources>
-            <Style x:Key="MeetingCard" TargetType="Border" BasedOn="{StaticResource Card}" />
+            <!-- A row of the list is one line, so it takes the row's own padding and not the card's. -->
+            <Style x:Key="MeetingCard" TargetType="Border" BasedOn="{StaticResource Card}">
+                <Setter Property="Padding" Value="{StaticResource RowPadding}" />
+            </Style>
 
             <Style x:Key="MeetingName" TargetType="TextBlock" BasedOn="{StaticResource BodyText}">
                 <Setter Property="FontWeight" Value="SemiBold" />
@@ -176,7 +179,6 @@
              list is docked under the recording card or has the whole window. -->
         <Grid Grid.Row="0" ColumnSpacing="8">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
@@ -187,52 +189,23 @@
                 Text="{x:Bind In(loc:UiTexts.Meetings)}"
                 Style="{StaticResource SectionText}" />
 
-            <!-- What the list is waiting on. The artboard puts a bare count here and the
-                 catalogue puts a sentence with a number in it, and the rank follows what the text
-                 actually is: `docs/design.md` §Type says text never goes in mono and a number that
-                 is part of a sentence is text. Whether this should be the artboard's bare count
-                 instead is a question about the words, which is #182's and #199's. -->
-            <TextBlock
-                x:Name="CountText"
-                Grid.Column="1"
-                VerticalAlignment="Center"
-                Style="{StaticResource BodyText}"
-                Foreground="{ThemeResource SecondaryTextBrush}" />
-
             <!-- Its words are set in the code-behind and not bound here, because they are the one
                  thing on this screen that says which of the two positions the drawer is in. -->
             <Button
                 x:Name="OpennessButton"
-                Grid.Column="2"
+                Grid.Column="1"
                 Style="{StaticResource NormalButtonOnPaper}"
                 Click="OnToggleOpenness" />
         </Grid>
 
         <ScrollViewer Grid.Row="1">
-            <StackPanel x:Name="Cards" Spacing="12" />
+            <StackPanel x:Name="Cards" Spacing="6" />
         </ScrollViewer>
 
         <StackPanel Grid.Row="2" Spacing="4" HorizontalAlignment="Left">
-            <!-- Said rather than left to be noticed. The rendered files are the one thing here
-                 that will never be a press, so their not being a button is the screen's to explain
-                 instead of looking like a control somebody lost. What it does not say is when they
-                 appear: today they are produced by `rebuild` and `render` at the command line and
-                 never by this application, so a caption about that would be a promise this screen
-                 cannot keep.
-
-                 There is no second caption here saying nothing is deleted until somebody chooses
-                 it, and that is where somebody would put one. `docs/design.md` settled it on
-                 2026-08-26, twenty minutes after the card that asked for it: nothing is deleted
-                 until somebody chooses it, and saying so is the application reassuring the reader
-                 about a thing it was never going to do. What says it instead is the row — a
-                 recording sits there over as many starts as it takes, and *Descartar* is the only
-                 thing that removes it. -->
-            <TextBlock
-                Text="{x:Bind In(loc:UiTexts.TheRenderedFilesAreNeverAskedAbout)}"
-                Style="{StaticResource BodyText}"
-                Foreground="{ThemeResource SecondaryTextBrush}"
-                TextWrapping="Wrap"
-                MaxWidth="640" />
+            <!-- The rendered files are never a press, and the screen no longer says so: a sentence
+                 explaining what is not on a screen is the application talking about itself, and
+                 their absence has never read as a button somebody lost. -->
             <TextBlock
                 x:Name="MeetingsStatusText"
                 Style="{StaticResource BodyText}"

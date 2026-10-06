@@ -265,6 +265,12 @@
     <Thickness x:Key="LargeCardPadding">20</Thickness>
     <Thickness x:Key="SmallCardPadding">16</Thickness>
 
+    <!-- A row of the meetings list, which is one line: the name, when it was, its status and its
+         presses. A row that is one line is a card with less in it, and the card's 16 all round
+         would make every meeting a block of its own; 13 across and 8 down is what lets a dozen of
+         them stand in the room one meeting used to. -->
+    <Thickness x:Key="RowPadding">13,8,13,8</Thickness>
+
     <!-- The one press that loses something sits to the left of the left one, past a gap, so it
          cannot be pressed by reflex. The gap is the whole difference between it and every other
          neutral button. -->
@@ -440,6 +446,24 @@
         <Setter Property="HorizontalAlignment" Value="Stretch" />
         <Setter Property="HorizontalContentAlignment" Value="Left" />
         <Setter Property="Template" Value="{StaticResource OlivoButtonTemplate}" />
+    </Style>
+
+    <!-- The way back, which is the app bar's and one for every sub-screen. A circle, because it is
+         genuinely round (`docs/design.md` §Radii): 34 high and 34 wide, so its radius is written
+         beside its height and is half of it, never a key. The margin rank — it answers nothing and
+         asks nothing, it leaves — with a 1px rule so it reads as a thing to press on a bar that
+         carries nothing else at its left. The arrow is the button's own content and takes its ink,
+         so a dead button dims the arrow with it. -->
+    <Style x:Key="BackButtonStyle" TargetType="Button" BasedOn="{StaticResource ButtonAtTheMargin}">
+        <Setter Property="Width" Value="34" />
+        <Setter Property="MinWidth" Value="34" />
+        <Setter Property="Height" Value="34" />
+        <Setter Property="MinHeight" Value="34" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="CornerRadius" Value="17" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="BorderBrush" Value="{ThemeResource LineBrush}" />
+        <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
 
     <!-- ── The two surfaces, and the two tints ──────────────────────────────────────────────────

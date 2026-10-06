@@ -57,18 +57,23 @@ public class SilentProgramScreenTests
 
     /// <summary>
     /// The source picker lists programs in the order the move list does, because it is one picker
-    /// and the two must agree: one place decides that order and this window asks it.
+    /// and the two must agree: one place decides that order and this window asks it, once for each
+    /// of the two lists.
     /// </summary>
     [Fact]
     public void The_source_picker_lists_programs_in_the_order_the_move_list_does()
     {
         var window = File.ReadAllText(AppSources.At(Window).FullName);
-        var start = window.IndexOf("private RecorderSource[] SourcesNow()", StringComparison.Ordinal);
-        start.ShouldBeGreaterThan(-1, "MainWindow no longer has SourcesNow.");
-        var body = window[start..window.IndexOf(';', start)];
+        var start = window.IndexOf("private void ReadThePrograms()", StringComparison.Ordinal);
+        start.ShouldBeGreaterThan(-1, "MainWindow no longer has ReadThePrograms.");
+        var body = window[start..window.IndexOf("private string NameOf(", start, StringComparison.Ordinal)];
 
-        body.ShouldContain("RecorderScreen.ProgramsChannelZeroMayMoveTo(");
-        body.ShouldNotContain("OrderBy(", customMessage: "SourcesNow orders the programs itself again.");
+        body.ShouldContain("RecorderScreen.ProgramsOnOffer(");
+        body.ShouldNotContain("OrderBy(", customMessage: "ReadThePrograms orders the programs itself again.");
+
+        window.ShouldContain(
+            "_programsToMoveTo = [.. RecorderScreen.ProgramsOnOffer(",
+            customMessage: "the move list is no longer ordered by the same rule as the picker.");
     }
 
     /// <summary>
@@ -80,6 +85,6 @@ public class SilentProgramScreenTests
     {
         var markup = File.ReadAllText(AppSources.At(Markup).FullName);
 
-        markup.ShouldContain("AutomationProperties.Name=\"{x:Bind In(loc:UiTexts.ChangeWhatChannel0Follows)}\"");
+        markup.ShouldContain("AutomationProperties.Name=\"{x:Bind In(loc:UiTexts.ChangeWhatTheOthersFollow)}\"");
     }
 }

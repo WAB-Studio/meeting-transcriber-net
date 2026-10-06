@@ -133,7 +133,9 @@ public partial class LiveRegionTests
     /// </para>
     /// <para>
     /// Read off the source like the rest of this class, and by name: what travels is whatever the
-    /// code-behind hands to <c>ArriveOrLeave</c>, so the element has to be named at that call and
+    /// code-behind hands to <c>ArriveOrLeave</c> — or puts away at once with <c>Put</c>, or fades
+    /// with <c>Fade</c>, which leave the automation tree just the same — so the element has to be
+    /// named at that call and
     /// not inside a local function that takes it — a helper leaves the source carrying a parameter
     /// name, which is what this check would then look for in the markup and never find. The first
     /// version of this check did exactly that and passed over a live region put back inside the
@@ -244,7 +246,7 @@ public partial class LiveRegionTests
     }
 
     /// <summary>An element this screen's code-behind moves on or off the screen, by name.</summary>
-    [GeneratedRegex(@"ArriveOrLeave\(\s*(?<element>\w+)\s*,")]
+    [GeneratedRegex(@"ScreenMotion\.(?:ArriveOrLeave|Put|Fade)\(\s*(?<element>\w+)\s*,")]
     private static partial Regex Travels();
 
     /// <summary>Whether this element is written as not being on the screen.</summary>

@@ -19,8 +19,7 @@ public static partial class UiTexts
     // because it is the product's name and a product is not translated — and it is a placeholder:
     // `docs/design.md` §The artboards and this page says the name and the mark are the one thing on
     // those drawings that is deliberately unfinished.
-    public static UiText TheApplicationsName { get; } =
-        new("Meeting Transcriber", "Meeting Transcriber");
+    public static UiText TheApplicationsName { get; } = new("Meeting Transcriber", "Meeting Transcriber");
 
     // The whole line and not the parenthesis on its own, which is what makes it an entry here at
     // all: a screen handed "(predeterminado)" would still be the one deciding that a space and a
@@ -82,17 +81,14 @@ public static partial class UiTexts
     // Not a failure. It is what the re-read before every write is for: the screen was drawn
     // before somebody answered the same question somewhere else, and the answer on disk won.
     public static UiText ThatIsNoLongerHowItWas { get; } = new(
-        "Eso ya no está como estaba. La lista se volvió a leer.",
-        "That is no longer as it was. The list has been read again.");
+        "Eso cambió; la lista se actualizó.",
+        "That changed; the list was refreshed.");
 
-    // The corpus is not reachable, so an empty list would be a lie. Which refusal it was is the
-    // settings screen's to say, and it has the whole table for it — it moved there with the line
-    // about where the corpus is kept, which is the one place that names the folder.
+    // The meetings folder is not reachable, so an empty list would be a lie. The settings screen has the
+    // whole table of reasons and the card that changes the folder.
     public static UiText TheCorpusCouldNotBeOpened { get; } = new(
-        "No se pudo abrir el corpus, así que esta lista no dice nada. La pantalla de "
-        + "configuración dice por qué: {0}",
-        "The corpus could not be opened, so this list says nothing. The settings screen says "
-        + "why: {0}");
+        "La carpeta de reuniones no se pudo abrir: {0}",
+        "The meetings folder could not be opened: {0}");
 
     // The player. Hearing what a meeting recorded never costs anything and never waits on a
     // transcription, so none of these words says anything about either.
@@ -101,18 +97,16 @@ public static partial class UiTexts
     // Walking away from a form, which is the verb docs/design.md's closed table gives for it.
     public static UiText Cancel { get; } = new("Cancelar", "Cancel");
 
-    // The two entries every picker on this screen opens and closes with. *Ninguno* empties the pill
-    // and everything to the right of it; the ellipsis is what says the last one asks a question
-    // rather than answering it.
-    public static UiText NoneOfThese { get; } = new("Ninguno", "None of these");
+    // The two entries every picker on a filing screen opens and closes with. *Vaciar* empties the pill
+    // and everything to the right of it; *Quitar* is the Deepgram card's, taking the key off this machine.
+    public static UiText NoneOfThese { get; } = new("Vaciar", "Clear");
 
-    public static UiText NameANewOne { get; } = new("Nombrar uno nuevo…", "Name a new one…");
+    public static UiText NameANewOne { get; } = new("Nuevo…", "New…");
 
-    // What every picker on that screen offers for whatever already stands in it — a pill over the
-    // tree and a row of people alike, because it is one act and one act reads as one entry. The
-    // ellipsis says it asks a question rather than answering one, the way *Nombrar uno nuevo…* does.
-    // It is also what the line of a classification put by offers over its name.
-    public static UiText CorrectThisName { get; } = new("Corregir este nombre…", "Correct this name…");
+    // What every picker offers for whatever already stands in it — a pill over the tree and a row of
+    // people alike, because it is one act and one act reads as one entry. *Corregir* is left to
+    // correcting a word, which is another act; this one changes the name something already has.
+    public static UiText CorrectThisName { get; } = new("Renombrar", "Rename");
 
     // The placeholder on a voice's picker, over Everybody rather than over Ninguno: a voice
     // nobody has named yet reads better as an invitation than as the answer that empties it.

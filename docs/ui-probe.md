@@ -138,6 +138,23 @@ walk that had already spent six minutes of real recording over an edit that chan
 window is showing. So a script's trees are evidence about the commit it was started at — if you
 edit while a long one runs, nothing will tell you, and what it wrote is still about the old build.
 
+## The first step, and where the foot is
+
+**Every `start` opens on *Primeros pasos* until somebody has been named.** The probe's corpus has
+nobody flagged as the user, and the settings screen opens itself in its first-time arrangement
+exactly when the corpus is reachable and nobody has said who is using it. So a walk presses
+`StartButton` before anything on the recorder, and what it presses it on is the settings screen,
+not the main window — the recorder is behind it until then.
+
+Starting on an empty corpus means deleting `%USERPROFILE%MeetingTranscriber.ui-probe` by hand: no
+verb does it, and a corpus that already has a name in it opens on the recorder.
+
+**`SettingsButton` is a word at the foot and is not on screen while a sub-screen has the room.**
+The way out of a sub-screen is `BackButton` in the bar, which exists only while one has the room, so
+a walk that has opened the settings presses that and not the foot to leave. `wait` on the thing you
+expect before you press either: a sub-screen arrives by a fade of 250 ms, and a tree read in the
+first frame still shows the screen it replaced.
+
 ## Record may be pressed
 
 **It may. This file said not to until 2026-09-02, and the repository's owner withdrew that in as
@@ -264,10 +281,10 @@ start                          → 7feb8c95-...!App is process 12216, from C:\..
                                  its corpus is C:\Users\...\MeetingTranscriber.ui-probe, and the
                                  pointer in C:\Users\...\MeetingTranscriber\corpus-location is put
                                  back on close
-                                 window "Grabar una reunión" ... (the whole tree)
+                                 window "Meeting Transcriber" ... (the whole tree)
 press PackagingChecksButton    → pressed PackagingChecksButton
                                  The application has 2 windows open — "Comprobaciones de
-                                 empaquetado", "Grabar una reunión" — and the script has not said
+                                 empaquetado", "Meeting Transcriber" — and the script has not said
                                  which one it is on.
 wait EnvironmentButton         → on "Comprobaciones de empaquetado"
                                  window "Comprobaciones de empaquetado" ... (the whole tree)
@@ -296,7 +313,7 @@ dotnet run --project tools/MeetingTranscriber.UiProbe -- --out $env:TEMP\ui-prob
     docked.tree.txt and docked.png (1920x1023)
   press OpennessButton
   wait OpennessButton
-    on "Grabar una reunión"
+    on "Meeting Transcriber"
   see whole
     whole.tree.txt and whole.png (1920x1023)
 done, in C:\Users\pc\AppData\Local\Temp\ui-probe

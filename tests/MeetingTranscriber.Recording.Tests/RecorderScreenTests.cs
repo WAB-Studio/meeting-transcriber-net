@@ -533,26 +533,6 @@ public class RecorderScreenTests
             .NothingCameIsOnScreen.ShouldBeFalse();
 
     [Fact]
-    public void The_programs_offered_to_move_to_leave_out_the_one_being_followed()
-    {
-        var following = new AudioProcess(1, "a", StartedBy: 1);
-        var other = new AudioProcess(2, "b", StartedBy: 1);
-
-        RecorderScreen.ProgramsChannelZeroMayMoveTo([other, following], following).ShouldBe([other]);
-    }
-
-    [Fact]
-    public void The_programs_offered_to_move_to_are_in_the_order_the_source_picker_lists_them()
-    {
-        var bravo = new AudioProcess(9, "Bravo", StartedBy: 1);
-        var alpha = new AudioProcess(8, "alpha", StartedBy: 1);
-        var alphaToo = new AudioProcess(3, "alpha", StartedBy: 1);
-
-        RecorderScreen.ProgramsChannelZeroMayMoveTo([bravo, alpha, alphaToo], null)
-            .ShouldBe([alphaToo, alpha, bravo]);
-    }
-
-    [Fact]
     public void The_applications_on_offer_leave_out_the_one_followed_by_its_id_whatever_its_title_says()
     {
         var following = new AudioProcess(1, "a", StartedBy: 1);

@@ -16,7 +16,7 @@
 
          One control used twice, because two meters is the contract: channel 0 is the others and
          channel 1 is you, and there are two of them for ever. It knows it is a channel and never
-         which — the chip, the role, what the picker offers and what the picker is called all come
+         which — the role, what the picker offers and what the picker is called all come
          from the window, which is what keeps one control from having to know which language it is
          being read in.
 
@@ -48,30 +48,21 @@
         <Grid Grid.Row="0" ColumnSpacing="9">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
 
-            <!-- Which channel this is, as the number Deepgram reports back: data, mono, and the
-                 same in every language. It is not the domain leaking onto the screen — the channel
-                 index is what a person is choosing a source *for*, and the role beside it is what
-                 that means. -->
-            <TextBlock
-                x:Name="Chip"
-                Grid.Column="0"
-                VerticalAlignment="Center"
-                Style="{StaticResource DataText}" />
-
-            <!-- What this channel is: the others, or you. -->
+            <!-- What this channel is: the others, or you. It is named by what it hears and never by
+                 the number Deepgram reports it back as: the channel index is the provider's and
+                 belongs to the files, and a person choosing a source needs the role. -->
             <TextBlock
                 x:Name="Role"
-                Grid.Column="1"
+                Grid.Column="0"
                 VerticalAlignment="Center"
                 Style="{StaticResource BodyText}"
                 FontWeight="SemiBold" />
 
             <!-- The pill. It carries no header, which is what lets it stand at the control rank's
-                 34 — what it chooses is the two texts to its left. A screen reader has no label to
+                 34 — what it chooses is the text to its left. A screen reader has no label to
                  read off those, so the window gives it one by name. -->
             <!-- Left and not stretched, with a floor and no ceiling. The artboard runs the pill
                  from the role to just short of a status word; there is none on this row (*sin
@@ -81,10 +72,11 @@
                  flat at the pill's edge, reading as a name that is still going. -->
             <ComboBox
                 x:Name="Picker"
-                Grid.Column="2"
+                Grid.Column="1"
                 MinWidth="260"
                 HorizontalAlignment="Left"
                 Style="{StaticResource DropDown}"
+                DropDownOpened="OnOpened"
                 SelectionChanged="OnChosen" />
         </Grid>
 

@@ -8,28 +8,14 @@ public static partial class UiTexts
 
     public static UiText Microphone { get; } = new("Micrófono", "Microphone");
 
-    // The two channels, as the chip and the role the artboards draw beside each picker. The chip is
-    // the channel index Deepgram reports back, in mono at the data rank, and it is the same either
-    // way because a number is: `docs/design.md` §Type gives mono to every number that gets compared
-    // to another one, and *ch0* against *canal 0* would be two spellings of one index. The role
-    // beside it is the words, and those are translated.
-    //
-    // Two entries where there used to be one saying both at once. The meter drew "Canal 0 · los
-    // demás" over its own bar while the picker had a header of its own, and the redraw put the
-    // three things the artboards draw — the chip, the role and the pill — in one row instead.
-    public static UiText Channel0 { get; } = new("ch0", "ch0");
+    public static UiText Back { get; } = new("Volver", "Back");
 
-    public static UiText Channel1 { get; } = new("ch1", "ch1");
-
+    // The two strips are named by what they hear and never by a number: the channel index is the
+    // provider's and belongs to the files it sends back. The role stands beside each picker, and a
+    // sentence that has to name the loopback says *los demás*, or *the others*.
     public static UiText TheOthersRole { get; } = new("Los demás", "The others");
 
     public static UiText MyRole { get; } = new("Yo", "Me");
-
-    // When the meeting gets transcribed, at the foot of the card. #97 settled that this is chosen
-    // here and per meeting; nothing transcribes during a recording yet, so it has one answer and
-    // this is the whole of it. *En vivo* is not in the catalogue, because a word for an answer
-    // nobody can give is a word waiting to be put on a control that lies.
-    public static UiText TranscribedAtTheEnd { get; } = new("Al terminar", "At the end");
 
     public static UiText NoMicrophoneOnThisMachine { get; } = new(
         "Esta máquina no tiene ningún micrófono.",
@@ -52,43 +38,22 @@ public static partial class UiTexts
     // What is lost is only that the list stops keeping up on its own, so it says exactly that and
     // does not read as a machine with no microphone: everything already on screen still records.
     public static UiText WindowsWillNotSayWhenTheDevicesChange { get; } = new(
-        "Windows no avisa cuando cambian los dispositivos: la lista de micrófonos queda como "
-        + "está hasta que se vuelva a abrir la aplicación.",
-        "Windows will not say when the devices change: the list of microphones stays as it is "
-        + "until the application is opened again.");
+        "Windows no avisa cuando cambian los dispositivos; la lista de micrófonos se actualiza al abrirla.",
+        "Windows will not say when devices change; the microphone list updates when it is opened.");
 
     // Said out loud because the picker emptying itself is the sort of change somebody notices
     // afterwards. The recording is not startable until another one is picked, which is the point.
     public static UiText TheMicrophoneChosenIsNoLongerThere { get; } = new(
-        "El micrófono elegido ya no está en esta máquina.",
-        "The microphone that was chosen is no longer on this machine.");
+        "El micrófono elegido ya no está.",
+        "The microphone you chose is gone.");
 
     public static UiText TheWholeMachineCouldNotBeRecorded { get; } = new(
-        "No se pudo pasar a grabar toda la máquina.",
-        "Recording the whole machine could not be taken up.");
+        "No se pudo grabar todo el audio.",
+        "Recording all audio could not start.");
 
-    public static UiText WhatToRecordFromThisMachine { get; } =
-        new("Qué grabar de esta máquina", "What to record from this machine");
+    public static UiText WhatToRecordFromThisMachine { get; } = new("Programa", "Program");
 
-    public static UiText EverythingThisMachinePlays { get; } = new(
-        "Todo lo que suena en esta máquina",
-        "Everything this machine plays");
-
-    // One press, both pickers. The microphones keep up on their own, so this is what a session
-    // where Windows refused to say when devices change has instead — and it is the only thing that
-    // ever re-reads the programs, since nothing tells an application that a meeting was just
-    // started in a browser tab.
-    public static UiText RefreshTheList { get; } =
-        new("Actualizar la lista", "Refresh the list");
-
-    // Its own question, because this screen has two language pickers on it and they answer
-    // different things: a meeting filed in the language of the menu somebody happens to read is a
-    // meeting transcribed in the wrong one. The name says which it is and carries the difference
-    // on its own — the caption under it that used to explain that is gone, because
-    // `docs/design.md` §The rules the design imposes says a screen gets one sentence and only
-    // where something failed, and **if an option needs a line explaining it, its name is wrong**.
-    public static UiText WhatWillBeSpoken { get; } =
-        new("Idioma de la reunión", "The meeting's language");
+    public static UiText EverythingThisMachinePlays { get; } = new("Todo el audio", "All audio");
 
     // The verb `docs/design.md` §One verb per act fixes for this. The same act is never said two
     // ways, and this one was *Grabar* on the screen against *Empezar a grabar* on the page.
@@ -96,8 +61,7 @@ public static partial class UiTexts
 
     public static UiText Resume { get; } = new("Seguir", "Carry on");
 
-    public static UiText RecordTheWholeMachine { get; } =
-        new("Grabar toda la máquina", "Record the whole machine");
+    public static UiText RecordTheWholeMachine { get; } = new("Grabar todo el audio", "Record all audio");
 
     // One sentence naming the program, read as a live region, so it is the same every second it
     // stands: a count running in it would be read out every second. Taking the whole machine costs
@@ -119,23 +83,16 @@ public static partial class UiTexts
     // The accessible name of the notice's Cambiar, which shows the one word every press that
     // points something elsewhere shows (Change). Two presses named Cambiar read the same to
     // somebody who cannot see which one they are beside.
-    public static UiText ChangeWhatChannel0Follows { get; } = new(
-        "Cambiar qué programa sigue el canal 0", "Change which program channel 0 follows");
-
-    public static UiText NowFollowingAnotherProgram { get; } =
-        new("Canal 0: {0}.", "Channel 0: {0}.");
+    public static UiText ChangeWhatTheOthersFollow { get; } = new(
+        "Cambiar el programa de los demás", "Change the others' program");
 
     public static UiText AnotherProgramCouldNotBeFollowed { get; } = new(
-        "El canal 0 no se pudo pasar a {0}; sigue donde estaba.",
-        "Channel 0 could not be moved onto {0}; it is still where it was.");
+        "No se pudo seguir a {0}; todo sigue como estaba.",
+        "{0} could not be followed; nothing changed.");
 
-    public static UiText ThatProgramStoppedBeforeChannel0Moved { get; } = new(
-        "{0} ya no está corriendo, así que el canal 0 sigue donde estaba.",
-        "{0} is no longer running, so channel 0 is still where it was.");
-
-    public static UiText NowRecordingTheWholeMachine { get; } = new(
-        "Canal 0: todo lo que suena en esta máquina.",
-        "Channel 0: everything this machine plays.");
+    public static UiText ThatProgramStoppedBeforeTheOthersMoved { get; } = new(
+        "{0} ya no está corriendo; todo sigue como estaba.",
+        "{0} is no longer running; nothing changed.");
 
     // The four words the strip says while the meetings have the window, one per state a meeting
     // can be under way in, which `MainAbierto` draws as the one loud thing on it. They are the
@@ -155,49 +112,19 @@ public static partial class UiTexts
 
     public static UiText TheMeetingIsBeingSaved { get; } = new("Guardando", "Saving");
 
-    public static UiText ReadyToRecord { get; } = new(
-        "Elija el micrófono, qué grabar de esta máquina y en qué idioma se va a hablar.",
-        "Choose the microphone, what to record from this machine, and what will be spoken.");
-
-    public static UiText RecordingMeeting { get; } =
-        new("Grabando la reunión {0}.", "Recording meeting {0}.");
-
-    public static UiText PausedAndTheClockKeepsRunning { get; } = new(
-        "En pausa. El reloj de la reunión sigue corriendo, así que la pausa queda adentro como el "
-        + "silencio que fue.",
-        "Paused. The meeting's clock keeps running, so the pause stays in it as the silence it "
-        + "was.");
-
-    public static UiText OpeningTheDevices { get; } = new(
-        "Abriendo el micrófono y el canal 0.",
-        "Opening the microphone and channel 0.");
-
     public static UiText ThatProgramIsNoLongerRunning { get; } = new(
-        "Ese programa ya no está corriendo, así que no se empezó a grabar: elija otra vez qué "
-        + "grabar de esta máquina. Su número de proceso puede ser de otra aplicación ahora.",
-        "That program is no longer running, so nothing was started: choose again what to record "
-        + "from this machine. Its process number may belong to another application by now.");
-
-    public static UiText MakingTheMeeting { get; } = new(
-        "Deteniendo. La reunión se está armando con lo que se grabó, y para una reunión larga eso "
-        + "tarda unos minutos.",
-        "Stopping. The meeting is being made out of what was recorded, and for a long meeting that "
-        + "takes some minutes.");
+        "Ese programa ya no está corriendo, así que no se empezó a grabar. Elija otro.",
+        "That program is no longer running, so nothing was started. Choose another.");
 
     //
     // The heading the recorder half takes while a meeting is being saved, and one line per step
     // that save is going to run. What decides which of them are on screen is not here: a step is
     // shown because the save runs it, so this file holds words for steps and never the list.
-    public static UiText SavingTheMeeting { get; } =
-        new("Guardando la reunión", "Saving the meeting");
+    public static UiText SavingTheMeeting { get; } = new("Guardando…", "Saving…");
 
-    public static UiText LettingBothSourcesGo { get; } = new(
-        "Soltando las dos fuentes",
-        "Letting both sources go");
+    public static UiText LettingBothSourcesGo { get; } = new("Cerrando la grabación…", "Closing the recording…");
 
-    public static UiText SavingTheAudioOfBothChannels { get; } = new(
-        "Guardando el audio de los dos canales",
-        "Saving the audio of both channels");
+    public static UiText SavingTheAudioOfBothChannels { get; } = new("Guardando el audio…", "Saving the audio…");
 
     // The two marks beside a step. They are what a narrator reads out where somebody looking sees
     // a tick or a ring, so they are texts and not decoration; a step still to come carries neither,
@@ -206,29 +133,12 @@ public static partial class UiTexts
 
     public static UiText ThisStepIsUnderWay { get; } = new("en curso", "under way");
 
-    public static UiText TheMeetingIsRecorded { get; } = new(
-        "Reunión {0} grabada: {1} de audio en {2}.",
-        "Meeting {0} recorded: {1} of audio at {2}.");
-
-    // Said out loud every time, because what a stop did about money is not something to leave
-    // somebody working out from a list. Which of the two is said is read off what was really
-    // written, never off what the settings say — a stop that decided a transcription and found one
-    // already queued says the first of these, because that is what happened.
-    public static UiText NothingWasQueued { get; } = new(
-        "No se puso nada en cola: transcribir es otro botón.",
-        "Nothing was queued: transcribing is a separate press.");
-
-    public static UiText TranscribingWasQueued { get; } = new(
-        "Quedó en cola transcribirla, que es lo que pedía la configuración.",
-        "Transcribing it is queued, which is what the settings asked for.");
-
     public static UiText TheRecordingCouldNotStart { get; } =
         new("No se pudo empezar a grabar.", "The recording could not be started.");
 
     public static UiText TheMeetingCouldNotBeMade { get; } = new(
-        "La grabación terminó, pero la reunión no se pudo armar. Lo grabado sigue en su carpeta.",
-        "The recording ended, but the meeting could not be made. What was recorded is still in its "
-        + "folder.");
+        "No se pudo guardar la reunión. Lo grabado sigue en su carpeta.",
+        "The meeting could not be saved. What was recorded is still in its folder.");
 
     /// <summary>
     /// What the biggest number on the screen is a number of. The digits themselves carry no entry
@@ -253,19 +163,6 @@ public static partial class UiTexts
     /// what this carries is the one word saying which of the two numbers under the bar it is.
     /// </summary>
     public static UiText TheLoudestSoFar { get; } = new("pico {0}", "peak {0}");
-
-    /// <summary>
-    /// ISC-150. What it says about itself matters as much as what it says: somebody who reads it
-    /// as a measurement of their echo will go looking for one, and there is none — this is what
-    /// kind of device Windows says the meeting is being played through, and nothing more.
-    /// </summary>
-    public static UiText TheOthersAreHeardTwice { get; } = new(
-        "Estás escuchando la reunión por parlantes, así que el micrófono capta a los demás una "
-        + "segunda vez. Lo dice el tipo de dispositivo de reproducción y no una medición del eco. "
-        + "Con auriculares no pasa.",
-        "You are listening to this meeting through speakers, so the microphone is picking the "
-        + "other side up a second time. That is what kind of playback device this is, not a "
-        + "measurement of the echo. A headset avoids it.");
 
     /// <summary>
     /// One channel's device gone while the meeting carries on, naming it and the moment it went.
@@ -297,16 +194,12 @@ public static partial class UiTexts
     /// </para>
     /// </remarks>
     public static UiText TheOthersChannelStoppedOnItsOwn { get; } = new(
-        "«{0}» dejó de responder a las {1}. Lo que dijeron los demás desde entonces no quedó y no "
-        + "se recupera; el micrófono sigue grabando.",
-        "‘{0}’ stopped responding at {1}. Nothing the other side said from then on was kept, and "
-        + "it does not come back; the microphone is still recording.");
+        "«{0}» dejó de responder a las {1}. Lo que dijeron los demás desde entonces no se recupera; el micrófono sigue grabando.",
+        "‘{0}’ stopped responding at {1}. What the others said from then on is lost; the microphone is still recording.");
 
     public static UiText TheMicrophoneChannelStoppedOnItsOwn { get; } = new(
-        "«{0}» dejó de responder a las {1}. Lo que escuchó ese micrófono desde entonces no quedó y "
-        + "no se recupera; el canal 0 sigue grabando.",
-        "‘{0}’ stopped responding at {1}. What that microphone heard from then on was not kept, "
-        + "and it does not come back; channel 0 is still recording.");
+        "«{0}» dejó de responder a las {1}. Lo que escuchó desde entonces no se recupera; los demás siguen grabándose.",
+        "‘{0}’ stopped responding at {1}. What it heard from then on is lost; the others are still recording.");
 
     /// <summary>
     /// What the meter says where the level would be, for a channel whose device is gone.
@@ -319,15 +212,10 @@ public static partial class UiTexts
     /// </remarks>
     public static UiText ItWasCutOffAt { get; } = new("se cortó a las {0}", "cut off at {0}");
 
-    /// <summary>What the report says when opening the microphone again worked.</summary>
-    /// <remarks>
-    /// Everything the press changes is visible — the notice goes, the card comes back to full
-    /// weight, the scale's two coloured numbers return, and the time it was cut off is replaced by
-    /// a level. This is that said in words, for somebody reading the screen through a narrator, who
-    /// sees none of it.
-    /// </remarks>
-    public static UiText TheMicrophoneIsRecordingAgain { get; } =
-        new("El micrófono está grabando otra vez.", "The microphone is recording again.");
+    // The one success the report still says, because nothing else would say it in words: the
+    // notice goes and the meter comes back, and somebody reading this screen through a narrator
+    // sees none of that.
+    public static UiText TheMicrophoneIsRecordingAgain { get; } = new("Micrófono de vuelta", "Microphone back");
 
     /// <summary>And when it did not.</summary>
     /// <remarks>
@@ -336,45 +224,26 @@ public static partial class UiTexts
     /// machine's English belongs.
     /// </remarks>
     public static UiText TheMicrophoneCouldNotBeOpenedAgain { get; } = new(
-        "No se pudo abrir el micrófono otra vez. La reunión sigue grabándose por el canal 0.",
-        "The microphone could not be opened again. The meeting is still being recorded on "
-        + "channel 0.");
+        "No se pudo abrir el micrófono otra vez; lo demás sigue grabándose.",
+        "The microphone could not be opened again; the rest is still recording.");
 
-    /// <summary>
-    /// What a channel that changed device mid meeting says, naming the device it moved to.
-    /// </summary>
-    /// <remarks>
-    /// One entry for either channel and for either way a channel moves, because what a person has
-    /// to be told is the same in all of them: this channel is no longer on what the recording
-    /// started on, the recording did not stop, and here is what it is on now. It says nothing about
-    /// why, deliberately — somebody choosing the whole machine's audio and Windows taking a
-    /// microphone away are the same news to whoever is in the meeting, and a sentence that named
-    /// the cause would be two sentences one of which is usually wrong.
-    /// <para>
-    /// The two names go in as values, which is what keeps a device's name — a name this machine
-    /// gave, and the same in every language — out of the catalogue.
-    /// </para>
-    /// </remarks>
+    // What a channel that changed device mid meeting says, for either channel and either way it moves:
+    // what it records now, and what it did before. The names go in as values, which keeps a device's name
+    // out of the catalogue.
     public static UiText TheChannelMovedToAnotherDevice { get; } = new(
-        "Este canal ya no graba «{0}»: desde que cambió graba «{1}». La grabación no se cortó, y "
-        + "lo que haya pasado entre los dos queda dicho como el hueco que fue.",
-        "This channel is no longer recording ‘{0}’: since it changed it is recording "
-        + "‘{1}’. The recording did not stop, and whatever happened between the two is said "
-        + "as the gap it was.");
+        "Ahora graba «{1}» en lugar de «{0}»; lo del medio queda como hueco.",
+        "Now recording ‘{1}’ instead of ‘{0}’; what happened between is a gap.");
 
-    // It said choosing another folder was not done from this screen yet until #148 built the press
-    // that does it — on Configuración, beside the same refusal — so this sentence sends somebody
-    // there now rather than pretending nothing can be done about it.
+    // The one sentence the status line keeps: a recording with nowhere to put it. It sends somebody to
+    // the settings, where the folder card is.
     public static UiText ChangeWhereTheCorpusIsFromSettings { get; } = new(
-        "El corpus no se pudo abrir. Para cambiar dónde se guarda, vaya a Configuración.",
-        "The corpus could not be opened. To change where it is kept, go to Settings.");
+        "La carpeta de reuniones no se pudo abrir. Cámbiela en Configuración.",
+        "The meetings folder could not be opened. Change it in Settings.");
 
     public static UiText PackagingChecks { get; } =
         new("Comprobaciones de empaquetado", "Packaging checks");
 
     public static UiText LanguageNotRemembered { get; } = new(
-        "El idioma cambió, pero no se pudo recordar la elección: la próxima vez la aplicación "
-        + "abrirá en el idioma de Windows.",
-        "The language changed, but the choice could not be remembered: next time the application "
-        + "will open in Windows' language.");
+        "No se pudo recordar el idioma; la próxima vez se abrirá en el de Windows.",
+        "The language could not be remembered; next time it opens in Windows' language.");
 }

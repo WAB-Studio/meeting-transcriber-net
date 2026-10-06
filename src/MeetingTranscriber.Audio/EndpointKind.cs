@@ -1,15 +1,13 @@
 namespace MeetingTranscriber.Audio;
 
 /// <summary>
-/// What kind of thing an endpoint is, as the endpoint itself declares it. The one question this
-/// application asks of it is whether what comes out of it lands in a room, where the microphone
-/// recording the meeting hears it a second time.
+/// What kind of thing an endpoint is, as the endpoint itself declares it.
 /// </summary>
 /// <remarks>
 /// It is what the device says of itself and never a measurement. A driver fills this field in
 /// once, at install, from what the jack is wired to — so it is free to be sure about and wrong
-/// about a headset somebody plugged into a speaker socket. What rests on it is a line beside a
-/// meter and never a recording that stops.
+/// about a headset somebody plugged into a speaker socket, which is why nothing on a screen rests
+/// on it: the command line reports it and that is all.
 /// </remarks>
 public enum EndpointKind
 {
@@ -37,8 +35,8 @@ public enum EndpointKind
 
 /// <summary>
 /// What Windows' own form factor number means here. The mapping is the only thing between an
-/// integer out of a property store and a warning somebody reads, so it is a rule with a test
-/// rather than a cast at the point of use.
+/// integer out of a property store and a name somebody reads, so it is a rule with a test rather
+/// than a cast at the point of use.
 /// </summary>
 public static class EndpointKinds
 {
@@ -66,10 +64,8 @@ public static class EndpointKinds
     /// </summary>
     /// <remarks>
     /// A monitor over HDMI is <see cref="EndpointKind.SomethingElse"/> and not speakers, even
-    /// though most of them have speakers in them. What the warning it feeds is worth is that it
-    /// is never wrong — the same endpoint number is what an AV receiver and a capture card both
-    /// report, and a line telling somebody wearing headphones that the room can hear them is a
-    /// line they stop reading.
+    /// though most of them have speakers in them: the same endpoint number is what an AV receiver
+    /// and a capture card both report, so it says nothing about what is in the room.
     /// </remarks>
     public static EndpointKind Of(int formFactor) => formFactor switch
     {

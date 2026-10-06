@@ -423,7 +423,7 @@ public sealed partial class MeetingsDrawer : UserControl
     private static (UiText Says, string Surface) Reads(WaitingStanding waiting) => waiting switch
     {
         WaitingStanding.StillBeingRecorded => (UiTexts.ItIsBeingRecordedRightNow, "MeetingCard"),
-        WaitingStanding.BeingSavedNow => (UiTexts.ThisOneIsBeingSaved, "MeetingCard"),
+        WaitingStanding.BeingSavedNow => (UiTexts.SavingTheMeeting, "MeetingCard"),
         WaitingStanding.Waiting => (UiTexts.TheApplicationClosedInTheMiddleOfThisOne, "WaitingOnADecision"),
         WaitingStanding.CannotBecomeAMeeting => (UiTexts.ThisCannotBecomeAMeeting, "SomethingIsLost"),
         WaitingStanding.CouldNotBeReadThrough => (UiTexts.TheBlocksOfThisOneWouldNotRead, "SomethingIsLost"),
@@ -755,12 +755,23 @@ public sealed partial class MeetingsDrawer : UserControl
             }
         }
 
+        // An empty list says so once, where the rows would be — and not when the corpus would not
+        // open or would not be read, because an empty list is not the same fact as no meetings and
+        // "none" over a corpus nobody reached is the lie Read refuses to tell.
+        if (_meetings.Count == 0 && _waiting.Count == 0 && !_status.IsSaying)
+        {
+            Cards.Children.Add(new TextBlock
+            {
+                Text = In(UiTexts.NoMeetingsHereYet),
+                Style = Chrome("MeetingWhen"),
+            });
+        }
+
         PutThemBack(place);
     }
 
     /// <summary>
-    /// The two lines above the cards: how many are waiting to be told, and whatever the last thing
-    /// that happened had to say.
+    /// The line under the cards: whatever the last thing that happened had to say.
     /// </summary>
     /// <remarks>
     /// Apart from the cards, because a sentence and a list are two different things to owe and
@@ -774,18 +785,6 @@ public sealed partial class MeetingsDrawer : UserControl
     /// </remarks>
     private void SaysWhatItIsShowing()
     {
-        // Nothing about how many there are when the corpus would not open or would not be read:
-        // an empty list is not the same fact as no meetings, and "there is none here yet" over a
-        // corpus nobody reached is the lie Read refuses to tell one line further up.
-        CountText.Text = _status.IsSaying
-            ? string.Empty
-            : _meetings.Count == 0 && _waiting.Count == 0
-                ? In(UiTexts.NoMeetingsHereYet)
-                : UiTexts.SomeAreWaitingToBeTold.In(
-                    _language,
-                    _meetings.Count(entry => entry.Owed.IsOwed)
-                        + _waiting.Count(row => row.WaitsOnSomebody));
-
         MeetingsStatusText.Text = _status.In(_language);
     }
 
@@ -1117,10 +1116,21 @@ public sealed partial class MeetingsDrawer : UserControl
     private bool BeingKept(WaitingRow row) => _keeping is { } folder
         && string.Equals(folder, row.Recording.Folder.FullName, StringComparison.OrdinalIgnoreCase);
 
-    /// <summary>One meeting, as the card the task asks for.</summary>
+    /// <summary>
+    /// One meeting, as one line: the name, which is the press that opens it, when it was and how
+    /// long it ran, where it is, and the presses it offers at the right. What went wrong with it
+    /// stands under that line.
+    /// </summary>
     private UIElement Card(MeetingAndWork entry)
     {
-        var lines = new StackPanel { Spacing = 4 };
+        var line = new Grid { ColumnSpacing = 16, RowSpacing = 4 };
+
+        line.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        line.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        line.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        line.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        line.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        line.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
         // ISC-165.1 on a row. A meeting nobody has named reads as one nobody has named: the
         // catalogue's own words, in the reader's language and greyed the way a caption is, and
@@ -1144,6 +1154,7 @@ public sealed partial class MeetingsDrawer : UserControl
                 TextTrimming = TextTrimming.CharacterEllipsis,
             },
             Style = Chrome("MeetingOpen"),
+            VerticalAlignment = VerticalAlignment.Center,
         };
 
         // Named rather than left to whatever a button derives from a TextBlock in its content.
@@ -1162,33 +1173,38 @@ public sealed partial class MeetingsDrawer : UserControl
         KnownAs(open, RowPresses.ToOpen(entry.Meeting.Id));
 
         open.Click += (_, _) => MeetingChosen?.Invoke(this, entry.Meeting.Id);
-        lines.Children.Add(open);
+        Grid.SetColumn(open, 0);
+        line.Children.Add(open);
 
         // Data and not a sentence, so it reads the same in either language. Written to the minute
         // and never to the second: what tells two meetings apart on a list is which one it was,
         // not how far into a minute it started. The length comes after it where there is one — a
         // meeting still being recorded, and one whose recording never finished, have none.
-        lines.Children.Add(new TextBlock
+        var when = new TextBlock
         {
             Text = ScreenNumbers.When(entry.Meeting),
             Style = Chrome("MeetingWhen"),
-        });
+            VerticalAlignment = VerticalAlignment.Center,
+        };
 
-        // The one line on this list not read out of the corpus. A meeting being saved has no audio
-        // filed yet, which is exactly what a recording that never finished looks like from here —
-        // so the corpus cannot tell the two apart, and left to it the list would say "no audio"
-        // about the meeting somebody stopped four seconds ago. Only the line changes: a meeting at
-        // that stage has no action and no standing either way, so there is nothing else on the
-        // card for this to decide.
+        Grid.SetColumn(when, 1);
+        line.Children.Add(when);
+
+        // The one status, decided by the meeting's own work and only spoken here — except for the
+        // meeting the recorder is saving right now. A meeting being saved has no audio filed yet,
+        // which is exactly what a recording that never finished looks like from here, so the
+        // corpus cannot tell the two apart and left to it the list would say "no audio" about the
+        // meeting somebody stopped four seconds ago. Only the word changes: a meeting at that stage
+        // has no action and no standing either way.
         //
         // Almost always this meeting is drawn as its own waiting recording instead — its blocks
         // are in the spool while the save reads them, so it is on the list above and reads the
-        // same sentence from there. What reaches this line is the one case that leaves: a spool
-        // root that would not be listed, where the meetings were read and the recordings were not.
-        lines.Children.Add(new TextBlock
+        // same word from there. What reaches this line is the one case that leaves: a spool root
+        // that would not be listed, where the meetings were read and the recordings were not.
+        var status = new TextBlock
         {
             Text = In(entry.Meeting.Id == _beingSaved
-                ? UiTexts.ThisOneIsBeingSaved
+                ? UiTexts.SavingTheMeeting
                 : MeetingWords.Status(entry.Owed.Status)),
             Style = entry.Meeting.Id == _beingSaved
                 ? Chrome("MeetingLine")
@@ -1198,27 +1214,39 @@ public sealed partial class MeetingsDrawer : UserControl
                     MeetingStatus.Stopped => Chrome("MeetingStoppedOnAPerson"),
                     _ => Chrome("MeetingLine"),
                 },
-        });
+            VerticalAlignment = VerticalAlignment.Center,
+        };
 
+        Grid.SetColumn(status, 2);
+        line.Children.Add(status);
+
+        if (entry.MayBeTriedAgain
+            || (entry.Owed.Next is not null && (entry.Owed.MayBeTaken || entry.Owed.MayBeLeft)))
+        {
+            var presses = Presses(entry);
+
+            Grid.SetColumn(presses, 3);
+            line.Children.Add(presses);
+        }
+
+        // What went wrong stands under the line it is about, across the whole of it.
         if (entry.Owed.Failed is { } failed)
         {
-            lines.Children.Add(new TextBlock
+            var why = new TextBlock
             {
                 Text = failed is JobFailure.MemoryFileInTheWay
                     && SummarisingOnThisMachine.MemoryFileInTheWay() is { } inTheWay
                     ? TextLine.Says(UiTexts.NotSentMoveThisMemoryFile, inTheWay.FullName).In(_language)
                     : In(MeetingWords.Failed(failed)),
                 Style = Chrome("MeetingFailed"),
-            });
+            };
+
+            Grid.SetRow(why, 1);
+            Grid.SetColumnSpan(why, 4);
+            line.Children.Add(why);
         }
 
-        if (entry.MayBeTriedAgain
-            || (entry.Owed.Next is not null && (entry.Owed.MayBeTaken || entry.Owed.MayBeLeft)))
-        {
-            lines.Children.Add(Presses(entry));
-        }
-
-        return new Border { Style = Chrome("MeetingCard"), Child = lines };
+        return new Border { Style = Chrome("MeetingCard"), Child = line };
     }
 
     /// <summary>
@@ -1274,11 +1302,16 @@ public sealed partial class MeetingsDrawer : UserControl
     /// might have.
     /// </para>
     /// </remarks>
-    private UIElement Presses(MeetingAndWork entry)
+    private StackPanel Presses(MeetingAndWork entry)
     {
         var meeting = entry.Meeting.Id;
         var owed = entry.Owed;
-        var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Margin = new Thickness(0, 8, 0, 0) };
+        var row = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 8,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
 
         if (owed.MayBeLeft)
         {

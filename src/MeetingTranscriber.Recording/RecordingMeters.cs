@@ -124,6 +124,34 @@ public sealed record ChannelReading
     public double Meter => IsSilent ? 0 : MeterScale.Along(Level.Decibels);
 
     /// <summary>
+    /// What a channel read as over a stretch longer than one reading: the louder of the level
+    /// kept so far and the one just read, and everything else as the later reading says it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The words under a meter and the answer that nothing is arriving are read from this and never
+    /// from the latest reading alone. The meter is read many times a second and reading empties
+    /// it, so a stretch of fifty milliseconds between two words reads silent — and <em>nada</em>
+    /// written from it would stand over a conversation that is going on. The bar takes every
+    /// reading, because it is drawn at once and falls on its own; the words keep the loudest.
+    /// </para>
+    /// <para>
+    /// Only the level comes from the louder reading. Whether the channel is still there, what it is
+    /// capturing now and when it was cut off are facts about the present, and the later reading is
+    /// the present.
+    /// </para>
+    /// </remarks>
+    /// <param name="kept">What the stretch has read as so far.</param>
+    /// <param name="read">The reading just taken, which is the later of the two.</param>
+    public static ChannelReading Loudest(ChannelReading kept, ChannelReading read)
+    {
+        ArgumentNullException.ThrowIfNull(kept);
+        ArgumentNullException.ThrowIfNull(read);
+
+        return kept.Level.Peak > read.Level.Peak ? read with { Level = kept.Level } : read;
+    }
+
+    /// <summary>
     /// Asks each of <paramref name="recording"/>'s sources what it reads, in channel order.
     /// </summary>
     /// <remarks>
@@ -210,97 +238,8 @@ public sealed record ChannelReading
 }
 
 /// <summary>
-/// What this machine is playing through, as of the last time it said — and the rule that a machine
-/// which stops answering does not change what a person is being told.
-/// </summary>
-/// <remarks>
-/// <para>
-/// The subject is how the room is set up, and a room does not change because the audio service
-/// hiccuped. Emptying the line takes a warning away at the moment least able to justify taking it
-/// away, and empty reads the same as <em>nothing is wrong</em>. A third state — the last answer
-/// greyed while it is stale — was refused on 2026-09-03: it is a visual rank inside a one-line
-/// label, for a moment almost nobody reaches. Do not add one here.
-/// </para>
-/// <para>
-/// Before the machine has answered once there is nothing to stand, so <see cref="Standing"/> is
-/// nothing and the line is empty. That is not this rule failing, it is this rule having nothing
-/// yet. What shrinks it to one moment is that the window is told when the default endpoint moves
-/// rather than asking on a timer: without that, every refused second-by-second read would land here
-/// and an empty line would be the ordinary case rather than the first instant of a meeting.
-/// </para>
-/// <para>
-/// Mutable, where every other record in this file is not, and the difference is the point of it.
-/// <see cref="RecordingMeters"/> is built and not updated because it is what was true at one
-/// instant; this is the opposite kind of thing — the one answer that outlives the instant it was
-/// given. It is the shape <c>MainWindow._channels</c> already is: a field the tick moves and every
-/// redraw reads.
-/// </para>
-/// <para>
-/// <see cref="AudioCaptureException"/> and not the narrower type.
-/// <see cref="AudioDeviceWedgedException"/> is the machine not answering inside the deadline, and
-/// <em>Windows names no playback device</em> is a plain <see cref="AudioCaptureException"/> from
-/// <c>AudioDevices.Playback</c>. Both are the machine not saying, both leave the answer where it
-/// was, and telling them apart here would be a distinction with nothing behind it.
-/// </para>
-/// <para>
-/// What stops an edit going back to asking the machine on every redraw is
-/// <c>OneAnswerPerQuestionTests.The_machine_is_asked_what_it_plays_through_in_one_place</c>, over
-/// the application's own source. It is there and not here because none of this type's own tests can
-/// see a second caller: every one of them would stay green while the rule this paragraph argues was
-/// quietly gone.
-/// </para>
-/// </remarks>
-public sealed class WhatTheMachinePlaysThrough
-{
-    /// <summary>
-    /// The last endpoint this machine said it was playing through, or nothing when it has never
-    /// said. Never cleared by a refusal.
-    /// </summary>
-    public AudioDevice? Standing { get; private set; }
-
-    /// <summary>
-    /// Puts the question to <paramref name="machine"/>, leaving <see cref="Standing"/> as the new
-    /// answer when one arrived and as the one before it when none did.
-    /// </summary>
-    /// <param name="machine">
-    /// The whole of what touches the audio stack. A delegate rather than an interface so that this
-    /// rule is one a build agent runs: reaching <c>AudioDevices.Playback</c> from here would put the
-    /// rule back behind a device. The other half — the caller doing the reaching instead — is held
-    /// by <c>OneAnswerPerQuestionTests.The_machine_is_asked_what_it_plays_through_in_one_place</c>.
-    /// </param>
-    public void Ask(Func<AudioDevice> machine)
-    {
-        ArgumentNullException.ThrowIfNull(machine);
-
-        try
-        {
-            Standing = machine();
-        }
-        catch (AudioCaptureException)
-        {
-            // Nothing is written and nothing is cleared, which is the whole of the rule.
-        }
-    }
-
-    /// <summary>
-    /// Drops what the last meeting was told, so the next one starts with nothing standing.
-    /// </summary>
-    /// <remarks>
-    /// The rule above holds an answer across a machine that hiccuped <em>inside one meeting</em>,
-    /// which is what it is for: the last thing this machine said about what <em>the meeting</em> is
-    /// playing through. Between two meetings that reason is gone. Somebody plugs a headset in while
-    /// nothing is being recorded, and nothing is watching the default endpoint move, because that
-    /// is only watched while a recording runs. Carried over, an hour-old answer about a device that
-    /// is no longer the default would warn the next meeting about a room on the strength of a
-    /// question asked about a different one. Nothing standing is the honest state until this
-    /// meeting has asked.
-    /// </remarks>
-    public void ForgetTheLastMeeting() => Standing = null;
-}
-
-/// <summary>
 /// What the recording screen shows beside the buttons while a meeting is being recorded: a meter
-/// per channel, and the one warning about this machine that costs nothing to be sure of.
+/// per channel.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -316,22 +255,11 @@ public sealed class WhatTheMachinePlaysThrough
 /// </remarks>
 public sealed record RecordingMeters
 {
-    /// <summary>Nothing is being recorded, so there is nothing to meter and nothing to warn.</summary>
+    /// <summary>Nothing is being recorded, so there is nothing to meter.</summary>
     public static RecordingMeters Nothing { get; } = new();
 
     /// <summary>The channels, in channel order, or none when no meeting is being recorded.</summary>
     public IReadOnlyList<ChannelReading> Channels { get; init; } = [];
-
-    /// <summary>
-    /// Whether the meeting is being played through something that puts it into the room, so the
-    /// microphone is recording the other side a second time.
-    /// </summary>
-    /// <remarks>
-    /// It is what the playback endpoint says it is and never a measurement of the echo: how much
-    /// of channel 0 really comes back in on channel 1 is the audio engine's to measure, and what
-    /// a screen should then do with that number is not decided.
-    /// </remarks>
-    public bool TheOthersAreHeardTwice { get; init; }
 
     /// <summary>
     /// What one channel reads as, or nothing when there is no meeting — so a screen asks for the
@@ -374,36 +302,17 @@ public sealed record RecordingMeters
     /// <para>
     /// A state with no meeting in it reads as nothing at all, and that is the rule rather than a
     /// convenience. A level left standing after a meeting ended is the last second of a recording
-    /// that is over, and somebody reads it as a recording that is still going; the warning beside
-    /// it is worse, because it is about a microphone that is not open.
-    /// </para>
-    /// <para>
-    /// The endpoint is asked for here rather than carried by the recording, because the answer
-    /// changes while the meeting runs. Windows moves what the machine plays through the moment
-    /// somebody plugs a headset in, and a warning settled when the devices opened would tell that
-    /// person the room could hear them for the rest of the hour — which is the one thing this
-    /// warning is worth anything for not doing.
+    /// that is over, and somebody reads it as a recording that is still going.
     /// </para>
     /// </remarks>
     /// <param name="state">What the screen is doing.</param>
-    /// <param name="playback">
-    /// The endpoint the meeting is coming out of now, or nothing when the machine would not say —
-    /// which warns about nothing, the same as an endpoint that did not say what it is. What is
-    /// handed in is what <see cref="WhatTheMachinePlaysThrough"/> last had, so <em>would not
-    /// say</em> here means the machine has never said, and not that it stopped saying.
-    /// </param>
     /// <param name="channels">What each channel last read as, in channel order.</param>
-    public static RecordingMeters Of(
-        RecorderState state, AudioDevice? playback, IReadOnlyList<ChannelReading> channels)
+    public static RecordingMeters Of(RecorderState state, IReadOnlyList<ChannelReading> channels)
     {
         ArgumentNullException.ThrowIfNull(channels);
 
         return state.IsRecording()
-            ? new RecordingMeters
-            {
-                Channels = channels,
-                TheOthersAreHeardTwice = playback?.PlaysIntoTheRoom ?? false,
-            }
+            ? new RecordingMeters { Channels = channels }
             : Nothing;
     }
 }
