@@ -27,6 +27,32 @@ public readonly record struct PixelRect(int X, int Y, int Width, int Height);
 /// </remarks>
 public static class CaptionStrip
 {
+    /// <summary>
+    /// How wide the bar's last column is, in layout units, so the caption buttons have room: the
+    /// buttons' width in pixels over the scale — or nothing when that cannot be worked out.
+    /// </summary>
+    /// <remarks>
+    /// Nothing is "leave the column as it is", and it is what a window does not have a scale for.
+    /// A window that has been minimised is suspected of having no rasterisation scale to give (it
+    /// would read as zero), and a width over zero is infinity: the layout refuses that with
+    /// E_INVALIDARG from a callback the dispatcher ran (O-20261006-09; the crash record will say
+    /// whether this was the cause).
+    /// The size change of the window being restored works the answer again, so waiting costs nothing.
+    /// </remarks>
+    /// <param name="insetInPixels">What the platform says the caption buttons take.</param>
+    /// <param name="scale">Physical pixels per layout unit, as the window reports it.</param>
+    public static double? ReservedWidth(double insetInPixels, double scale)
+    {
+        if (!double.IsFinite(insetInPixels) || !double.IsFinite(scale) || scale <= 0 || insetInPixels < 0)
+        {
+            return null;
+        }
+
+        var units = insetInPixels / scale;
+
+        return double.IsFinite(units) ? units : null;
+    }
+
     /// <summary>The rectangles that drag the window.</summary>
     /// <param name="scale">Physical pixels per layout unit.</param>
     /// <param name="windowWidth">The window's content width, in layout units.</param>
