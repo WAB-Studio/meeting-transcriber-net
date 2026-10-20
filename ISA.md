@@ -1,7 +1,7 @@
 ﻿---
 phase: climbing
-progress: 225/338
-updated: 2026-10-06
+progress: 225/341
+updated: 2026-10-20
 ---
 
 # ISA — meeting-transcriber-net
@@ -318,6 +318,9 @@ Board: 4 · Deepgram BYOK
 - [ ] ISC-224.1: A meeting is sent to Deepgram asking for the model chosen for that meeting, and for no other.
 - [ ] ISC-224.2: What the corpus keeps of a meeting's transcription names the model that transcription was asked for.
 - [ ] ISC-224.3: Anti: a meeting nobody chose a model for is never sent asking for anything but Nova-3.
+- [ ] ISC-231: A meeting five hours long finishes going up to the provider, on an upload of 650 KB/s, inside the ten minutes the provider gives one request.
+- [ ] ISC-232: Anti: what the provider is sent for a meeting decodes to exactly the samples that meeting recorded, each on the channel it was recorded on.
+- [ ] ISC-233: Anti: a meeting is never sent asking for a way of telling speakers apart that the provider has deprecated.
 
 ### F6 · Summaries
 Why: a meeting becomes a summary whose every claim resolves to something said, using the user's
