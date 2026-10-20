@@ -50,8 +50,11 @@ The application is responsible for:
 snapshot and restoring one (ISC-111, §9). Export is built (`CorpusExport`, ISC-194.1 to .3).
 
 FFmpeg is not required. The interchange format is linear PCM WAV, 16-bit, 16 kHz, two channels
-(`CapturedAudio`). It is bigger than FLAC, but it removes a dependency and a risk. Compression is
-added only if measured size or upload time justifies it.
+(`CapturedAudio`), and it is what the corpus keeps. What goes up to Deepgram is that WAV as FLAC,
+encoded by the application itself (`FlacEncoder`): the same samples, in 26% of the bytes on the
+one real meeting measured. Noisier audio compresses less. The upload time measured on 2026-10-20 justified it, since a 1h42m meeting's 395 MB took
+past the ten minutes Deepgram gives a request. A lossy codec was rejected because it would
+change what Deepgram hears.
 
 ### 1.2 Local persistence only
 
