@@ -1,6 +1,6 @@
 ﻿---
 phase: climbing
-progress: 225/341
+progress: 227/341
 updated: 2026-10-20
 ---
 
@@ -319,8 +319,8 @@ Board: 4 · Deepgram BYOK
 - [ ] ISC-224.2: What the corpus keeps of a meeting's transcription names the model that transcription was asked for.
 - [ ] ISC-224.3: Anti: a meeting nobody chose a model for is never sent asking for anything but Nova-3.
 - [ ] ISC-231: A meeting five hours long finishes going up to the provider, on an upload of 650 KB/s, inside the ten minutes the provider gives one request.
-- [ ] ISC-232: Anti: what the provider is sent for a meeting decodes to exactly the samples that meeting recorded, each on the channel it was recorded on.
-- [ ] ISC-233: Anti: a meeting is never sent asking for a way of telling speakers apart that the provider has deprecated.
+- [x] ISC-232: Anti: what the provider is sent for a meeting decodes to exactly the samples that meeting recorded, each on the channel it was recorded on.
+- [x] ISC-233: Anti: a meeting is never sent asking for a way of telling speakers apart that the provider has deprecated.
 
 ### F6 · Summaries
 Why: a meeting becomes a summary whose every claim resolves to something said, using the user's
@@ -936,3 +936,5 @@ Board: 7 · Distribución y backup
 - ISC-229.4 — `MeetingRemovalTests.Nothing_is_deleted_while_work_is_queued_running_or_stopped_on_a_person`, `.Nothing_is_deleted_while_its_spool_folder_stands` and `.A_file_held_open_leaves_the_meeting_exactly_as_it_was` (`tests/MeetingTranscriber.Infrastructure.Tests`) green 2026-10-06.
 - ISC-229.5 — `MeetingRemovalTests.A_deletion_a_crash_left_is_finished_at_launch`, `.A_refused_response_set_aside_is_decided_by_its_transcription_run` (`tests/MeetingTranscriber.Infrastructure.Tests`) and `WhatALaunchOwesTests.A_launch_finishes_a_deletion_a_crash_left` (`tests/MeetingTranscriber.Recording.Tests`) green 2026-10-06.
 - ISC-230 — `MeetingRemovalTests.An_archived_meeting_is_off_the_list_and_back_on_it_when_put_back`, `.An_archived_meeting_with_a_charge_stopped_on_a_person_stays_listed` and `.An_archived_meeting_is_still_found_and_every_reader_but_the_list_still_counts_it` (`tests/MeetingTranscriber.Infrastructure.Tests`) green 2026-10-06. Not reached: the screen leaving and the way back drawn; the owner's walk.
+- ISC-232 — `FlacEncoderTests` and `DeepgramTranscriptionTests.The_audio_goes_up_as_flac_holding_exactly_what_was_recorded` (`tests/MeetingTranscriber.Processing.Tests`) green 2026-10-20, red that day with the channels written in reverse and with the order-1 predictor off by one. The 1h42m recording `5bf3b7ca` encoded and decoded by ffmpeg, CRCs checked, to the same PCM MD5 as its WAV, 2026-10-20. `FlacEncoderOnRecordingsTests` (`tests/MeetingTranscriber.Recording.Tests`) holds that the engine's own WAVs are encoded. Paid run 2026-10-20, budget five minutes: five minutes of it sent as FLAC came back `duration` 300.0 on 2 channels.
+- ISC-233 — `DeepgramRequestTests.No_profile_asks_for_the_deprecated_diarizer` and `.Each_profile_spells_the_whole_of_what_it_asks_for` (`tests/MeetingTranscriber.Processing.Tests`) green 2026-10-20, red on `main` where both profiles sent `diarize=true`. Paid run 2026-10-20, budget five minutes: `diarize_model=v2` returned `speaker` and `speaker_confidence` on every word and parsed. Not reached: v2 telling several people on channel 0 apart.

@@ -18,10 +18,10 @@ public class DeepgramRequestTests
     public void Each_profile_spells_the_whole_of_what_it_asks_for()
     {
         new DeepgramRequest(SourceProfile.Multichannel, "es").Options.ShouldBe(
-            "model=nova-3&language=es&smart_format=true&utterances=true&diarize=true&multichannel=true");
+            "model=nova-3&language=es&smart_format=true&utterances=true&diarize_model=v2&multichannel=true");
 
         new DeepgramRequest(SourceProfile.Diarize, "es").Options.ShouldBe(
-            "model=nova-3&language=es&smart_format=true&utterances=true&diarize=true");
+            "model=nova-3&language=es&smart_format=true&utterances=true&diarize_model=v2");
     }
 
     /// <summary>
@@ -65,6 +65,23 @@ public class DeepgramRequestTests
     {
         Should.Throw<ArgumentException>(() => new DeepgramRequest(SourceProfile.Diarize, "  "));
         new DeepgramRequest(SourceProfile.Diarize, " es ").Language.ShouldBe("es");
+    }
+
+    /// <summary>
+    /// ISC-233: no profile asks for speakers to be told apart through <c>diarize</c>, which
+    /// Deepgram deprecated and routes to its first diarizer, and none sends it beside
+    /// <c>diarize_model</c>, which Deepgram refuses. Red the day the boolean comes back.
+    /// </summary>
+    [Fact]
+    public void No_profile_asks_for_the_deprecated_diarizer()
+    {
+        foreach (var profile in Enum.GetValues<SourceProfile>())
+        {
+            var options = new DeepgramRequest(profile, "es").Options.Split('&');
+
+            options.ShouldNotContain(option => option.StartsWith("diarize=", StringComparison.Ordinal));
+            options.ShouldContain($"diarize_model={DeepgramRequest.Diarizer}");
+        }
     }
 
     /// <summary>

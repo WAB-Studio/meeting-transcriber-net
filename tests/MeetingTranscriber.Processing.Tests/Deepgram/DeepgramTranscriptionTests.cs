@@ -41,7 +41,7 @@ public sealed class DeepgramTranscriptionTests : IDisposable
 
         var query = fake.Asked!.RequestUri!.Query;
         query.ShouldContain("multichannel=true");
-        query.ShouldContain("diarize=true");
+        query.ShouldContain("diarize_model=v2");
 
         var transcript = DeepgramTranscriptParser.Parse(
             Encoding.UTF8.GetString(bytes), SourceProfile.Multichannel);
@@ -63,7 +63,7 @@ public sealed class DeepgramTranscriptionTests : IDisposable
 
         var query = fake.Asked!.RequestUri!.Query;
         query.ShouldNotContain("multichannel");
-        query.ShouldContain("diarize=true");
+        query.ShouldContain("diarize_model=v2");
 
         var transcript = DeepgramTranscriptParser.Parse(
             Encoding.UTF8.GetString(bytes), SourceProfile.Diarize);
@@ -384,9 +384,13 @@ public sealed class DeepgramTranscriptionTests : IDisposable
         fake.Asked.ShouldBeNull();
     }
 
-    /// <summary>Red the day the audio goes up as multipart, which this endpoint does not take.</summary>
+    /// <summary>
+    /// ISC-232 where it meets the provider: the body is FLAC, not a form, and it decodes to the
+    /// WAV's own samples on the WAV's own channels. Red the day the audio goes up as multipart, as
+    /// the WAV, or as anything that does not decode to what was recorded.
+    /// </summary>
     [Fact]
-    public async Task The_audio_is_the_body_and_not_a_form()
+    public async Task The_audio_goes_up_as_flac_holding_exactly_what_was_recorded()
     {
         using var fake = FakeDeepgram.Answering(DeepgramFixtures.TwoChannelShort);
         var audio = BothChannels();
@@ -394,6 +398,27 @@ public sealed class DeepgramTranscriptionTests : IDisposable
         await CallAsync(fake, SourceProfile.Multichannel, audio);
 
         fake.Asked!.Method.ShouldBe(HttpMethod.Post);
+        fake.Asked!.Content!.Headers.ContentType!.MediaType.ShouldBe("audio/flac");
+        var sent = FlacReader.Read(fake.Sent);
+        sent.Channels.Length.ShouldBe(2);
+        sent.Channels[0].ShouldAllBe(sample => sample == (short)(0.5f * short.MaxValue));
+        sent.Channels[1].ShouldAllBe(sample => sample == (short)(0.25f * short.MaxValue));
+        sent.Channels[0].Length.ShouldBe(480);
+    }
+
+    /// <summary>
+    /// A WAV in a width the encoder does not take goes up as itself, the way every file did before
+    /// there was an encoder. Red the day such a file is refused, or sent under a FLAC media type.
+    /// </summary>
+    [Fact]
+    public async Task A_wav_the_encoder_does_not_take_goes_up_as_itself()
+    {
+        using var fake = FakeDeepgram.Answering(DeepgramFixtures.SingleTrackDiarized);
+        var audio = ForeignWav.Wide(
+            new FileInfo(Path.Combine(folder.FullName, $"{Guid.NewGuid():n}.wav")), rate: 48_000, channels: 1, frames: 480);
+
+        await CallAsync(fake, SourceProfile.Diarize, audio);
+
         fake.Asked!.Content!.Headers.ContentType!.MediaType.ShouldBe("audio/wav");
         fake.Sent.ShouldBe(File.ReadAllBytes(audio.FullName));
     }

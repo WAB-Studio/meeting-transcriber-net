@@ -53,6 +53,9 @@ public sealed record DeepgramRequest
     /// </summary>
     public const string Model = "nova-3";
 
+    /// <summary>The diarizer every request that tells speakers apart asks for.</summary>
+    public const string Diarizer = "v2";
+
     /// <summary>The path under <see cref="Deepgram"/> that transcribes a file.</summary>
     private const string Listen = "v1/listen";
 
@@ -101,9 +104,13 @@ public sealed record DeepgramRequest
             "utterances=true",
         };
 
+        // diarize_model and never diarize=true: the boolean is deprecated and always routes to
+        // Deepgram's first diarizer, and a request carrying both is refused. v2 is pinned rather
+        // than latest so the same ask keeps meaning the same diarizer, and BillableConfigHash
+        // keeps telling two different asks apart. https://developers.deepgram.com/docs/diarization
         if (profile.RequestsDiarization())
         {
-            options.Add("diarize=true");
+            options.Add($"diarize_model={Diarizer}");
         }
 
         // What multichannel says is that the audio has more than one channel, which is the domain's

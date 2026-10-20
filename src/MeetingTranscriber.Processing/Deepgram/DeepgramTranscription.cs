@@ -91,10 +91,10 @@ public sealed class DeepgramTranscription
     /// comes back into <paramref name="response"/>.
     /// </summary>
     /// <param name="audio">
-    /// The file to transcribe. Nothing here opens it as audio, so nothing here can tell whether it
-    /// has the channels <paramref name="request"/>'s profile promises — the contract's rule that a
-    /// profile disagreeing with its audio throws is the caller's to have satisfied before it spends
-    /// money, and <c>AudioIntake</c> is where that is enforced for a file this application takes in.
+    /// The WAV to transcribe. Its header is read to encode it, but it is not checked against
+    /// <paramref name="request"/>'s profile here: the contract's rule that a profile disagreeing
+    /// with its audio throws is the caller's to have satisfied before it spends money, and
+    /// <c>AudioIntake</c> is where that is enforced for a file this application takes in.
     /// </param>
     /// <param name="response">
     /// Where the bytes go. <b>On every failure after the first byte it holds a prefix of a paid
@@ -130,13 +130,15 @@ public sealed class DeepgramTranscription
         // Opened before anything is sent, and by name: a path that is not there comes back as a
         // FileNotFoundException naming the file, which is a better answer than a call that was made
         // and had nothing to put in it.
-        await using var content = audio.OpenRead();
+        await using var wav = audio.OpenRead();
+        var (content, mediaType) = Encoded(wav, cancellation);
+        await using var flac = content == wav ? null : content;
 
         using var message = new HttpRequestMessage(HttpMethod.Post, request.At())
         {
             Content = new StreamContent(content)
             {
-                Headers = { ContentType = new MediaTypeHeaderValue("audio/wav") },
+                Headers = { ContentType = new MediaTypeHeaderValue(mediaType) },
             },
         };
 
@@ -210,6 +212,72 @@ public sealed class DeepgramTranscription
             return written;
         }
     }
+
+    /// <summary>
+    /// What goes up: <paramref name="wav"/> as FLAC when <see cref="FlacEncoder"/> takes it, and as
+    /// itself when it does not.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Everything here happens before the request exists, so a failure here cannot have been
+    /// charged for, and it says so rather than reaching the caller as an exception it can only read
+    /// as a call that may have been. Only a cancellation leaves as itself, because that is what
+    /// the caller asked for. <see cref="JobFailure.CorpusRefused"/> is the nearest kind there is:
+    /// the audio the corpus holds could not be made into what is sent, and the message says how.
+    /// </para>
+    /// <para>
+    /// The WAV path is for a single track imported untouched in a width other than 16 bits, which
+    /// <c>AudioFiles</c> keeps as it came. Every recording this application makes is encoded, and
+    /// <c>FlacEncoderOnRecordingsTests</c> is what fails if one stops being.
+    /// </para>
+    /// </remarks>
+    private static (Stream Content, string MediaType) Encoded(
+        FileStream wav, CancellationToken cancellation)
+    {
+        FileStream? flac = null;
+        try
+        {
+            flac = Scratch();
+            if (FlacEncoder.TryEncode(wav, flac, cancellation))
+            {
+                flac.Position = 0;
+                return (flac, FlacEncoder.MediaType);
+            }
+
+            flac.Dispose();
+            wav.Position = 0;
+            return (wav, "audio/wav");
+        }
+        catch (Exception failed) when (failed is not OperationCanceledException)
+        {
+            flac?.Dispose();
+            throw new DeepgramCallException(
+                "The meeting's audio could not be prepared for sending, so nothing was sent and "
+                + $"nothing was charged: {failed.Message}",
+                JobFailure.CorpusRefused,
+                failed);
+        }
+        catch
+        {
+            flac?.Dispose();
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Where the FLAC is written: the machine's temporary folder, never the corpus — it is a copy of
+    /// what the corpus already holds, made for one call — and gone when the call lets go of it,
+    /// however the call ends. A file rather than an encode streamed into the request, because the
+    /// sample count and MD5 FLAC puts at the start are only known at the end, and a body of known
+    /// length is one the provider can see the end of.
+    /// </summary>
+    private static FileStream Scratch() => new(
+        Path.Combine(Path.GetTempPath(), $"meeting-transcriber-{Guid.NewGuid():N}.flac"),
+        FileMode.CreateNew,
+        FileAccess.ReadWrite,
+        FileShare.None,
+        bufferSize: 1 << 16,
+        FileOptions.DeleteOnClose);
 
     /// <summary>
     /// Copies <paramref name="from"/> into <paramref name="to"/>, counting what actually moved.
